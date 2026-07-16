@@ -1407,9 +1407,21 @@ export const useStore = create<State>()(
     {
       name: "scenetrackable-v1",
       storage: createJSONStorage(() => localStorage),
-      version: 3,
+      version: 4,
       migrate: (persisted, from) => {
         const s = persisted as Record<string, any>;
+        // Ascending, and it has to stay that way: v3 rewrites a model id that v4
+        // then rewrites again, so a v2 store only lands on a working model if
+        // each step runs in the order it was written.
+        if (from < 2) {
+          // v2 gave locations their own collection. Lock dates were the only
+          // location data the app held, so they become the first records —
+          // stranding them would silently break location_lock deadlines.
+          adoptLegacyLocations(s);
+          for (const pid of Object.keys(s.projectData ?? {})) {
+            adoptLegacyLocations(s.projectData[pid]);
+          }
+        }
         if (from < 3) {
           // Google closed the Gemini 2.5 ids to new keys, so a saved pick from
           // that era 404s on every call. Hard-coded rather than read from
@@ -1425,13 +1437,15 @@ export const useStore = create<State>()(
             if (retired[ai.lightModel]) ai.lightModel = retired[ai.lightModel];
           }
         }
-        if (from < 2) {
-          // v2 gave locations their own collection. Lock dates were the only
-          // location data the app held, so they become the first records —
-          // stranding them would silently break location_lock deadlines.
-          adoptLegacyLocations(s);
-          for (const pid of Object.keys(s.projectData ?? {})) {
-            adoptLegacyLocations(s.projectData[pid]);
+        if (from < 4) {
+          // v3 sent the free-tier flash pick to gemini-3.5-flash, which Google
+          // has never actually served on the free tier — it answers every call
+          // with a 503 "high demand". gemini-3-flash-preview is the flash tier
+          // a free key can really reach.
+          const ai = s.aiConfig;
+          if (ai) {
+            if (ai.model === "gemini-3.5-flash") ai.model = "gemini-3-flash-preview";
+            if (ai.lightModel === "gemini-3.5-flash") ai.lightModel = "gemini-3-flash-preview";
           }
         }
         return s;

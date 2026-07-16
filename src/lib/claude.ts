@@ -54,7 +54,7 @@ export const MODELS: ModelInfo[] = [
   { id: "claude-sonnet-5", label: "Sonnet 5", desc: "Balanced · fast & cost-effective", provider: "anthropic" },
   { id: "claude-haiku-4-5", label: "Haiku 4.5", desc: "Fastest · lowest cost", provider: "anthropic" },
   { id: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro", desc: "Most capable Gemini · paid only", provider: "google" },
-  { id: "gemini-3.5-flash", label: "Gemini 3.5 Flash", desc: "Free tier · best free-tier quality", provider: "google", freeTier: true },
+  { id: "gemini-3-flash-preview", label: "Gemini 3 Flash", desc: "Free tier · best free-tier quality", provider: "google", freeTier: true },
   { id: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash Lite", desc: "Free tier · fastest, lighter analysis", provider: "google", freeTier: true },
 ];
 
@@ -78,7 +78,7 @@ const PRICING: Record<string, { in: number; out: number }> = {
   "claude-sonnet-5": { in: 3.0, out: 15.0 },
   "claude-haiku-4-5": { in: 1.0, out: 5.0 },
   "gemini-3.1-pro-preview": { in: 2.0, out: 12.0 },
-  "gemini-3.5-flash": { in: 1.5, out: 9.0 },
+  "gemini-3-flash-preview": { in: 1.5, out: 9.0 },
   "gemini-3.1-flash-lite": { in: 0.25, out: 1.5 },
 };
 
@@ -186,6 +186,30 @@ export interface ClaudeResult {
 
 const MAX_ATTEMPTS = 5;
 const RETRYABLE_STATUS = new Set([429, 500, 503, 529]);
+
+/**
+ * A 429 usually means "too fast, try again". But Google returns the same status
+ * for "this model is not on your plan at all", spelled `limit: 0` in the quota
+ * violation — every Gemini Pro id is paid-only, so a free-tier key gets this on
+ * the first call and on all five retries. Retrying spends a minute of backoff to
+ * arrive at the same failure, and the raw body it finally reports reads like a
+ * transient blip rather than a wrong model choice. Detect it and fail fast.
+ */
+function permanentQuotaFailure(status: number, body: string): boolean {
+  return status === 429 && /limit:\s*0\b/.test(body);
+}
+
+/** Turn a provider error body into something a producer can act on. */
+function quotaMessage(model: string, body: string): string {
+  const info = MODELS.find((m) => m.id === model);
+  if (permanentQuotaFailure(429, body)) {
+    const free = MODELS.filter((m) => m.provider === providerForModel(model) && m.freeTier)
+      .map((m) => m.label)
+      .join(" or ");
+    return `${info?.label ?? model} is not available on your API key's free tier — Google allows it on paid billing only. Pick ${free} in AI Settings, or enable billing on your Google Cloud project.`;
+  }
+  return `${info?.label ?? model} is rate-limited right now (429). The run will retry automatically; if it keeps failing, switch to a lighter model in AI Settings.`;
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
@@ -391,8 +415,16 @@ async function callLive(opts: ClaudeCallOptions): Promise<ClaudeResult> {
     }
 
     const errText = await res.text();
+
+    // A model the key can never call: report the fix, don't burn the retries.
+    if (permanentQuotaFailure(res.status, errText)) {
+      throw new ClaudeApiError(quotaMessage(model, errText), res.status);
+    }
+
     lastError = new ClaudeApiError(
-      `${PROVIDER_LABELS[provider]} API error ${res.status} — ${errText.slice(0, 200)}`,
+      res.status === 429
+        ? quotaMessage(model, errText)
+        : `${PROVIDER_LABELS[provider]} API error ${res.status} — ${errText.slice(0, 200)}`,
       res.status
     );
     if (!RETRYABLE_STATUS.has(res.status)) throw lastError;
