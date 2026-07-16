@@ -11,3 +11,7 @@ dist-ssr
 *.log
 vite.config.js
 vite.config.d.ts
+
+# TypeScript incremental build cache
+tsconfig.tsbuildinfo
+*.tsbuildinfo
