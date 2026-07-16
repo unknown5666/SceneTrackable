@@ -54,7 +54,25 @@ export async function extractPdfText(file: File): Promise<{ text: string; pageCo
 const HEADING_RE =
   /^\s*(\d+[A-Z]?[\.\)]?\s+)?(INT\.?\/EXT\.?|INT\.?|EXT\.?|I\/E\.?|EST\.?)\s+(.+)$/i;
 
+// Arabic sluglines carry the same fields in different words: an optional مشهد
+// ("scene") label and number, then داخلي / خارجي for interior / exterior. The
+// number may be Arabic-Indic, and a dash usually stands where an English script
+// puts a period.
+const HEADING_AR_RE =
+  /^\s*(?:مشهد\s*)?([0-9٠-٩۰-۹]+[.)]?\s*[-–—]?\s*)?(داخلي\s*\/\s*خارجي|خارجي\s*\/\s*داخلي|داخلي|خارجي)\s*[.\-–—:]?\s+(.+)$/;
+
+/** Arabic-Indic and Persian digits → ASCII, so scene numbers stay sortable. */
+function toAsciiDigits(s: string): string {
+  return s.replace(/[٠-٩۰-۹]/g, (d) => {
+    const c = d.charCodeAt(0);
+    return String(c >= 0x06f0 ? c - 0x06f0 : c - 0x0660);
+  });
+}
+
 function normIntExt(raw: string): Scene["intExt"] {
+  if (raw.includes("داخلي") && raw.includes("خارجي")) return "INT/EXT";
+  if (raw.includes("داخلي")) return "INT";
+  if (raw.includes("خارجي")) return "EXT";
   const r = raw.toUpperCase();
   if (r.startsWith("INT/") || r.startsWith("INT.") === false && r.includes("/")) return "INT/EXT";
   if (r.startsWith("INT")) return "INT";
@@ -64,6 +82,11 @@ function normIntExt(raw: string): Scene["intExt"] {
 
 function normTime(tail: string): Scene["timeOfDay"] {
   const t = tail.toUpperCase();
+  // \b is ASCII-only in JS, so the Arabic words match as plain substrings.
+  if (/ليل/.test(t)) return "NIGHT";
+  if (/فجر|شروق/.test(t)) return "DAWN";
+  if (/غروب|مغرب|مساء/.test(t)) return "DUSK";
+  if (/نهار|صباح|ظهر/.test(t)) return "DAY";
   if (/\bNIGHT\b/.test(t)) return "NIGHT";
   if (/\bDAWN\b/.test(t) || /\bSUNRISE\b/.test(t)) return "DAWN";
   if (/\bDUSK\b/.test(t) || /\bSUNSET\b|\bEVENING\b/.test(t)) return "DUSK";
@@ -99,7 +122,9 @@ export function parseScreenplay(raw: string): Scene[] {
     const { location, time } = splitHeading(current.headingRest);
     const body = current.body.join("\n").trim();
     autoNum += 1;
-    const number = (current.sceneNo || String(autoNum)).replace(/[.)]/g, "").trim();
+    const number = toAsciiDigits(current.sceneNo || String(autoNum))
+      .replace(/[.)\-–—]/g, "")
+      .trim();
     scenes.push({
       id: id("sc"),
       number,
@@ -117,7 +142,7 @@ export function parseScreenplay(raw: string): Scene[] {
   };
 
   for (const line of lines) {
-    const m = line.match(HEADING_RE);
+    const m = line.match(HEADING_RE) ?? line.match(HEADING_AR_RE);
     if (m) {
       flush();
       current = {
@@ -138,20 +163,41 @@ export function parseScreenplay(raw: string): Scene[] {
 // Character extraction — dialogue cues across the whole script
 // ------------------------------------------------------------
 const NON_CHARACTER = /^(INT|EXT|CUT TO|FADE|CONTINUED|DISSOLVE|THE END|TITLE|SUPER|ANGLE|CLOSE|POV|LATER|MONTAGE|END OF)/;
+const NON_CHARACTER_AR =
+  /^(مشهد|داخلي|خارجي|قطع|انتقال|مزج|نهاية|يتبع|تتمة|استمرار|عنوان)/;
 
-/** Detect character names from ALL-CAPS dialogue cues, most frequent first. */
+/**
+ * Arabic has no letter case, so the ALL-CAPS rule that finds English cues never
+ * fires. What identifies a cue instead is its shape: a bare name alone on a
+ * line — a few words, no sentence punctuation, sometimes a trailing colon.
+ * Weaker than the caps rule, so the frequency floor below carries more of the
+ * work here; this is the fallback for when the AI character pass is unavailable.
+ */
+function arabicCue(line: string): string | null {
+  const t = line.trim().replace(/\s*(\([^)]*\))?\s*:?\s*$/, "").trim();
+  if (t.length < 2 || t.length > 30) return null;
+  if (!/[؀-ۿ]/.test(t)) return null;
+  if (/[،؛؟!]/.test(t) || /\.$/.test(t)) return null;
+  if (t.split(/\s+/).length > 4) return null;
+  if (NON_CHARACTER_AR.test(t)) return null;
+  return t;
+}
+
+/** Detect character names from dialogue cues, most frequent first. */
 export function extractCharacters(scenes: Scene[]): string[] {
   const counts = new Map<string, number>();
   for (const sc of scenes) {
     for (const rawLine of sc.scriptText.split("\n")) {
       const t = rawLine.trim().replace(/\s*\((V\.O\.|O\.S\.|O\.C\.|CONT'D|CONT\.?D?)\)$/i, "");
-      if (
+      const name =
         t.length >= 2 &&
         t.length <= 30 &&
         /^[A-Z][A-Z0-9 .'\-]*$/.test(t) &&
         !NON_CHARACTER.test(t)
-      ) {
-        counts.set(t, (counts.get(t) ?? 0) + 1);
+          ? t
+          : arabicCue(rawLine);
+      if (name) {
+        counts.set(name, (counts.get(name) ?? 0) + 1);
       }
     }
   }
