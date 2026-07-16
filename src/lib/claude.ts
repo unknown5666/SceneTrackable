@@ -184,7 +184,7 @@ export interface ClaudeResult {
   fromMock: boolean;
 }
 
-const MAX_ATTEMPTS = 4;
+const MAX_ATTEMPTS = 5;
 const RETRYABLE_STATUS = new Set([429, 500, 503, 529]);
 
 function sleep(ms: number): Promise<void> {
