@@ -470,7 +470,9 @@ export type ActivityEntity =
   | "auth"
   | "project"
   | "art_element"
-  | "vfx_shot";
+  | "vfx_shot"
+  | "frequency"
+  | "rf_equipment";
 
 export interface ActivityLogEntry {
   id: string;

@@ -32,6 +32,8 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { Tabs } from "@/components/ui/Tabs";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { useRecordEditor } from "@/components/ui/RecordEditor";
 import { formatDate, cn } from "@/lib/utils";
 import type { Scene, ShootDay, DoodStatus } from "@/types";
 
@@ -122,12 +124,14 @@ function StripBoard() {
   const production = useStore((s) => s.production);
 
   const [activeDrag, setActiveDrag] = useState<string | null>(null);
+  const ed = useRecordEditor("shootDays");
 
   // Page range for horizontal scroll
   const [startDay, setStartDay] = useState(
     Math.max(1, production.currentShootDay - 2)
   );
   const visibleDays = 7;
+  const lastDay = shootDays.reduce((m, d) => Math.max(m, d.dayNumber), 0);
   const visibleShootDays = shootDays.filter(
     (d) => d.dayNumber >= startDay && d.dayNumber < startDay + visibleDays
   );
@@ -162,12 +166,28 @@ function StripBoard() {
 
   const dragScene = activeDrag ? scenes.find((s) => s.id === activeDrag) : null;
 
+  if (shootDays.length === 0) {
+    return (
+      <>
+        <Card>
+          <EmptyState
+            icon={<Calendar size={48} />}
+            title="No shoot days yet"
+            subtitle="Add your shooting days first — the strip board, DOOD, frequencies and kit assignments all hang off them."
+            cta={<ed.AddButton size="md" label="Add First Shoot Day" />}
+          />
+        </Card>
+        {ed.modal}
+      </>
+    );
+  }
+
   return (
     <>
       {/* Pager */}
       <div className="flex items-center justify-between mb-3">
         <div className="text-xs text-[var(--text-secondary)]">
-          Showing Days {startDay}–{Math.min(startDay + visibleDays - 1, 30)}
+          Showing Days {startDay}–{Math.min(startDay + visibleDays - 1, lastDay)} of {lastDay}
         </div>
         <div className="flex items-center gap-1">
           <Button
@@ -181,11 +201,16 @@ function StripBoard() {
           <Button
             variant="ghost"
             size="sm"
-            disabled={startDay + visibleDays > 30}
-            onClick={() => setStartDay((v) => Math.min(30 - visibleDays + 1, v + visibleDays))}
+            disabled={startDay + visibleDays > lastDay}
+            onClick={() =>
+              setStartDay((v) => Math.min(Math.max(1, lastDay - visibleDays + 1), v + visibleDays))
+            }
           >
             <ChevronRight size={14} />
           </Button>
+          <div className="ml-2">
+            <ed.AddButton label="Add Day" />
+          </div>
         </div>
       </div>
 
@@ -223,7 +248,10 @@ function StripBoard() {
                     <div className="text-sm font-semibold text-[var(--text-primary)]">
                       Day {day.dayNumber}
                     </div>
-                    {isToday && <Badge tone="info">Today</Badge>}
+                    <div className="flex items-center gap-1">
+                      {isToday && <Badge tone="info">Today</Badge>}
+                      <ed.RowActions id={day.id} />
+                    </div>
                   </div>
                   <div className="text-[10px] text-[var(--text-muted)] mt-0.5">
                     {formatDate(day.date)} · {day.callTime}–{day.wrapTime}
@@ -306,6 +334,7 @@ function StripBoard() {
           )}
         </DragOverlay>
       </DndContext>
+      {ed.modal}
     </>
   );
 }

@@ -5,6 +5,8 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Tabs } from "@/components/ui/Tabs";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { useRecordEditor } from "@/components/ui/RecordEditor";
 import { formatCurrency, cn } from "@/lib/utils";
 import type { ArtElementStatus } from "@/types";
 
@@ -46,8 +48,32 @@ function ElementTracker() {
   const updateStatus = useStore((s) => s.updateArtElementStatus);
   const scenes = useStore((s) => s.scenes);
   const production = useStore((s) => s.production);
+  const ed = useRecordEditor("artElements");
+
+  if (artElements.length === 0) {
+    return (
+      <>
+        <Card>
+          <EmptyState
+            icon={<Palette size={48} />}
+            title="No art elements yet"
+            subtitle="Track wardrobe, props, set dressing and makeup from 'needed' through to 'ready'."
+            cta={<ed.AddButton size="md" label="Add First Element" />}
+          />
+        </Card>
+        {ed.modal}
+      </>
+    );
+  }
 
   return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-[var(--text-secondary)]">
+          {artElements.length} {artElements.length === 1 ? "element" : "elements"}
+        </div>
+        <ed.AddButton label="Add Element" />
+      </div>
     <Card padding="none">
       <div className="overflow-x-auto">
         <table className="pos-table">
@@ -81,15 +107,18 @@ function ElementTracker() {
                     </Badge>
                   </td>
                   <td>
-                    {nextStatus && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => updateStatus(el.id, nextStatus)}
-                      >
-                        → {nextStatus.replace("_", " ")}
-                      </Button>
-                    )}
+                    <div className="flex items-center gap-1">
+                      {nextStatus && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => updateStatus(el.id, nextStatus)}
+                        >
+                          → {nextStatus.replace("_", " ")}
+                        </Button>
+                      )}
+                      <ed.RowActions id={el.id} />
+                    </div>
                   </td>
                 </tr>
               );
@@ -98,12 +127,15 @@ function ElementTracker() {
         </table>
       </div>
     </Card>
+      {ed.modal}
+    </div>
   );
 }
 
 function ContinuityBoard() {
   const continuityPhotos = useStore((s) => s.continuityPhotos);
   const scenes = useStore((s) => s.scenes);
+  const ed = useRecordEditor("continuityPhotos");
 
   const grouped = new Map<string, typeof continuityPhotos>();
   for (const p of continuityPhotos) {
@@ -112,8 +144,31 @@ function ContinuityBoard() {
     grouped.set(p.sceneId, arr);
   }
 
+  if (continuityPhotos.length === 0) {
+    return (
+      <>
+        <Card>
+          <EmptyState
+            icon={<Eye size={48} />}
+            title="No continuity photos yet"
+            subtitle="Log a reference per scene so wardrobe and set dressing can match across shooting days."
+            cta={<ed.AddButton size="md" label="Add First Photo" />}
+          />
+        </Card>
+        {ed.modal}
+      </>
+    );
+  }
+
   return (
     <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-[var(--text-secondary)]">
+          {continuityPhotos.length} {continuityPhotos.length === 1 ? "photo" : "photos"} across{" "}
+          {grouped.size} {grouped.size === 1 ? "scene" : "scenes"}
+        </div>
+        <ed.AddButton label="Add Photo" />
+      </div>
       {Array.from(grouped.entries()).map(([sceneId, photos]) => {
         const scene = scenes.find((s) => s.id === sceneId);
         return (
@@ -134,10 +189,11 @@ function ContinuityBoard() {
                   >
                     <Eye size={24} className="text-[var(--text-muted)]" />
                   </div>
-                  <div className="p-2">
+                  <div className="p-2 flex items-start justify-between gap-1">
                     <div className="text-xs text-[var(--text-primary)] line-clamp-2">
                       {p.caption ?? "No caption"}
                     </div>
+                    <ed.RowActions id={p.id} />
                   </div>
                 </div>
               ))}
@@ -145,6 +201,7 @@ function ContinuityBoard() {
           </Card>
         );
       })}
+      {ed.modal}
     </div>
   );
 }

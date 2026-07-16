@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Tabs } from "@/components/ui/Tabs";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { useRecordEditor } from "@/components/ui/RecordEditor";
 import { formatDate, cn } from "@/lib/utils";
 import type { VFXShotStatus } from "@/types";
 
@@ -49,9 +50,32 @@ function PipelineBoard() {
   const scenes = useStore((s) => s.scenes);
   const vfxVendors = useStore((s) => s.vfxVendors);
   const updateStatus = useStore((s) => s.updateShotStatus);
+  const ed = useRecordEditor("vfxShots");
+
+  if (vfxShots.length === 0) {
+    return (
+      <>
+        <Card>
+          <EmptyState
+            icon={<Sparkles size={48} />}
+            title="No VFX shots yet"
+            subtitle="Add shots to track them from bid through delivery across every vendor."
+            cta={<ed.AddButton size="md" label="Add First Shot" />}
+          />
+        </Card>
+        {ed.modal}
+      </>
+    );
+  }
 
   return (
     <div className="overflow-x-auto pb-4">
+      <div className="flex items-center justify-between mb-4">
+        <div className="text-sm text-[var(--text-secondary)]">
+          {vfxShots.length} {vfxShots.length === 1 ? "shot" : "shots"}
+        </div>
+        <ed.AddButton label="Add Shot" />
+      </div>
       <div className="flex gap-3" style={{ minWidth: PIPELINE_COLUMNS.length * 200 }}>
         {PIPELINE_COLUMNS.map((col) => {
           const shots = vfxShots.filter((s) => s.status === col.id);
@@ -104,16 +128,19 @@ function PipelineBoard() {
                         Reviews: {shot.reviewsCompleted}/{shot.reviewRounds}
                         {shot.finalDueDate && ` · Due ${formatDate(shot.finalDueDate)}`}
                       </div>
-                      {nextCol && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="w-full mt-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                          onClick={() => updateStatus(shot.id, nextCol.id)}
-                        >
-                          → {nextCol.label}
-                        </Button>
-                      )}
+                      <div className="flex items-center gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {nextCol && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="flex-1"
+                            onClick={() => updateStatus(shot.id, nextCol.id)}
+                          >
+                            → {nextCol.label}
+                          </Button>
+                        )}
+                        <ed.RowActions id={shot.id} />
+                      </div>
                     </Card>
                   );
                 })}
@@ -127,6 +154,7 @@ function PipelineBoard() {
           );
         })}
       </div>
+      {ed.modal}
     </div>
   );
 }
@@ -134,9 +162,33 @@ function PipelineBoard() {
 function VendorList() {
   const vfxVendors = useStore((s) => s.vfxVendors);
   const vfxShots = useStore((s) => s.vfxShots);
+  const ed = useRecordEditor("vfxVendors");
+
+  if (vfxVendors.length === 0) {
+    return (
+      <>
+        <Card>
+          <EmptyState
+            icon={<ExternalLink size={48} />}
+            title="No vendors yet"
+            subtitle="Add the facilities bidding or working on your shots to track their load and on-time record."
+            cta={<ed.AddButton size="md" label="Add First Vendor" />}
+          />
+        </Card>
+        {ed.modal}
+      </>
+    );
+  }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-[var(--text-secondary)]">
+          {vfxVendors.length} {vfxVendors.length === 1 ? "vendor" : "vendors"}
+        </div>
+        <ed.AddButton label="Add Vendor" />
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       {vfxVendors.map((v) => {
         const shots = vfxShots.filter((s) => s.vendorId === v.id);
         const delivered = shots.filter((s) => s.status === "delivered").length;
@@ -152,12 +204,17 @@ function VendorList() {
                 {v.onTimePercent}% on-time
               </Badge>
             </div>
-            <div className="text-sm text-[var(--text-secondary)]">
-              {shots.length} shots assigned · {delivered} delivered
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-[var(--text-secondary)]">
+                {shots.length} shots assigned · {delivered} delivered
+              </div>
+              <ed.RowActions id={v.id} />
             </div>
           </Card>
         );
       })}
+      </div>
+      {ed.modal}
     </div>
   );
 }

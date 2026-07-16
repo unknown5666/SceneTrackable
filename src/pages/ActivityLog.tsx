@@ -24,6 +24,8 @@ const ENTITY_TONE: Record<ActivityEntity, "info" | "ai" | "warning" | "muted" | 
   project: "info",
   art_element: "ai",
   vfx_shot: "ai",
+  frequency: "info",
+  rf_equipment: "info",
 };
 
 const ACTION_LABEL: Record<string, string> = {

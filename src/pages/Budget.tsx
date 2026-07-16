@@ -28,6 +28,7 @@ import { Tabs } from "@/components/ui/Tabs";
 import { Modal } from "@/components/ui/Modal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ProgressBar } from "@/components/ui/ProgressBar";
+import { useRecordEditor } from "@/components/ui/RecordEditor";
 import { formatCurrency, formatCompact, formatDate, formatDateTime, cn } from "@/lib/utils";
 
 export function Budget() {
@@ -64,6 +65,7 @@ function TopSheet() {
   const budgetLines = useStore((s) => s.budgetLines);
   const production = useStore((s) => s.production);
   const [expanded, setExpanded] = useState<string[]>([]);
+  const ed = useRecordEditor("budgetLines");
 
   const categories = useMemo(() => {
     const cats = new Map<string, typeof budgetLines>();
@@ -85,7 +87,31 @@ function TopSheet() {
       prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
     );
 
+  if (budgetLines.length === 0) {
+    return (
+      <>
+        <Card>
+          <EmptyState
+            icon={<DollarSign size={48} />}
+            title="No budget lines yet"
+            subtitle="Add account codes to build your top sheet and track committed vs. spent."
+            cta={<ed.AddButton size="md" label="Add First Line" />}
+          />
+        </Card>
+        {ed.modal}
+      </>
+    );
+  }
+
   return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-[var(--text-secondary)]">
+          {budgetLines.length} {budgetLines.length === 1 ? "line" : "lines"} across{" "}
+          {categories.length} {categories.length === 1 ? "category" : "categories"}
+        </div>
+        <ed.AddButton label="Add Line" />
+      </div>
     <Card padding="none">
       <div className="overflow-x-auto">
         <table className="pos-table">
@@ -98,6 +124,7 @@ function TopSheet() {
               <th className="text-right">Remaining</th>
               <th className="text-right">Variance</th>
               <th className="text-right min-w-[100px]">% Used</th>
+              <th className="w-[90px]">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -144,6 +171,7 @@ function TopSheet() {
                         <span className="text-xs w-8 text-right">{catPct.toFixed(0)}%</span>
                       </div>
                     </td>
+                    <td />
                   </tr>
                   {isOpen &&
                     lines.map((line) => {
@@ -168,6 +196,9 @@ function TopSheet() {
                           <td className="text-right">
                             <span className="text-xs">{pct.toFixed(0)}%</span>
                           </td>
+                          <td>
+                            <ed.RowActions id={line.id} />
+                          </td>
                         </tr>
                       );
                     })}
@@ -186,12 +217,17 @@ function TopSheet() {
                   {formatCurrency(totalBudgeted - totalCommitted, production.currency)}
                 </span>
               </td>
-              <td className="text-right">{((totalSpent / totalBudgeted) * 100).toFixed(0)}%</td>
+              <td className="text-right">
+                {totalBudgeted > 0 ? ((totalSpent / totalBudgeted) * 100).toFixed(0) : 0}%
+              </td>
+              <td />
             </tr>
           </tbody>
         </table>
       </div>
     </Card>
+      {ed.modal}
+    </div>
   );
 }
 
@@ -361,6 +397,23 @@ function PettyCashList() {
   const crew = useStore((s) => s.crew);
   const production = useStore((s) => s.production);
   const balance = pettyCash.reduce((s, e) => s + e.amount, 0);
+  const ed = useRecordEditor("pettyCash");
+
+  if (pettyCash.length === 0) {
+    return (
+      <>
+        <Card>
+          <EmptyState
+            icon={<FileText size={48} />}
+            title="No petty cash logged"
+            subtitle="Record each float spend as it happens to keep the running balance honest."
+            cta={<ed.AddButton size="md" label="Log First Entry" />}
+          />
+        </Card>
+        {ed.modal}
+      </>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -370,7 +423,10 @@ function PettyCashList() {
             <div className="section-header">Running Balance</div>
             <div className="data-value mt-1">{formatCurrency(balance, production.currency)}</div>
           </div>
-          <Badge tone="info">{pettyCash.length} entries</Badge>
+          <div className="flex items-center gap-3">
+            <Badge tone="info">{pettyCash.length} entries</Badge>
+            <ed.AddButton label="Log Entry" />
+          </div>
         </div>
       </Card>
 
@@ -384,6 +440,7 @@ function PettyCashList() {
                 <th>Department</th>
                 <th className="text-right">Amount</th>
                 <th>Logged By</th>
+                <th className="w-[90px]">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -395,7 +452,10 @@ function PettyCashList() {
                     <td>{entry.description}</td>
                     <td><Badge tone="muted">{entry.department}</Badge></td>
                     <td className="text-right font-medium">{formatCurrency(entry.amount, entry.currency)}</td>
-                    <td className="text-xs text-[var(--text-secondary)]">{logger?.name}</td>
+                    <td className="text-xs text-[var(--text-secondary)]">{logger?.name ?? "—"}</td>
+                    <td>
+                      <ed.RowActions id={entry.id} />
+                    </td>
                   </tr>
                 );
               })}
@@ -403,6 +463,7 @@ function PettyCashList() {
           </table>
         </div>
       </Card>
+      {ed.modal}
     </div>
   );
 }

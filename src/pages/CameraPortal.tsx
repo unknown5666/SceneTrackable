@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Tabs } from "@/components/ui/Tabs";
 import { ProgressBar } from "@/components/ui/ProgressBar";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { useRecordEditor } from "@/components/ui/RecordEditor";
 import { formatDateTime, cn } from "@/lib/utils";
 
 export function CameraPortal() {
@@ -36,9 +38,34 @@ export function CameraPortal() {
 
 function KitBuilder() {
   const cameraKits = useStore((s) => s.cameraKits);
+  const shootDays = useStore((s) => s.shootDays);
   const assignKit = useStore((s) => s.assignKitToDay);
+  const ed = useRecordEditor("cameraKits");
+
+  if (cameraKits.length === 0) {
+    return (
+      <>
+        <Card>
+          <EmptyState
+            icon={<Package size={48} />}
+            title="No camera kits yet"
+            subtitle="Build a kit list once, then assign it to the days it's needed."
+            cta={<ed.AddButton size="md" label="Add First Kit" />}
+          />
+        </Card>
+        {ed.modal}
+      </>
+    );
+  }
 
   return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-[var(--text-secondary)]">
+          {cameraKits.length} {cameraKits.length === 1 ? "kit" : "kits"}
+        </div>
+        <ed.AddButton label="Add Kit" />
+      </div>
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       {cameraKits.map((kit) => (
         <Card key={kit.id}>
@@ -59,19 +86,27 @@ function KitBuilder() {
               </div>
             ))}
           </div>
-          <div className="mt-3 flex gap-2">
-            {kit.assignedShootDay ? (
-              <Button size="sm" variant="ghost" onClick={() => assignKit(kit.id, null)}>
-                Unassign
-              </Button>
-            ) : (
-              <Button size="sm" variant="secondary" onClick={() => assignKit(kit.id, 15)}>
-                Assign Day 15
-              </Button>
-            )}
+          <div className="mt-3 flex items-center justify-between gap-2">
+            <select
+              className="text-xs py-1 flex-1"
+              value={kit.assignedShootDay ?? ""}
+              onChange={(e) =>
+                assignKit(kit.id, e.target.value === "" ? null : Number(e.target.value))
+              }
+            >
+              <option value="">Unassigned</option>
+              {shootDays.map((d) => (
+                <option key={d.id} value={d.dayNumber}>
+                  Day {d.dayNumber} — {d.location}
+                </option>
+              ))}
+            </select>
+            <ed.RowActions id={kit.id} />
           </div>
         </Card>
       ))}
+    </div>
+      {ed.modal}
     </div>
   );
 }
@@ -81,9 +116,32 @@ function PrepChecklists() {
   const toggleItem = useStore((s) => s.toggleChecklistItem);
   const currentUserId = useStore((s) => s.currentUserId);
   const crew = useStore((s) => s.crew);
+  const ed = useRecordEditor("checklists");
+
+  if (checklists.length === 0) {
+    return (
+      <>
+        <Card>
+          <EmptyState
+            icon={<ClipboardList size={48} />}
+            title="No prep checklists yet"
+            subtitle="Build a checklist per prep day so the whole department can tick items off together."
+            cta={<ed.AddButton size="md" label="Add First Checklist" />}
+          />
+        </Card>
+        {ed.modal}
+      </>
+    );
+  }
 
   return (
     <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-[var(--text-secondary)]">
+          {checklists.length} {checklists.length === 1 ? "checklist" : "checklists"}
+        </div>
+        <ed.AddButton label="Add Checklist" />
+      </div>
       {checklists.map((cl) => {
         const done = cl.items.filter((i) => i.done).length;
         const pct = cl.items.length ? (done / cl.items.length) * 100 : 0;
@@ -101,6 +159,7 @@ function PrepChecklists() {
                 <div className="w-20">
                   <ProgressBar value={pct} tone={pct >= 100 ? "success" : pct > 50 ? "warning" : "danger"} height={4} />
                 </div>
+                <ed.RowActions id={cl.id} />
               </div>
             </div>
             <div className="space-y-1.5">
@@ -146,6 +205,7 @@ function PrepChecklists() {
           </Card>
         );
       })}
+      {ed.modal}
     </div>
   );
 }
@@ -153,8 +213,33 @@ function PrepChecklists() {
 function CheckoutLog() {
   const equipmentCheckouts = useStore((s) => s.equipmentCheckouts);
   const crew = useStore((s) => s.crew);
+  const ed = useRecordEditor("equipmentCheckouts");
+
+  if (equipmentCheckouts.length === 0) {
+    return (
+      <>
+        <Card>
+          <EmptyState
+            icon={<Check size={48} />}
+            title="Nothing checked out"
+            subtitle="Log gear as it leaves the truck so you know what's out and who has it."
+            cta={<ed.AddButton size="md" label="Log First Checkout" />}
+          />
+        </Card>
+        {ed.modal}
+      </>
+    );
+  }
 
   return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-[var(--text-secondary)]">
+          {equipmentCheckouts.filter((c) => !c.returnAt).length} out ·{" "}
+          {equipmentCheckouts.length} total
+        </div>
+        <ed.AddButton label="Log Checkout" />
+      </div>
     <Card padding="none">
       <div className="overflow-x-auto">
         <table className="pos-table">
@@ -165,6 +250,7 @@ function CheckoutLog() {
               <th>Out</th>
               <th>Returned</th>
               <th>Condition</th>
+              <th className="w-[90px]">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -179,6 +265,9 @@ function CheckoutLog() {
                     {e.returnAt ? formatDateTime(e.returnAt) : <Badge tone="warning">Out</Badge>}
                   </td>
                   <td className="text-xs text-[var(--text-secondary)]">{e.condition ?? "—"}</td>
+                  <td>
+                    <ed.RowActions id={e.id} />
+                  </td>
                 </tr>
               );
             })}
@@ -186,5 +275,7 @@ function CheckoutLog() {
         </table>
       </div>
     </Card>
+      {ed.modal}
+    </div>
   );
 }

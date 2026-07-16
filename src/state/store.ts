@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
+import { SCHEMAS, type RecordCollection } from "@/data/schemas";
 import type {
   RoleId,
   Role,
@@ -308,6 +309,15 @@ interface State extends ProductionData {
   assignRFEquipmentToDay: (equipmentId: string, day: number | null) => void;
   assignKitToDay: (kitId: string, day: number | null) => void;
   updateArtElementStatus: (id: string, status: ArtElement["status"]) => void;
+
+  // ---- Generic record CRUD (schema-driven, see src/data/schemas.ts) ----
+  addRecord: (collection: RecordCollection, values: Record<string, unknown>) => string;
+  updateRecord: (
+    collection: RecordCollection,
+    id: string,
+    values: Record<string, unknown>
+  ) => void;
+  deleteRecord: (collection: RecordCollection, id: string) => void;
 }
 
 // ============================================================
@@ -1029,6 +1039,67 @@ export const useStore = create<State>()(
         set((s) => ({
           artElements: s.artElements.map((e) => (e.id === aid ? { ...e, status } : e)),
         })),
+
+      // ========================================================
+      // GENERIC RECORD CRUD
+      // ========================================================
+      // Drives every schema-backed collection. The shape of a record is
+      // defined once in src/data/schemas.ts; these three actions are the
+      // only write path the entry UI needs.
+      addRecord: (collection, values) => {
+        const schema = SCHEMAS[collection];
+        const rec = {
+          ...(schema.fromForm ? schema.fromForm(values) : values),
+          id: id(schema.idPrefix),
+        } as { id: string };
+        set((s) => ({
+          [collection]: [...(s[collection] as unknown[]), rec],
+        }) as Partial<State>);
+        get().logActivity({
+          action: "created",
+          entity: schema.entity,
+          entityId: rec.id,
+          description: `Added ${schema.singular.toLowerCase()}: ${schema.label(rec)}`,
+        });
+        return rec.id;
+      },
+
+      updateRecord: (collection, rid, values) => {
+        const schema = SCHEMAS[collection];
+        const prev = (get()[collection] as { id: string }[]).find((r) => r.id === rid);
+        if (!prev) return;
+        const next = {
+          ...prev,
+          ...(schema.fromForm ? schema.fromForm(values, prev) : values),
+          id: rid,
+        };
+        set((s) => ({
+          [collection]: (s[collection] as { id: string }[]).map((r) =>
+            r.id === rid ? next : r
+          ),
+        }) as Partial<State>);
+        get().logActivity({
+          action: "updated",
+          entity: schema.entity,
+          entityId: rid,
+          description: `Updated ${schema.singular.toLowerCase()}: ${schema.label(next)}`,
+        });
+      },
+
+      deleteRecord: (collection, rid) => {
+        const schema = SCHEMAS[collection];
+        const prev = (get()[collection] as { id: string }[]).find((r) => r.id === rid);
+        if (!prev) return;
+        set((s) => ({
+          [collection]: (s[collection] as { id: string }[]).filter((r) => r.id !== rid),
+        }) as Partial<State>);
+        get().logActivity({
+          action: "deleted",
+          entity: schema.entity,
+          entityId: rid,
+          description: `Deleted ${schema.singular.toLowerCase()}: ${schema.label(prev)}`,
+        });
+      },
 
       // ========================================================
       // CAST
