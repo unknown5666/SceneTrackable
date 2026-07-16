@@ -10,6 +10,8 @@ import {
   FileDown,
   Printer,
   AlertTriangle,
+  SlidersHorizontal,
+  X,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useStore, activeProject } from "@/state/store";
@@ -49,6 +51,7 @@ export function Breakdown() {
   const nav = useNavigate();
   const project = useStore(activeProject);
   const scenes = useStore((s) => s.scenes);
+  const shootDays = useStore((s) => s.shootDays);
   const updateScene = useStore((s) => s.updateScene);
   const addElement = useStore((s) => s.addElementToScene);
   const removeElement = useStore((s) => s.removeElementFromScene);
@@ -78,6 +81,78 @@ export function Breakdown() {
   }, [scene]);
 
   const totalElements = useMemo(() => scenes.reduce((n, s) => n + s.elements.length, 0), [scenes]);
+
+  // Scene -> shoot date, from the schedule
+  const sceneDateMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const d of shootDays) for (const sceneId of d.scenes) m[sceneId] = d.date;
+    return m;
+  }, [shootDays]);
+
+  const filterOptions = useMemo(() => {
+    const locations = new Set<string>();
+    const actors = new Set<string>();
+    const dates = new Set<string>();
+    for (const s of scenes) {
+      locations.add(s.location);
+      for (const el of s.elements) if (el.category === "cast") actors.add(el.name);
+      const date = sceneDateMap[s.id];
+      if (date) dates.add(date);
+    }
+    return {
+      locations: Array.from(locations).sort(),
+      actors: Array.from(actors).sort(),
+      dates: Array.from(dates).sort(),
+    };
+  }, [scenes, sceneDateMap]);
+
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [locationFilter, setLocationFilter] = useState<Set<string>>(new Set());
+  const [timeFilter, setTimeFilter] = useState<Set<string>>(new Set());
+  const [intExtFilter, setIntExtFilter] = useState<Set<string>>(new Set());
+  const [actorFilter, setActorFilter] = useState<Set<string>>(new Set());
+  const [dateFilter, setDateFilter] = useState<Set<string>>(new Set());
+
+  const toggleInSet = (set: Set<string>, setter: (s: Set<string>) => void, value: string) => {
+    const next = new Set(set);
+    if (next.has(value)) next.delete(value);
+    else next.add(value);
+    setter(next);
+  };
+
+  const activeFilterCount =
+    locationFilter.size + timeFilter.size + intExtFilter.size + actorFilter.size + dateFilter.size;
+
+  const clearFilters = () => {
+    setLocationFilter(new Set());
+    setTimeFilter(new Set());
+    setIntExtFilter(new Set());
+    setActorFilter(new Set());
+    setDateFilter(new Set());
+  };
+
+  const filteredScenes = useMemo(() => {
+    return scenes.filter((s) => {
+      if (locationFilter.size && !locationFilter.has(s.location)) return false;
+      if (timeFilter.size && !timeFilter.has(s.timeOfDay)) return false;
+      if (intExtFilter.size && !intExtFilter.has(s.intExt)) return false;
+      if (actorFilter.size) {
+        const sceneActors = s.elements.filter((el) => el.category === "cast").map((el) => el.name);
+        if (!sceneActors.some((a) => actorFilter.has(a))) return false;
+      }
+      if (dateFilter.size) {
+        const date = sceneDateMap[s.id];
+        if (!date || !dateFilter.has(date)) return false;
+      }
+      return true;
+    });
+  }, [scenes, locationFilter, timeFilter, intExtFilter, actorFilter, dateFilter, sceneDateMap]);
+
+  useEffect(() => {
+    if (filteredScenes.length && !filteredScenes.find((s) => s.id === selectedSceneId)) {
+      setSelectedSceneId(filteredScenes[0].id);
+    }
+  }, [filteredScenes, selectedSceneId]);
 
   const runAI = async () => {
     if (!scene) return;
@@ -194,9 +269,81 @@ export function Breakdown() {
         {/* Scene list */}
         <div className="lg:col-span-1">
           <Card padding="sm" className="max-h-[calc(100vh-180px)] overflow-y-auto">
-            <CardHeader title="Scenes" />
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <CardHeader title={`Scenes (${filteredScenes.length}/${scenes.length})`} className="mb-0" />
+              <button
+                onClick={() => setFiltersOpen((v) => !v)}
+                className={cn(
+                  "relative flex items-center gap-1 shrink-0 h-7 px-2 rounded-md text-[11px] transition-colors",
+                  filtersOpen || activeFilterCount
+                    ? "bg-[var(--active-tint)] text-[var(--accent-blue)]"
+                    : "text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)]"
+                )}
+              >
+                <SlidersHorizontal size={12} />
+                Filters
+                {activeFilterCount > 0 && (
+                  <span className="ml-0.5 min-w-[15px] h-[15px] px-1 rounded-full bg-[var(--accent-blue)] text-white text-[9px] flex items-center justify-center leading-none">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </button>
+            </div>
+
+            {filtersOpen && (
+              <div className="mb-2 p-2 rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface-hover)] space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Filter scenes</span>
+                  {activeFilterCount > 0 && (
+                    <button
+                      onClick={clearFilters}
+                      className="flex items-center gap-0.5 text-[10px] text-[var(--text-muted)] hover:text-[var(--color-danger)]"
+                    >
+                      <X size={10} /> Clear all
+                    </button>
+                  )}
+                </div>
+
+                <FilterGroup
+                  label="INT/EXT"
+                  options={INT_EXT}
+                  selected={intExtFilter}
+                  onToggle={(v) => toggleInSet(intExtFilter, setIntExtFilter, v)}
+                />
+                <FilterGroup
+                  label="Time of day"
+                  options={TIMES}
+                  selected={timeFilter}
+                  onToggle={(v) => toggleInSet(timeFilter, setTimeFilter, v)}
+                />
+                <FilterGroup
+                  label="Location"
+                  options={filterOptions.locations}
+                  selected={locationFilter}
+                  onToggle={(v) => toggleInSet(locationFilter, setLocationFilter, v)}
+                />
+                <FilterGroup
+                  label="Actors / Cast"
+                  options={filterOptions.actors}
+                  selected={actorFilter}
+                  onToggle={(v) => toggleInSet(actorFilter, setActorFilter, v)}
+                />
+                <FilterGroup
+                  label="Shoot date"
+                  options={filterOptions.dates}
+                  selected={dateFilter}
+                  onToggle={(v) => toggleInSet(dateFilter, setDateFilter, v)}
+                />
+              </div>
+            )}
+
             <div className="space-y-0.5">
-              {scenes.map((s) => (
+              {filteredScenes.length === 0 && (
+                <div className="text-xs text-[var(--text-muted)] text-center py-6">
+                  No scenes match these filters.
+                </div>
+              )}
+              {filteredScenes.map((s) => (
                 <button
                   key={s.id}
                   onClick={() => setSelectedSceneId(s.id)}
@@ -462,6 +609,41 @@ export function Breakdown() {
           />
         )}
       </Modal>
+    </div>
+  );
+}
+
+function FilterGroup({
+  label,
+  options,
+  selected,
+  onToggle,
+}: {
+  label: string;
+  options: string[];
+  selected: Set<string>;
+  onToggle: (value: string) => void;
+}) {
+  if (options.length === 0) return null;
+  return (
+    <div>
+      <div className="text-[10px] font-medium text-[var(--text-secondary)] mb-1">{label}</div>
+      <div className="max-h-32 overflow-y-auto space-y-0.5 pr-1">
+        {options.map((opt) => (
+          <label
+            key={opt}
+            className="flex items-center gap-1.5 text-xs text-[var(--text-primary)] cursor-pointer px-1 py-0.5 rounded hover:bg-[var(--row-hover)]"
+          >
+            <input
+              type="checkbox"
+              checked={selected.has(opt)}
+              onChange={() => onToggle(opt)}
+              className="accent-[var(--accent-blue)]"
+            />
+            <span className="truncate">{opt}</span>
+          </label>
+        ))}
+      </div>
     </div>
   );
 }
