@@ -25,6 +25,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { cn, formatDate } from "@/lib/utils";
 import { aiBreakdownScene } from "@/lib/claude";
 import { extractCharacters } from "@/lib/script";
+import { useLocationNames } from "@/lib/locations";
 import { exportBreakdownCSV, printBreakdownSheets } from "@/lib/export";
 import type { ElementCategory, BreakdownElement } from "@/types";
 
@@ -60,6 +61,7 @@ export function Breakdown() {
   const updateElement = useStore((s) => s.updateElement);
   const mergeAIProposal = useStore((s) => s.mergeAIProposalIntoScene);
   const recordAIUsage = useStore((s) => s.recordAIUsage);
+  const locationNames = useLocationNames();
 
   const [selectedSceneId, setSelectedSceneId] = useState<string>(scenes[0]?.id ?? "");
   useEffect(() => {
@@ -433,7 +435,13 @@ export function Breakdown() {
                     onChange={(e) => updateScene(scene.id, { location: e.target.value })}
                     className="h-8 text-sm flex-1 min-w-[200px]"
                     placeholder="Location"
+                    list="known-locations"
                   />
+                  <datalist id="known-locations">
+                    {locationNames.map((l) => (
+                      <option key={l} value={l} />
+                    ))}
+                  </datalist>
                   <span className="text-xs text-[var(--text-secondary)]">
                     {scene.pages} pg · ~{scene.estimatedShootMinutes}min
                   </span>

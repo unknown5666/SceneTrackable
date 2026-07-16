@@ -25,6 +25,8 @@ export type RecordCollection =
 
 export type FieldType =
   | "text"
+  /** Dropdown of known values that also accepts a new one typed in. */
+  | "combo"
   | "textarea"
   | "number"
   | "select"
@@ -34,14 +36,15 @@ export type FieldType =
   | "time"
   | "tags";
 
-/** Where a select/multiselect pulls its options from at render time. */
+/** Where a select/multiselect/combo pulls its options from at render time. */
 export type OptionSource =
   | "shootDays"
   | "scenes"
   | "cast"
   | "crew"
   | "vfxVendors"
-  | "departments";
+  | "departments"
+  | "locations";
 
 export interface FieldSpec {
   key: string;
@@ -105,7 +108,15 @@ export const SCHEMAS: Record<RecordCollection, RecordSchema> = {
     fields: [
       { key: "dayNumber", label: "Day Number", type: "number", required: true, min: 1, step: 1 },
       { key: "date", label: "Date", type: "date", required: true },
-      { key: "location", label: "Location", type: "text", required: true, placeholder: "Stage 4 / Riverside Ext." },
+      {
+        key: "location",
+        label: "Location",
+        type: "combo",
+        optionsFrom: "locations",
+        required: true,
+        placeholder: "Stage 4 / Riverside Ext.",
+        help: "Pick a known location or type a new one.",
+      },
       { key: "estimatedHours", label: "Estimated Hours", type: "number", step: 0.5, min: 0, default: 12 },
       { key: "callTime", label: "Call Time", type: "time" },
       { key: "wrapTime", label: "Wrap Time", type: "time" },
@@ -204,7 +215,14 @@ export const SCHEMAS: Record<RecordCollection, RecordSchema> = {
     label: (r) => `${r.device} @ ${r.frequencyMHz} MHz`,
     fields: [
       { key: "shootDay", label: "Shoot Day", type: "select", optionsFrom: "shootDays", required: true },
-      { key: "location", label: "Location", type: "text", required: true },
+      {
+        key: "location",
+        label: "Location",
+        type: "combo",
+        optionsFrom: "locations",
+        required: true,
+        help: "Pick a known location or type a new one.",
+      },
       { key: "device", label: "Device", type: "text", required: true, placeholder: "Wireless mic A" },
       { key: "frequencyMHz", label: "Frequency (MHz)", type: "number", required: true, step: 0.001, min: 0 },
       { key: "powerMW", label: "Power (mW)", type: "number", step: 1, min: 0, default: 50 },

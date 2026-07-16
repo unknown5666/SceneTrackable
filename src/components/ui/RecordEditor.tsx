@@ -1,6 +1,7 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useId, useMemo, useState } from "react";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { useStore } from "@/state/store";
+import { useLocationNames } from "@/lib/locations";
 import {
   SCHEMAS,
   defaultValues,
@@ -25,9 +26,12 @@ function useOptions(source: OptionSource | undefined): Opt[] {
   const cast = useStore((s) => s.cast);
   const crew = useStore((s) => s.crew);
   const vfxVendors = useStore((s) => s.vfxVendors);
+  const locations = useLocationNames();
 
   return useMemo(() => {
     switch (source) {
+      case "locations":
+        return locations.map((l) => ({ value: l, label: l }));
       case "scenes":
         return scenes.map((s) => ({ value: s.id, label: `Sc. ${s.number} — ${s.location}` }));
       case "shootDays":
@@ -46,7 +50,7 @@ function useOptions(source: OptionSource | undefined): Opt[] {
       default:
         return [];
     }
-  }, [source, scenes, shootDays, cast, crew, vfxVendors]);
+  }, [source, scenes, shootDays, cast, crew, vfxVendors, locations]);
 }
 
 function Field({
@@ -61,12 +65,32 @@ function Field({
   onChange: (v: unknown) => void;
 }) {
   const dynamic = useOptions(spec.optionsFrom);
+  const listId = useId();
   const options: Opt[] = spec.options
     ? spec.options.map((o) => ({ value: o, label: o.replace(/_/g, " ") }))
     : dynamic;
 
   const control = () => {
     switch (spec.type) {
+      case "combo":
+        return (
+          <>
+            <input
+              type="text"
+              list={listId}
+              className="w-full"
+              value={value ?? ""}
+              placeholder={spec.placeholder}
+              onChange={(e) => onChange(e.target.value)}
+            />
+            <datalist id={listId}>
+              {options.map((o) => (
+                <option key={o.value} value={o.value} />
+              ))}
+            </datalist>
+          </>
+        );
+
       case "textarea":
         return (
           <textarea
