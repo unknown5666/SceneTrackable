@@ -279,7 +279,7 @@ better.
 
 ### WO-9 · Per-feature model routing — light features ride the free tier
 
-Add `lightModel?: string` to `AIConfig` (default `"gemini-2.5-flash-lite"` when a Google
+Add `lightModel?: string` to `AIConfig` (default `"gemini-3.1-flash-lite"` when a Google
 key exists, otherwise unset) and a `weight: "heavy" | "light"` option on
 `ClaudeCallOptions`. `callLive` resolves: light + `lightModel` set + key for its provider
 present → use it; otherwise the main model. Mark `daily_digest`, `report_narration`,

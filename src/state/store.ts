@@ -1407,9 +1407,24 @@ export const useStore = create<State>()(
     {
       name: "scenetrackable-v1",
       storage: createJSONStorage(() => localStorage),
-      version: 2,
+      version: 3,
       migrate: (persisted, from) => {
         const s = persisted as Record<string, any>;
+        if (from < 3) {
+          // Google closed the Gemini 2.5 ids to new keys, so a saved pick from
+          // that era 404s on every call. Hard-coded rather than read from
+          // MODELS: a migration has to keep meaning what it meant when written.
+          const retired: Record<string, string> = {
+            "gemini-2.5-pro": "gemini-3.1-pro-preview",
+            "gemini-2.5-flash": "gemini-3.5-flash",
+            "gemini-2.5-flash-lite": "gemini-3.1-flash-lite",
+          };
+          const ai = s.aiConfig;
+          if (ai) {
+            if (retired[ai.model]) ai.model = retired[ai.model];
+            if (retired[ai.lightModel]) ai.lightModel = retired[ai.lightModel];
+          }
+        }
         if (from < 2) {
           // v2 gave locations their own collection. Lock dates were the only
           // location data the app held, so they become the first records —

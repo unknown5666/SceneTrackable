@@ -53,9 +53,9 @@ export const MODELS: ModelInfo[] = [
   { id: "claude-opus-4-8", label: "Opus 4.8", desc: "Most capable · highest quality", provider: "anthropic" },
   { id: "claude-sonnet-5", label: "Sonnet 5", desc: "Balanced · fast & cost-effective", provider: "anthropic" },
   { id: "claude-haiku-4-5", label: "Haiku 4.5", desc: "Fastest · lowest cost", provider: "anthropic" },
-  { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro", desc: "Most capable Gemini · paid only", provider: "google" },
-  { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", desc: "Free tier · best free-tier quality", provider: "google", freeTier: true },
-  { id: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite", desc: "Free tier · fastest, lighter analysis", provider: "google", freeTier: true },
+  { id: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro", desc: "Most capable Gemini · paid only", provider: "google" },
+  { id: "gemini-3.5-flash", label: "Gemini 3.5 Flash", desc: "Free tier · best free-tier quality", provider: "google", freeTier: true },
+  { id: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash Lite", desc: "Free tier · fastest, lighter analysis", provider: "google", freeTier: true },
 ];
 
 export const PROVIDER_LABELS: Record<AIProvider, string> = {
@@ -77,9 +77,9 @@ const PRICING: Record<string, { in: number; out: number }> = {
   "claude-opus-4-8": { in: 5.0, out: 25.0 },
   "claude-sonnet-5": { in: 3.0, out: 15.0 },
   "claude-haiku-4-5": { in: 1.0, out: 5.0 },
-  "gemini-2.5-pro": { in: 1.25, out: 10.0 },
-  "gemini-2.5-flash": { in: 0.3, out: 2.5 },
-  "gemini-2.5-flash-lite": { in: 0.1, out: 0.4 },
+  "gemini-3.1-pro-preview": { in: 2.0, out: 12.0 },
+  "gemini-3.5-flash": { in: 1.5, out: 9.0 },
+  "gemini-3.1-flash-lite": { in: 0.25, out: 1.5 },
 };
 
 export function estimateCost(inputTokens: number, outputTokens: number, model?: string): number {
@@ -124,7 +124,7 @@ export function activeProvider(): AIProvider {
 }
 
 /** The default light model, offered when a Google key is present. */
-export const DEFAULT_LIGHT_MODEL = "gemini-2.5-flash-lite";
+export const DEFAULT_LIGHT_MODEL = "gemini-3.1-flash-lite";
 
 /**
  * The model a call actually runs on.
@@ -314,10 +314,12 @@ function toGeminiSchema(schema: Record<string, unknown>): Record<string, unknown
 }
 
 function geminiRequest(opts: ClaudeCallOptions, model: string, apiKey: string): LiveRequest {
-  // Gemini 2.5 counts thinking against maxOutputTokens; Flash tiers let us
-  // switch it off, which mirrors the "low effort" setting on the Claude path.
-  // Pro has a non-zero minimum thinking budget, so it is left at the default.
-  const canDisableThinking = model !== "gemini-2.5-pro";
+  // Gemini counts thinking against maxOutputTokens, so left at its default
+  // (medium on Flash, high on Pro) a reply can be truncated before any text
+  // lands. Ask for the least thinking each tier allows, mirroring the "low
+  // effort" setting on the Claude path. Gemini 3 replaced the 2.5-era
+  // thinkingBudget with thinkingLevel; sending both is a 400.
+  const thinkingLevel = model.startsWith("gemini-3.1-pro") ? "low" : "minimal";
   return {
     url: `${GEMINI_BASE}/${model}:generateContent`,
     headers: {
@@ -329,7 +331,7 @@ function geminiRequest(opts: ClaudeCallOptions, model: string, apiKey: string): 
       contents: [{ role: "user", parts: [{ text: opts.user }] }],
       generationConfig: {
         maxOutputTokens: opts.maxTokens ?? 1200,
-        ...(canDisableThinking ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+        thinkingConfig: { thinkingLevel },
         ...(opts.jsonSchema
           ? {
               responseMimeType: "application/json",
