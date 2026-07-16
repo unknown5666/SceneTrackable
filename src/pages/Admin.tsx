@@ -1,5 +1,5 @@
 import React, { useState, useRef } from "react";
-import { Shield, Plus, Trash2, UserPlus, KeyRound, Users as UsersIcon, Lock, Database, Download, Upload } from "lucide-react";
+import { Shield, Plus, Trash2, UserPlus, KeyRound, Users as UsersIcon, Lock, Database, Download, Upload, Mail, Copy, RefreshCw } from "lucide-react";
 import { useStore } from "@/state/store";
 import { ACCESS_KEYS } from "@/data/roles";
 import { isAdminRole } from "@/types";
@@ -16,11 +16,52 @@ export function Admin() {
   const roles = useStore((s) => s.roles);
   const currentUserId = useStore((s) => s.currentUserId);
   const addUser = useStore((s) => s.addUser);
+  const inviteUser = useStore((s) => s.inviteUser);
   const updateUser = useStore((s) => s.updateUser);
+  const resetUserInvite = useStore((s) => s.resetUserInvite);
   const removeUser = useStore((s) => s.removeUser);
   const addRole = useStore((s) => s.addRole);
   const updateRole = useStore((s) => s.updateRole);
   const removeRole = useStore((s) => s.removeRole);
+
+  // Invite modal
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [invName, setInvName] = useState("");
+  const [invUsername, setInvUsername] = useState("");
+  const [invRole, setInvRole] = useState(roles.find((r) => !isAdminRole(r))?.id ?? roles[0]?.id ?? "");
+  const [issuedCode, setIssuedCode] = useState<{ username: string; code: string } | null>(null);
+
+  const openInvite = () => {
+    setInvName("");
+    setInvUsername("");
+    setInvRole(roles.find((r) => !isAdminRole(r))?.id ?? roles[0]?.id ?? "");
+    setIssuedCode(null);
+    setInviteOpen(true);
+  };
+
+  const sendInvite = () => {
+    if (!invName.trim() || !invUsername.trim()) return;
+    const code = inviteUser({
+      displayName: invName.trim(),
+      username: invUsername.trim(),
+      roleId: invRole,
+    });
+    setIssuedCode({ username: invUsername.trim(), code });
+  };
+
+  const copyCode = async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+    } catch {
+      /* noop */
+    }
+  };
+
+  const doResetInvite = (uid: string, name: string) => {
+    if (!confirm(`Reset “${name}”'s login? Their current password will be cleared.`)) return;
+    const code = resetUserInvite(uid);
+    if (code) setIssuedCode({ username: users.find((u) => u.id === uid)?.username ?? "", code });
+  };
 
   const roleLabel = (id: string) => roles.find((r) => r.id === id)?.label ?? id;
 

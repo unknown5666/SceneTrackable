@@ -20,6 +20,7 @@ import {
   Cloud,
   Clapperboard,
   GraduationCap,
+  History,
   LogOut,
 } from "lucide-react";
 import { useStore, unreadCount, currentUser, currentRole, isCurrentAdmin, activeProject } from "@/state/store";
@@ -52,6 +53,7 @@ const ITEMS: NavItem[] = [
   { to: "/tutorial", label: "Tutorial", icon: <GraduationCap size={18} /> },
   { to: "/ai", label: "AI Settings", icon: <Sparkle size={18} />, admin: true },
   { to: "/cloud", label: "Cloud Sync", icon: <Cloud size={18} />, admin: true },
+  { to: "/activity", label: "Activity Log", icon: <History size={18} />, admin: true },
   { to: "/admin", label: "Admin", icon: <Shield size={18} />, admin: true },
 ];
 

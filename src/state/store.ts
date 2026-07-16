@@ -35,6 +35,8 @@ import type {
   POStatus,
   TaskStatus,
   BreakdownElement,
+  ActivityLogEntry,
+  ActivityEntity,
 } from "@/types";
 import { isAdminRole } from "@/types";
 import { DEFAULT_ROLES } from "@/data/roles";
@@ -85,6 +87,7 @@ export function blankData(title: string, currency = "AED"): ProductionData {
     continuityPhotos: [],
     timesheet: [],
     notifications: [],
+    activityLog: [],
   };
 }
 
@@ -139,9 +142,17 @@ interface State extends ProductionData {
   // Auth actions
   // ------------------------------------------------------------
   login: (username: string, password: string) => Promise<boolean>;
+  /** True when this account is holding an invite code, so the UI can prompt them to set a password. */
+  isInvitePending: (username: string) => boolean;
+  /** First-login flow: user redeems their invite code + sets a real password. */
+  redeemInvite: (username: string, inviteCode: string, newPassword: string) => Promise<string | null>;
   logout: () => void;
   addUser: (u: Omit<User, "id" | "createdAt">) => void;
+  /** Admin invites a user; a one-time code is generated and stored on the User record. */
+  inviteUser: (u: { displayName: string; username: string; roleId: string }) => string;
   updateUser: (id: string, patch: Partial<User>) => void;
+  /** Admin action: reset a user back to invite-code mode (regenerates the code). */
+  resetUserInvite: (id: string) => string | null;
   removeUser: (id: string) => void;
 
   // Roles
@@ -202,6 +213,26 @@ interface State extends ProductionData {
   markAllRead: () => void;
   addNotification: (n: Omit<AppNotification, "id" | "createdAt" | "read">) => void;
 
+  // ---- Cast ----
+  addCastMember: (c: Omit<CastMember, "id">) => void;
+  updateCastMember: (id: string, patch: Partial<CastMember>) => void;
+  removeCastMember: (id: string) => void;
+  setDoodStatus: (castId: string, day: number, status: DoodStatus) => void;
+
+  // ---- Crew ----
+  addCrewMember: (c: Omit<CrewMember, "id">) => void;
+  updateCrewMember: (id: string, patch: Partial<CrewMember>) => void;
+  removeCrewMember: (id: string) => void;
+
+  // ---- Timesheet ----
+  addTimesheetEntry: (e: Omit<TimesheetEntry, "id" | "edits" | "submitted" | "submittedAt">) => void;
+
+  // ---- Activity log ----
+  logActivity: (
+    entry: Omit<ActivityLogEntry, "id" | "at" | "userId" | "userLabel">
+  ) => void;
+  clearActivityLog: () => void;
+
   recordAIUsage: (entry: Omit<AIUsageEntry, "id" | "at">) => void;
   setAIConfig: (patch: Partial<AIConfig>) => void;
 
@@ -245,6 +276,8 @@ export const useStore = create<State>()(
           (u) => u.active && u.username.toLowerCase() === username.trim().toLowerCase()
         );
         if (!user) return false;
+        // Invite-pending accounts can't log in with a password until they redeem their code.
+        if (user.inviteCode && !user.password) return false;
         if (!(await verifyPassword(user.password, password))) return false;
         // Transparently upgrade legacy plaintext records to hashed storage.
         if (!user.password.startsWith(HASH_PREFIX)) {
@@ -254,26 +287,129 @@ export const useStore = create<State>()(
           }));
         }
         set({ currentUserId: user.id, activeRole: user.roleId });
+        get().logActivity({
+          action: "login",
+          entity: "auth",
+          description: `${user.displayName} signed in`,
+        });
         return true;
       },
 
-      logout: () => set({ currentUserId: "", activeRole: null }),
+      isInvitePending: (username) => {
+        const u = get().users.find(
+          (u) => u.username.toLowerCase() === username.trim().toLowerCase()
+        );
+        return !!u && !!u.inviteCode && !u.password;
+      },
 
-      addUser: (u) =>
+      redeemInvite: async (username, inviteCode, newPassword) => {
+        const user = get().users.find(
+          (u) => u.active && u.username.toLowerCase() === username.trim().toLowerCase()
+        );
+        if (!user) return "Unknown username.";
+        if (!user.inviteCode) return "This account is not pending an invite.";
+        if (user.inviteCode.trim() !== inviteCode.trim()) return "Invite code doesn't match.";
+        if (newPassword.length < 4) return "Choose a password of at least 4 characters.";
+        const hashed = await hashPassword(newPassword);
         set((s) => ({
-          users: [
-            ...s.users,
-            { ...u, id: id("user"), createdAt: new Date().toISOString() },
-          ],
-        })),
+          users: s.users.map((u) =>
+            u.id === user.id ? { ...u, password: hashed, inviteCode: undefined } : u
+          ),
+        }));
+        // Sign them in first so logActivity attributes to this user.
+        set({ currentUserId: user.id, activeRole: user.roleId });
+        get().logActivity({
+          action: "invite_redeemed",
+          entity: "auth",
+          description: `${user.displayName} set a password from invite`,
+        });
+        return null;
+      },
 
-      updateUser: (uid, patch) =>
+      logout: () => {
+        get().logActivity({
+          action: "logout",
+          entity: "auth",
+          description: `Signed out`,
+        });
+        set({ currentUserId: "", activeRole: null });
+      },
+
+      addUser: (u) => {
+        const newUser = { ...u, id: id("user"), createdAt: new Date().toISOString() };
+        set((s) => ({ users: [...s.users, newUser] }));
+        get().logActivity({
+          action: "created",
+          entity: "user",
+          entityId: newUser.id,
+          description: `Added user “${newUser.displayName}”`,
+        });
+      },
+
+      inviteUser: ({ displayName, username, roleId }) => {
+        const code = Math.random().toString(36).slice(2, 10).toUpperCase();
+        const newUser: User = {
+          id: id("user"),
+          username: username.trim(),
+          displayName: displayName.trim(),
+          password: "",
+          roleId,
+          active: true,
+          createdAt: new Date().toISOString(),
+          inviteCode: code,
+        };
+        set((s) => ({ users: [...s.users, newUser] }));
+        get().logActivity({
+          action: "invited",
+          entity: "user",
+          entityId: newUser.id,
+          description: `Invited “${newUser.displayName}” (${newUser.username})`,
+        });
+        return code;
+      },
+
+      updateUser: (uid, patch) => {
         set((s) => ({
           users: s.users.map((u) => (u.id === uid ? { ...u, ...patch } : u)),
-        })),
+        }));
+        const u = get().users.find((x) => x.id === uid);
+        get().logActivity({
+          action: "updated",
+          entity: "user",
+          entityId: uid,
+          description: `Updated user “${u?.displayName ?? uid}”`,
+          meta: { fields: Object.keys(patch) },
+        });
+      },
 
-      removeUser: (uid) =>
-        set((s) => ({ users: s.users.filter((u) => u.id !== uid) })),
+      resetUserInvite: (uid) => {
+        const target = get().users.find((u) => u.id === uid);
+        if (!target) return null;
+        const code = Math.random().toString(36).slice(2, 10).toUpperCase();
+        set((s) => ({
+          users: s.users.map((u) =>
+            u.id === uid ? { ...u, inviteCode: code, password: "" } : u
+          ),
+        }));
+        get().logActivity({
+          action: "invite_reset",
+          entity: "user",
+          entityId: uid,
+          description: `Reset invite for “${target.displayName}”`,
+        });
+        return code;
+      },
+
+      removeUser: (uid) => {
+        const target = get().users.find((u) => u.id === uid);
+        set((s) => ({ users: s.users.filter((u) => u.id !== uid) }));
+        get().logActivity({
+          action: "deleted",
+          entity: "user",
+          entityId: uid,
+          description: `Removed user “${target?.displayName ?? uid}”`,
+        });
+      },
 
       // ---- Roles ----
       addRole: (r) =>
@@ -559,44 +695,73 @@ export const useStore = create<State>()(
       },
 
       // ---- Tasks ----
-      createTask: (task) =>
-        set((s) => {
-          const computed =
-            task.computedDeadline ??
-            evaluateDeadline(task.deadlineRule, {
-              shootDays: s.shootDays,
-              locationLockDates: s.locationLockDates,
-            }) ??
-            new Date().toISOString();
-          return {
-            tasks: [
-              ...s.tasks,
-              {
-                ...task,
-                id: id("task"),
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-                computedDeadline: computed,
-              },
-            ],
-          };
-        }),
+      createTask: (task) => {
+        const s = get();
+        const computed =
+          task.computedDeadline ??
+          evaluateDeadline(task.deadlineRule, {
+            shootDays: s.shootDays,
+            locationLockDates: s.locationLockDates,
+          }) ??
+          new Date().toISOString();
+        const nt: Task = {
+          ...task,
+          id: id("task"),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          computedDeadline: computed,
+        };
+        set((cur) => ({ tasks: [...cur.tasks, nt] }));
+        get().logActivity({
+          action: "created",
+          entity: "task",
+          entityId: nt.id,
+          description: `Created task “${nt.title}”`,
+          meta: { deadline: computed, owner: nt.owner },
+        });
+      },
 
-      updateTaskStatus: (tid, status) =>
+      updateTaskStatus: (tid, status) => {
+        const prev = get().tasks.find((t) => t.id === tid);
         set((s) => ({
           tasks: s.tasks.map((t) =>
             t.id === tid ? { ...t, status, updatedAt: new Date().toISOString() } : t
           ),
-        })),
+        }));
+        get().logActivity({
+          action: "status_change",
+          entity: "task",
+          entityId: tid,
+          description: `${prev?.title ?? tid}: ${prev?.status ?? "?"} → ${status}`,
+        });
+      },
 
-      updateTask: (tid, patch) =>
+      updateTask: (tid, patch) => {
         set((s) => ({
           tasks: s.tasks.map((t) =>
             t.id === tid ? { ...t, ...patch, updatedAt: new Date().toISOString() } : t
           ),
-        })),
+        }));
+        const t = get().tasks.find((x) => x.id === tid);
+        get().logActivity({
+          action: "updated",
+          entity: "task",
+          entityId: tid,
+          description: `Edited task “${t?.title ?? tid}”`,
+          meta: { fields: Object.keys(patch) },
+        });
+      },
 
-      deleteTask: (tid) => set((s) => ({ tasks: s.tasks.filter((t) => t.id !== tid) })),
+      deleteTask: (tid) => {
+        const t = get().tasks.find((x) => x.id === tid);
+        set((s) => ({ tasks: s.tasks.filter((t) => t.id !== tid) }));
+        get().logActivity({
+          action: "deleted",
+          entity: "task",
+          entityId: tid,
+          description: `Deleted task “${t?.title ?? tid}”`,
+        });
+      },
 
       // ---- POs ----
       submitPO: (po) =>
@@ -670,7 +835,8 @@ export const useStore = create<State>()(
         })),
 
       // ---- Timesheet ----
-      editTimesheetHours: (entryId, newHours, byUserId, isAdmin) =>
+      editTimesheetHours: (entryId, newHours, byUserId, isAdmin) => {
+        const prev = get().timesheet.find((e) => e.id === entryId);
         set((s) => ({
           timesheet: s.timesheet.map((e) =>
             e.id === entryId
@@ -690,16 +856,31 @@ export const useStore = create<State>()(
                 }
               : e
           ),
-        })),
+        }));
+        get().logActivity({
+          action: "hours_edited",
+          entity: "timesheet",
+          entityId: entryId,
+          description: `Hours ${prev?.hours ?? "?"} → ${newHours} for ${prev?.date ?? ""}`,
+          meta: { crewMemberId: prev?.crewMemberId, isAdminOverride: isAdmin && prev?.submitted },
+        });
+      },
 
-      submitTimesheetForCrew: (crewMemberId) =>
+      submitTimesheetForCrew: (crewMemberId) => {
         set((s) => ({
           timesheet: s.timesheet.map((e) =>
             e.crewMemberId === crewMemberId && !e.submitted
               ? { ...e, submitted: true, submittedAt: new Date().toISOString() }
               : e
           ),
-        })),
+        }));
+        get().logActivity({
+          action: "submitted",
+          entity: "timesheet",
+          entityId: crewMemberId,
+          description: `Submitted timesheet`,
+        });
+      },
 
       // ---- Notifications ----
       markNotificationRead: (nid) =>
@@ -771,6 +952,146 @@ export const useStore = create<State>()(
         set((s) => ({
           artElements: s.artElements.map((e) => (e.id === aid ? { ...e, status } : e)),
         })),
+
+      // ========================================================
+      // CAST
+      // ========================================================
+      addCastMember: (c) => {
+        const nc: CastMember = { ...c, id: id("cast") };
+        set((s) => ({ cast: [...s.cast, nc] }));
+        get().logActivity({
+          action: "created",
+          entity: "cast",
+          entityId: nc.id,
+          description: `Added cast: ${nc.name} as ${nc.role}`,
+        });
+      },
+
+      updateCastMember: (cid, patch) => {
+        set((s) => ({
+          cast: s.cast.map((c) => (c.id === cid ? { ...c, ...patch } : c)),
+        }));
+        const c = get().cast.find((x) => x.id === cid);
+        get().logActivity({
+          action: "updated",
+          entity: "cast",
+          entityId: cid,
+          description: `Updated cast ${c?.name ?? cid}`,
+          meta: { fields: Object.keys(patch) },
+        });
+      },
+
+      removeCastMember: (cid) => {
+        const c = get().cast.find((x) => x.id === cid);
+        set((s) => {
+          const nextDood = { ...s.dood };
+          delete nextDood[cid];
+          return { cast: s.cast.filter((x) => x.id !== cid), dood: nextDood };
+        });
+        get().logActivity({
+          action: "deleted",
+          entity: "cast",
+          entityId: cid,
+          description: `Removed cast ${c?.name ?? cid}`,
+        });
+      },
+
+      setDoodStatus: (castId, day, status) => {
+        set((s) => ({
+          dood: { ...s.dood, [castId]: { ...(s.dood[castId] ?? {}), [day]: status } },
+        }));
+        const c = get().cast.find((x) => x.id === castId);
+        get().logActivity({
+          action: "dood_set",
+          entity: "dood",
+          entityId: castId,
+          description: `Set ${c?.name ?? castId} · Day ${day} → ${status}`,
+        });
+      },
+
+      // ========================================================
+      // CREW
+      // ========================================================
+      addCrewMember: (c) => {
+        const nc: CrewMember = { ...c, id: id("crew") };
+        set((s) => ({ crew: [...s.crew, nc] }));
+        get().logActivity({
+          action: "created",
+          entity: "crew",
+          entityId: nc.id,
+          description: `Added crew: ${nc.name} (${nc.role})`,
+        });
+      },
+
+      updateCrewMember: (cid, patch) => {
+        set((s) => ({
+          crew: s.crew.map((c) => (c.id === cid ? { ...c, ...patch } : c)),
+        }));
+        get().logActivity({
+          action: "updated",
+          entity: "crew",
+          entityId: cid,
+          description: `Updated crew`,
+          meta: { fields: Object.keys(patch) },
+        });
+      },
+
+      removeCrewMember: (cid) => {
+        const c = get().crew.find((x) => x.id === cid);
+        set((s) => ({ crew: s.crew.filter((x) => x.id !== cid) }));
+        get().logActivity({
+          action: "deleted",
+          entity: "crew",
+          entityId: cid,
+          description: `Removed crew ${c?.name ?? cid}`,
+        });
+      },
+
+      // ========================================================
+      // TIMESHEET (add-day)
+      // ========================================================
+      addTimesheetEntry: (e) => {
+        // De-dupe on same crew+date.
+        const dupe = get().timesheet.find(
+          (t) => t.crewMemberId === e.crewMemberId && t.date === e.date
+        );
+        if (dupe) return;
+        const ne: TimesheetEntry = {
+          ...e,
+          id: id("ts"),
+          submitted: false,
+          edits: [],
+        };
+        set((s) => ({ timesheet: [...s.timesheet, ne] }));
+        get().logActivity({
+          action: "created",
+          entity: "timesheet",
+          entityId: ne.id,
+          description: `Logged ${ne.hours}h for ${ne.date}`,
+          meta: { crewMemberId: ne.crewMemberId },
+        });
+      },
+
+      // ========================================================
+      // ACTIVITY LOG
+      // ========================================================
+      logActivity: (entry) => {
+        const state = get();
+        const u = state.users.find((x) => x.id === state.currentUserId);
+        const ne: ActivityLogEntry = {
+          ...entry,
+          id: id("act"),
+          at: new Date().toISOString(),
+          userId: u?.id ?? "",
+          userLabel: u?.displayName ?? "System",
+        };
+        set((s) => ({
+          // Cap the log at 2000 entries to keep localStorage bounded.
+          activityLog: [ne, ...s.activityLog].slice(0, 2000),
+        }));
+      },
+
+      clearActivityLog: () => set({ activityLog: [] }),
     }),
     {
       name: "scenetrackable-v1",

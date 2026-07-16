@@ -11,10 +11,12 @@ export interface User {
   id: string;
   username: string;
   displayName: string;
-  password: string; // demo-only plaintext credential store
+  password: string; // sha256$… hash. Empty string = user must redeem invite before login.
   roleId: string; // references Role.id
   active: boolean;
   createdAt: string;
+  /** One-time code the admin issues; the user redeems it on first login to set their password. */
+  inviteCode?: string;
 }
 
 export type DepartmentId =
@@ -450,6 +452,39 @@ export interface AppNotification {
 }
 
 // ============================================================
+// ACTIVITY LOG — who did what, when
+// ============================================================
+
+export type ActivityEntity =
+  | "task"
+  | "cast"
+  | "crew"
+  | "user"
+  | "role"
+  | "timesheet"
+  | "dood"
+  | "scene"
+  | "shoot_day"
+  | "schedule"
+  | "purchase_order"
+  | "auth"
+  | "project"
+  | "art_element"
+  | "vfx_shot";
+
+export interface ActivityLogEntry {
+  id: string;
+  at: string;                 // ISO
+  userId: string;             // User.id (or "" for system)
+  userLabel: string;          // cached display name
+  action: string;             // "created", "updated", "deleted", "status_change", …
+  entity: ActivityEntity;
+  entityId?: string;
+  description: string;        // human-readable one-liner
+  meta?: Record<string, unknown>;
+}
+
+// ============================================================
 // AI / CLAUDE USAGE
 // ============================================================
 
@@ -572,6 +607,7 @@ export interface ProductionData {
   continuityPhotos: ContinuityPhoto[];
   timesheet: TimesheetEntry[];
   notifications: AppNotification[];
+  activityLog: ActivityLogEntry[];
 }
 
 // ============================================================

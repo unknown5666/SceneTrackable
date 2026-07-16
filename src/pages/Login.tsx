@@ -1,36 +1,69 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Clapperboard, Sun, Moon, ArrowRight, Lock } from "lucide-react";
+import { Clapperboard, Sun, Moon, ArrowRight, Lock, KeyRound } from "lucide-react";
 import { useStore } from "@/state/store";
 import { useTheme } from "@/state/theme";
 import { Button } from "@/components/ui/Button";
 import { Footer } from "@/components/layout/Footer";
 
+type Mode = "signin" | "redeem";
+
 export function Login() {
   const nav = useNavigate();
   const login = useStore((s) => s.login);
+  const isInvitePending = useStore((s) => s.isInvitePending);
+  const redeemInvite = useStore((s) => s.redeemInvite);
   const userId = useStore((s) => s.currentUserId);
   const { theme, toggle } = useTheme();
 
+  const [mode, setMode] = useState<Mode>("signin");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (userId) nav("/projects", { replace: true });
   }, [userId, nav]);
 
-  const [busy, setBusy] = useState(false);
+  const clearError = () => setError("");
 
-  const submit = async (e: React.FormEvent) => {
+  const submitSignin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (busy) return;
     setBusy(true);
     try {
-      if (await login(username, password)) {
-        nav("/projects", { replace: true });
+      // If this account is holding an invite, guide them to the redeem step.
+      if (isInvitePending(username)) {
+        setMode("redeem");
+        setError("This account still needs a password. Enter your invite code and pick one.");
+        return;
+      }
+      const ok = await login(username, password);
+      if (ok) nav("/projects", { replace: true });
+      else setError("Invalid username or password.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitRedeem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (busy) return;
+    if (newPassword !== confirmPassword) {
+      setError("Passwords don't match.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const err = await redeemInvite(username, inviteCode, newPassword);
+      if (err) {
+        setError(err);
       } else {
-        setError("Invalid username or password.");
+        nav("/projects", { replace: true });
       }
     } finally {
       setBusy(false);
@@ -95,43 +128,137 @@ export function Login() {
               style={{ background: "linear-gradient(90deg, #4F7BF7, #8B5CF6)" }}
             />
             <div className="flex items-center gap-2 mb-1">
-              <Lock size={14} className="text-[var(--text-muted)]" />
-              <span className="section-header">Sign in</span>
+              {mode === "signin" ? (
+                <Lock size={14} className="text-[var(--text-muted)]" />
+              ) : (
+                <KeyRound size={14} className="text-[var(--text-muted)]" />
+              )}
+              <span className="section-header">
+                {mode === "signin" ? "Sign in" : "Redeem invite"}
+              </span>
             </div>
-            <div className="text-xl font-semibold text-[var(--text-primary)] mb-6">Welcome back</div>
+            <div className="text-xl font-semibold text-[var(--text-primary)] mb-6">
+              {mode === "signin" ? "Welcome back" : "Set your password"}
+            </div>
 
-            <form onSubmit={submit} className="space-y-4">
-              <div>
-                <label className="section-header block mb-1.5">Username</label>
-                <input
-                  value={username}
-                  onChange={(e) => {
-                    setUsername(e.target.value);
-                    setError("");
+            {mode === "signin" ? (
+              <form onSubmit={submitSignin} className="space-y-4">
+                <div>
+                  <label className="section-header block mb-1.5">Username</label>
+                  <input
+                    value={username}
+                    onChange={(e) => {
+                      setUsername(e.target.value);
+                      clearError();
+                    }}
+                    placeholder="Admin"
+                    autoFocus
+                    className="w-full"
+                  />
+                </div>
+                <div>
+                  <label className="section-header block mb-1.5">Password</label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      clearError();
+                    }}
+                    placeholder="••••"
+                    className="w-full"
+                  />
+                </div>
+                {error && <div className="text-xs text-[var(--color-danger)]">{error}</div>}
+                <Button type="submit" className="w-full justify-center" disabled={busy}>
+                  {busy ? "Signing in…" : "Sign in"} <ArrowRight size={14} />
+                </Button>
+                <button
+                  type="button"
+                  className="w-full text-[11px] text-center text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                  onClick={() => {
+                    setMode("redeem");
+                    clearError();
                   }}
-                  placeholder="Admin"
-                  autoFocus
-                  className="w-full"
-                />
-              </div>
-              <div>
-                <label className="section-header block mb-1.5">Password</label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    setError("");
+                >
+                  Got an invite code? Redeem it →
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={submitRedeem} className="space-y-4">
+                <div>
+                  <label className="section-header block mb-1.5">Username</label>
+                  <input
+                    value={username}
+                    onChange={(e) => {
+                      setUsername(e.target.value);
+                      clearError();
+                    }}
+                    placeholder="jane"
+                    autoFocus
+                    className="w-full"
+                  />
+                </div>
+                <div>
+                  <label className="section-header block mb-1.5">Invite code</label>
+                  <input
+                    value={inviteCode}
+                    onChange={(e) => {
+                      setInviteCode(e.target.value.toUpperCase());
+                      clearError();
+                    }}
+                    placeholder="ABC12345"
+                    className="w-full font-mono"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="section-header block mb-1.5">New password</label>
+                    <input
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => {
+                        setNewPassword(e.target.value);
+                        clearError();
+                      }}
+                      placeholder="••••••"
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <label className="section-header block mb-1.5">Confirm</label>
+                    <input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => {
+                        setConfirmPassword(e.target.value);
+                        clearError();
+                      }}
+                      placeholder="••••••"
+                      className="w-full"
+                    />
+                  </div>
+                </div>
+                {error && <div className="text-xs text-[var(--color-danger)]">{error}</div>}
+                <Button
+                  type="submit"
+                  className="w-full justify-center"
+                  disabled={busy || !username || !inviteCode || !newPassword}
+                >
+                  {busy ? "Setting password…" : "Set password & sign in"} <ArrowRight size={14} />
+                </Button>
+                <button
+                  type="button"
+                  className="w-full text-[11px] text-center text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                  onClick={() => {
+                    setMode("signin");
+                    clearError();
                   }}
-                  placeholder="••••"
-                  className="w-full"
-                />
-              </div>
-              {error && <div className="text-xs text-[var(--color-danger)]">{error}</div>}
-              <Button type="submit" className="w-full justify-center" disabled={busy}>
-                {busy ? "Signing in…" : "Sign in"} <ArrowRight size={14} />
-              </Button>
-            </form>
+                >
+                  ← Back to sign in
+                </button>
+              </form>
+            )}
 
             <div className="mt-5 text-[11px] text-center text-[var(--text-muted)]">
               First-time master login — <span className="text-[var(--text-secondary)]">Admin</span> /{" "}

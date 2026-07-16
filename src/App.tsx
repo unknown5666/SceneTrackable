@@ -19,6 +19,7 @@ import { Notifications } from "@/pages/Notifications";
 import { AISettings } from "@/pages/AISettings";
 import { CloudSync } from "@/pages/CloudSync";
 import { Admin } from "@/pages/Admin";
+import { ActivityLog } from "@/pages/ActivityLog";
 import { Tutorial } from "@/pages/Tutorial";
 import { useStore, canAccess, isCurrentAdmin } from "@/state/store";
 
@@ -55,6 +56,7 @@ export default function App() {
         <Route path="/ai" element={<AdminGuard><AISettings /></AdminGuard>} />
         <Route path="/cloud" element={<AdminGuard><CloudSync /></AdminGuard>} />
         <Route path="/admin" element={<AdminGuard><Admin /></AdminGuard>} />
+        <Route path="/activity" element={<AdminGuard><ActivityLog /></AdminGuard>} />
       </Route>
       <Route path="*" element={<Navigate to="/projects" replace />} />
     </Routes>
