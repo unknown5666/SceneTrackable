@@ -390,14 +390,44 @@ function DOODChart() {
   const cast = useStore((s) => s.cast);
   const dood = useStore((s) => s.dood);
   const shootDays = useStore((s) => s.shootDays);
-  const cycleDoodCell = useStore((s) => s.cycleDoodCell);
+  const setDoodStatus = useStore((s) => s.setDoodStatus);
   const activeRole = useStore((s) => s.activeRole);
-  const canEdit = activeRole === "admin" || activeRole === "scheduler";
+  const canEdit = activeRole === "admin" || activeRole === "scheduler" || activeRole === "cast";
+
+  if (cast.length === 0) {
+    return (
+      <Card>
+        <CardHeader
+          title="Day Out Of Days"
+          subtitle="Add cast members on the Cast page to start scheduling."
+        />
+        <div className="text-sm text-[var(--text-muted)]">No cast yet.</div>
+      </Card>
+    );
+  }
+  if (shootDays.length === 0) {
+    return (
+      <Card>
+        <CardHeader
+          title="Day Out Of Days"
+          subtitle="Publish a shooting schedule (Strip Board tab) before building the DOOD."
+        />
+        <div className="text-sm text-[var(--text-muted)]">No shoot days yet.</div>
+      </Card>
+    );
+  }
 
   return (
     <Card padding="none">
       <div className="p-4">
-        <CardHeader title="Day Out Of Days" subtitle="Click a cell to cycle status (admin/scheduler only)" />
+        <CardHeader
+          title="Day Out Of Days"
+          subtitle={
+            canEdit
+              ? "Pick a status from the dropdown for each cast × day cell. All changes are logged."
+              : "Read-only view. Admin, scheduler, and cast coordinator roles can edit."
+          }
+        />
       </div>
       <div className="overflow-x-auto">
         <table className="pos-table text-[11px]">
@@ -405,7 +435,7 @@ function DOODChart() {
             <tr>
               <th className="sticky left-0 bg-[var(--bg-surface)] z-10 min-w-[140px]">Cast</th>
               {shootDays.map((d) => (
-                <th key={d.id} className="text-center min-w-[32px] px-1">
+                <th key={d.id} className="text-center min-w-[42px] px-1">
                   {d.dayNumber}
                 </th>
               ))}
@@ -419,15 +449,32 @@ function DOODChart() {
                   <div className="text-[9px] text-[var(--text-muted)] truncate">{c.role}</div>
                 </td>
                 {shootDays.map((d) => {
-                  const status = dood[c.id]?.[d.dayNumber] ?? "OFF";
+                  const status = (dood[c.id]?.[d.dayNumber] ?? "OFF") as DoodStatus;
                   const cfg = DOOD_STATUS_CONFIG[status];
                   return (
-                    <td
-                      key={d.id}
-                      className={cn("text-center px-1", canEdit && "cursor-pointer")}
-                      onClick={() => canEdit && cycleDoodCell(c.id, d.dayNumber)}
-                    >
-                      {status !== "OFF" ? (
+                    <td key={d.id} className="text-center px-1 py-1">
+                      {canEdit ? (
+                        <select
+                          value={status}
+                          onChange={(e) =>
+                            setDoodStatus(c.id, d.dayNumber, e.target.value as DoodStatus)
+                          }
+                          className="h-6 min-w-[40px] text-[9px] font-semibold rounded px-1 border-0 text-center appearance-none cursor-pointer"
+                          style={{
+                            background: status === "OFF" ? "transparent" : cfg.bg,
+                            color: status === "OFF" ? "var(--text-muted)" : cfg.fg,
+                          }}
+                          aria-label={`${c.name} · Day ${d.dayNumber}`}
+                        >
+                          <option value="OFF">·</option>
+                          <option value="W">W</option>
+                          <option value="H">H</option>
+                          <option value="SW">SW</option>
+                          <option value="WF">WF</option>
+                          <option value="SWF">SWF</option>
+                          <option value="T">T</option>
+                        </select>
+                      ) : status !== "OFF" ? (
                         <span
                           className="inline-block w-6 h-5 rounded text-[9px] font-semibold leading-5 text-center"
                           style={{ background: cfg.bg, color: cfg.fg }}
@@ -455,7 +502,7 @@ function DOODChart() {
                 className="w-4 h-3 rounded inline-block"
                 style={{ background: v.bg }}
               />
-              {v.label}
+              <span className="font-mono">{k}</span> {v.label}
             </span>
           ))}
       </div>

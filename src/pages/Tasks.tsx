@@ -146,8 +146,8 @@ export function Tasks() {
       {tasks.length === 0 && (
         <EmptyState
           title="No tasks yet"
-          description="Create your first task. Every task needs an owner and a deadline."
-          action={
+          subtitle="Create your first task. Every task needs an owner and a deadline."
+          cta={
             <Button onClick={() => setNewTaskOpen(true)}>
               <Plus size={14} /> New task
             </Button>

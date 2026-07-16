@@ -1,59 +1,53 @@
 import React, { useState, useMemo } from "react";
-import { Clock, Lock, Unlock, AlertCircle, Check, ChevronLeft, ChevronRight } from "lucide-react";
-import { useStore } from "@/state/store";
-import { Card, CardHeader } from "@/components/ui/Card";
+import { Clock, Lock, Unlock, AlertCircle, Check, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { useStore, isCurrentAdmin } from "@/state/store";
+import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { Modal } from "@/components/ui/Modal";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { StatCard } from "@/components/ui/StatCard";
-import { cn, formatCurrency } from "@/lib/utils";
-import type { DepartmentId } from "@/types";
+import { cn } from "@/lib/utils";
+import type { DepartmentId, CrewMember } from "@/types";
+
+const DAILY_OT = 10;
+const DAILY_DT = 14;
+const WEEKLY_OT = 50;
+
+function todayISO(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function weekOfISO(base: string): string[] {
+  const d = new Date(base + "T00:00:00");
+  // Monday-start week
+  const dow = (d.getDay() + 6) % 7;
+  d.setDate(d.getDate() - dow);
+  return Array.from({ length: 7 }, (_, i) => {
+    const day = new Date(d);
+    day.setDate(day.getDate() + i);
+    return day.toISOString().slice(0, 10);
+  });
+}
 
 export function Timesheet() {
-  const activeRole = useStore((s) => s.activeRole);
   const currentUserId = useStore((s) => s.currentUserId);
+  const isAdmin = useStore(isCurrentAdmin);
   const crew = useStore((s) => s.crew);
   const timesheet = useStore((s) => s.timesheet);
   const editHours = useStore((s) => s.editTimesheetHours);
+  const addEntry = useStore((s) => s.addTimesheetEntry);
   const submitForCrew = useStore((s) => s.submitTimesheetForCrew);
 
-  const isAdmin = activeRole === "admin";
+  const [anchorDate, setAnchorDate] = useState<string>(todayISO());
+  const weekDates = useMemo(() => weekOfISO(anchorDate), [anchorDate]);
 
-  // Week selection
-  const [weekOffset, setWeekOffset] = useState(0);
+  const [addOpen, setAddOpen] = useState(false);
 
-  // Get unique dates in timesheet, sorted
-  const allDates = useMemo(() => {
-    const dates = [...new Set(timesheet.map((t) => t.date))].sort();
-    return dates;
-  }, [timesheet]);
+  const visibleCrew = isAdmin ? crew : crew.filter((c) => c.id === currentUserId);
 
-  // Group dates into weeks (7 day chunks)
-  const weeks = useMemo(() => {
-    if (allDates.length === 0) return [];
-    const ws: string[][] = [];
-    let week: string[] = [];
-    for (const d of allDates) {
-      week.push(d);
-      if (week.length === 6) {
-        ws.push(week);
-        week = [];
-      }
-    }
-    if (week.length) ws.push(week);
-    return ws;
-  }, [allDates]);
-
-  const currentWeekIdx = Math.max(0, Math.min(weeks.length - 1, weeks.length - 1 + weekOffset));
-  const weekDates = weeks[currentWeekIdx] ?? [];
-
-  // Filter crew — admin sees all, others see only self
-  const visibleCrew = isAdmin
-    ? crew
-    : crew.filter((c) => c.id === currentUserId);
-
-  // Group by department
   const departments = useMemo(() => {
-    const deps = new Map<DepartmentId, typeof visibleCrew>();
+    const deps = new Map<DepartmentId, CrewMember[]>();
     for (const c of visibleCrew) {
       const arr = deps.get(c.department) ?? [];
       arr.push(c);
@@ -62,36 +56,60 @@ export function Timesheet() {
     return Array.from(deps.entries());
   }, [visibleCrew]);
 
-  // OT rules
-  const dailyOT = 10;
-  const weeklyOT = 50;
-
-  // Compute totals
   const weekEntries = timesheet.filter((t) => weekDates.includes(t.date));
   const totalHours = weekEntries.reduce((s, e) => s + e.hours, 0);
-  const otHours = weekEntries.reduce(
-    (s, e) => s + Math.max(0, e.hours - dailyOT),
-    0
-  );
+  const otHours = weekEntries.reduce((s, e) => s + Math.max(0, e.hours - DAILY_OT), 0);
+
+  const shiftWeek = (delta: number) => {
+    const d = new Date(anchorDate + "T00:00:00");
+    d.setDate(d.getDate() + delta * 7);
+    setAnchorDate(d.toISOString().slice(0, 10));
+  };
+
+  if (crew.length === 0) {
+    return (
+      <div className="max-w-[1400px] mx-auto">
+        <div className="mb-6">
+          <div className="section-header">Timesheet</div>
+          <div className="page-title mt-1">{isAdmin ? "All Crew Hours" : "My Hours"}</div>
+        </div>
+        <EmptyState
+          title="No crew on this project"
+          subtitle={
+            isAdmin
+              ? "Add crew members from the Camera / Art / VFX portals or via the Admin console before logging hours."
+              : "Ask a producer to add you to the crew before you can log hours."
+          }
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-[1400px] mx-auto">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div>
           <div className="section-header">Timesheet</div>
-          <div className="page-title mt-1">
-            {isAdmin ? "All Crew Hours" : "My Hours"}
+          <div className="page-title mt-1">{isAdmin ? "All Crew Hours" : "My Hours"}</div>
+          <div className="text-xs text-[var(--text-muted)] mt-1">
+            OT after {DAILY_OT}h / day · Double time after {DAILY_DT}h · Weekly OT after {WEEKLY_OT}h
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={() => setWeekOffset((v) => v - 1)} disabled={currentWeekIdx <= 0}>
+          <Button variant="ghost" size="sm" onClick={() => shiftWeek(-1)}>
             <ChevronLeft size={14} />
           </Button>
-          <span className="text-sm text-[var(--text-secondary)]">
-            {weekDates[0]} — {weekDates[weekDates.length - 1]}
+          <span className="text-sm text-[var(--text-secondary)] tabular-nums">
+            {weekDates[0]} — {weekDates[6]}
           </span>
-          <Button variant="ghost" size="sm" onClick={() => setWeekOffset((v) => v + 1)} disabled={currentWeekIdx >= weeks.length - 1}>
+          <Button variant="ghost" size="sm" onClick={() => shiftWeek(1)}>
             <ChevronRight size={14} />
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setAnchorDate(todayISO())}>
+            Today
+          </Button>
+          <Button onClick={() => setAddOpen(true)}>
+            <Plus size={14} /> Add day
           </Button>
         </div>
       </div>
@@ -104,10 +122,18 @@ export function Timesheet() {
           label="Overtime Hours"
           value={otHours.toFixed(1)}
           tone={otHours > 0 ? "warning" : "neutral"}
-          hint={`Daily OT after ${dailyOT}h, weekly after ${weeklyOT}h`}
         />
-        <StatCard icon={<Check size={20} />} label="Submitted" value={weekEntries.filter((e) => e.submitted).length} />
-        <StatCard icon={<Clock size={20} />} label="Pending" value={weekEntries.filter((e) => !e.submitted).length} tone={weekEntries.some((e) => !e.submitted) ? "warning" : "success"} />
+        <StatCard
+          icon={<Check size={20} />}
+          label="Submitted"
+          value={weekEntries.filter((e) => e.submitted).length}
+        />
+        <StatCard
+          icon={<Clock size={20} />}
+          label="Pending"
+          value={weekEntries.filter((e) => !e.submitted).length}
+          tone={weekEntries.some((e) => !e.submitted) ? "warning" : "success"}
+        />
       </div>
 
       <Card padding="none">
@@ -117,11 +143,22 @@ export function Timesheet() {
               <tr>
                 <th className="sticky left-0 bg-[var(--bg-surface)] z-10 min-w-[180px]">Crew</th>
                 {weekDates.map((d) => {
-                  const dayName = new Date(d + "T00:00:00").toLocaleDateString("en-US", { weekday: "short" });
+                  const dayName = new Date(d + "T00:00:00").toLocaleDateString("en-US", {
+                    weekday: "short",
+                  });
+                  const isToday = d === todayISO();
                   return (
-                    <th key={d} className="text-center min-w-[80px]">
+                    <th
+                      key={d}
+                      className={cn(
+                        "text-center min-w-[80px]",
+                        isToday && "text-[var(--accent-blue)]"
+                      )}
+                    >
                       <div>{dayName}</div>
-                      <div className="text-[10px] text-[var(--text-muted)] font-normal">{d.slice(5)}</div>
+                      <div className="text-[10px] text-[var(--text-muted)] font-normal">
+                        {d.slice(5)}
+                      </div>
                     </th>
                   );
                 })}
@@ -148,10 +185,11 @@ export function Timesheet() {
                     );
                     const weekTotal = memberEntries.reduce((s, e) => s + e.hours, 0);
                     const weekOT = memberEntries.reduce(
-                      (s, e) => s + Math.max(0, e.hours - dailyOT),
+                      (s, e) => s + Math.max(0, e.hours - DAILY_OT),
                       0
                     );
-                    const allSubmitted = memberEntries.every((e) => e.submitted);
+                    const allSubmitted =
+                      memberEntries.length > 0 && memberEntries.every((e) => e.submitted);
                     const canEdit = isAdmin || member.id === currentUserId;
 
                     return (
@@ -166,13 +204,29 @@ export function Timesheet() {
                           const entry = memberEntries.find((e) => e.date === date);
                           if (!entry) {
                             return (
-                              <td key={date} className="text-center text-[var(--text-muted)]">
-                                —
+                              <td key={date} className="text-center">
+                                {canEdit ? (
+                                  <button
+                                    className="text-[var(--text-muted)] hover:text-[var(--accent-blue)] text-xs"
+                                    onClick={() =>
+                                      addEntry({
+                                        crewMemberId: member.id,
+                                        date,
+                                        hours: 0,
+                                      })
+                                    }
+                                    title="Add day"
+                                  >
+                                    +
+                                  </button>
+                                ) : (
+                                  <span className="text-[var(--text-muted)]">—</span>
+                                )}
                               </td>
                             );
                           }
-                          const isOT = entry.hours > dailyOT;
-                          const isDT = entry.hours > 14;
+                          const isOT = entry.hours > DAILY_OT;
+                          const isDT = entry.hours > DAILY_DT;
                           const isAdminEdited = entry.edits.some((ed) => ed.isAdminOverride);
                           return (
                             <td key={date} className="text-center">
@@ -196,7 +250,8 @@ export function Timesheet() {
                                       : isOT
                                       ? "text-[var(--color-warning)] font-semibold"
                                       : "text-[var(--text-primary)]",
-                                    isAdminEdited && "bg-[rgba(245,158,11,0.1)] border-[var(--color-warning)]"
+                                    isAdminEdited &&
+                                      "bg-[rgba(245,158,11,0.1)] border-[var(--color-warning)]"
                                   )}
                                 />
                               ) : (
@@ -230,13 +285,22 @@ export function Timesheet() {
                         </td>
                         <td>
                           {allSubmitted ? (
-                            <Badge tone="success" dot><Lock size={8} /> Submitted</Badge>
-                          ) : canEdit && member.id === currentUserId ? (
-                            <Button size="sm" variant="secondary" onClick={() => submitForCrew(member.id)}>
+                            <Badge tone="success" dot>
+                              <Lock size={8} /> Submitted
+                            </Badge>
+                          ) : canEdit && (member.id === currentUserId || isAdmin) ? (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => submitForCrew(member.id)}
+                              disabled={memberEntries.length === 0}
+                            >
                               Submit
                             </Button>
                           ) : (
-                            <Badge tone="muted" dot><Unlock size={8} /> Draft</Badge>
+                            <Badge tone="muted" dot>
+                              <Unlock size={8} /> Draft
+                            </Badge>
                           )}
                         </td>
                       </tr>
@@ -248,6 +312,100 @@ export function Timesheet() {
           </table>
         </div>
       </Card>
+
+      <AddDayModal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        crew={visibleCrew}
+        me={currentUserId}
+        isAdmin={isAdmin}
+      />
     </div>
+  );
+}
+
+function AddDayModal({
+  open,
+  onClose,
+  crew,
+  me,
+  isAdmin,
+}: {
+  open: boolean;
+  onClose: () => void;
+  crew: CrewMember[];
+  me: string;
+  isAdmin: boolean;
+}) {
+  const addEntry = useStore((s) => s.addTimesheetEntry);
+  const [target, setTarget] = useState<string>(me);
+  const [date, setDate] = useState<string>(todayISO());
+  const [hours, setHours] = useState<string>("8");
+
+  React.useEffect(() => {
+    if (!open) return;
+    setTarget(isAdmin ? me : me);
+    setDate(todayISO());
+    setHours("8");
+  }, [open, me, isAdmin]);
+
+  const submit = () => {
+    const h = parseFloat(hours);
+    if (isNaN(h) || h < 0 || h > 24) return;
+    addEntry({ crewMemberId: target, date, hours: h });
+    onClose();
+  };
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Add a day"
+      subtitle="Adds a fresh timesheet entry. If one already exists for this crew+date, nothing changes."
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button onClick={submit} disabled={!target || !date}>Add</Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        {isAdmin && (
+          <div>
+            <label className="section-header block mb-1.5">Crew member</label>
+            <select value={target} onChange={(e) => setTarget(e.target.value)} className="w-full">
+              {crew.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} — {c.role}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="section-header block mb-1.5">Date</label>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-full"
+            />
+          </div>
+          <div>
+            <label className="section-header block mb-1.5">Hours</label>
+            <input
+              type="number"
+              min="0"
+              max="24"
+              step="0.5"
+              value={hours}
+              onChange={(e) => setHours(e.target.value)}
+              className="w-full"
+            />
+          </div>
+        </div>
+      </div>
+    </Modal>
   );
 }

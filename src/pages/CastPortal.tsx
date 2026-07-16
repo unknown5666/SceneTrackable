@@ -99,12 +99,12 @@ export function CastPortal() {
       {cast.length === 0 ? (
         <EmptyState
           title="No cast yet"
-          description={
+          subtitle={
             canManage
               ? "Add lead, supporting, and day player roles to start building the DOOD and call sheets."
               : "The cast directory is empty. Ask a producer to add cast members."
           }
-          action={
+          cta={
             canManage ? (
               <Button onClick={openAdd}>
                 <Plus size={14} /> Add cast

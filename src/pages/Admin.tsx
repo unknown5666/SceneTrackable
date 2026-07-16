@@ -177,9 +177,14 @@ export function Admin() {
       <Card padding="none">
         <div className="p-4 flex items-center justify-between">
           <CardHeader title={<span className="flex items-center gap-2"><UsersIcon size={13} /> Users</span>} subtitle={`${users.length} accounts`} className="mb-0" />
-          <Button size="sm" onClick={openAddUser}>
-            <UserPlus size={13} /> Add user
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="secondary" onClick={openAddUser}>
+              <UserPlus size={13} /> Add user
+            </Button>
+            <Button size="sm" onClick={openInvite}>
+              <Mail size={13} /> Invite by code
+            </Button>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="pos-table text-sm">
@@ -193,46 +198,80 @@ export function Admin() {
               </tr>
             </thead>
             <tbody>
-              {users.map((u) => (
-                <tr key={u.id}>
-                  <td className="font-medium">{u.displayName}{u.id === currentUserId && <span className="text-[var(--text-muted)] font-normal"> (you)</span>}</td>
-                  <td className="text-[var(--text-secondary)] font-mono text-xs">{u.username}</td>
-                  <td>
-                    {isAdminRole(roles.find((r) => r.id === u.roleId)) ? (
-                      <Badge tone="ai">{roleLabel(u.roleId)}</Badge>
-                    ) : (
-                      <Badge tone="muted">{roleLabel(u.roleId)}</Badge>
-                    )}
-                  </td>
-                  <td>
-                    <button
-                      onClick={() => updateUser(u.id, { active: !u.active })}
-                      disabled={u.id === currentUserId}
-                    >
-                      <Badge tone={u.active ? "success" : "muted"} dot>
-                        {u.active ? "Active" : "Disabled"}
-                      </Badge>
-                    </button>
-                  </td>
-                  <td className="text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <Button size="sm" variant="ghost" onClick={() => openEditUser(u.id)}>
-                        <KeyRound size={13} /> Edit
-                      </Button>
-                      <button
-                        onClick={() => {
-                          if (u.id === currentUserId) return alert("You can't delete your own account.");
-                          if (confirm(`Delete user “${u.displayName}”?`)) removeUser(u.id);
-                        }}
-                        disabled={u.id === currentUserId}
-                        className="p-1.5 rounded text-[var(--text-muted)] hover:text-[var(--color-danger)] disabled:opacity-30"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {users.map((u) => {
+                const isInvitePending = !!u.inviteCode && !u.password;
+                return (
+                  <tr key={u.id}>
+                    <td className="font-medium">
+                      {u.displayName}
+                      {u.id === currentUserId && (
+                        <span className="text-[var(--text-muted)] font-normal"> (you)</span>
+                      )}
+                    </td>
+                    <td className="text-[var(--text-secondary)] font-mono text-xs">{u.username}</td>
+                    <td>
+                      {isAdminRole(roles.find((r) => r.id === u.roleId)) ? (
+                        <Badge tone="ai">{roleLabel(u.roleId)}</Badge>
+                      ) : (
+                        <Badge tone="muted">{roleLabel(u.roleId)}</Badge>
+                      )}
+                    </td>
+                    <td>
+                      {isInvitePending ? (
+                        <Badge tone="warning" dot>
+                          Invite pending
+                        </Badge>
+                      ) : (
+                        <button
+                          onClick={() => updateUser(u.id, { active: !u.active })}
+                          disabled={u.id === currentUserId}
+                        >
+                          <Badge tone={u.active ? "success" : "muted"} dot>
+                            {u.active ? "Active" : "Disabled"}
+                          </Badge>
+                        </button>
+                      )}
+                    </td>
+                    <td className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        {isInvitePending && u.inviteCode && (
+                          <button
+                            className="text-[11px] font-mono px-2 py-1 rounded bg-[var(--bg-surface-hover)] text-[var(--text-primary)] hover:text-[var(--accent-blue)] flex items-center gap-1"
+                            onClick={() =>
+                              setIssuedCode({ username: u.username, code: u.inviteCode! })
+                            }
+                            title="Show invite code again"
+                          >
+                            <KeyRound size={11} /> Show code
+                          </button>
+                        )}
+                        <Button size="sm" variant="ghost" onClick={() => openEditUser(u.id)}>
+                          <KeyRound size={13} /> Edit
+                        </Button>
+                        {u.id !== currentUserId && (
+                          <button
+                            className="p-1.5 rounded text-[var(--text-muted)] hover:text-[var(--accent-blue)]"
+                            onClick={() => doResetInvite(u.id, u.displayName)}
+                            title="Reset login — clears password and issues a new invite code"
+                          >
+                            <RefreshCw size={13} />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => {
+                            if (u.id === currentUserId) return alert("You can't delete your own account.");
+                            if (confirm(`Delete user “${u.displayName}”?`)) removeUser(u.id);
+                          }}
+                          disabled={u.id === currentUserId}
+                          className="p-1.5 rounded text-[var(--text-muted)] hover:text-[var(--color-danger)] disabled:opacity-30"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -358,6 +397,95 @@ export function Admin() {
             </select>
           </div>
         </div>
+      </Modal>
+
+      {/* Invite modal */}
+      <Modal
+        open={inviteOpen}
+        onClose={() => {
+          setInviteOpen(false);
+          setIssuedCode(null);
+        }}
+        title={issuedCode ? "Invite issued" : "Invite user"}
+        subtitle={
+          issuedCode
+            ? "Share these credentials with the user. They redeem the code on the login page."
+            : "Create an account; the user picks their own password on first sign-in."
+        }
+        footer={
+          issuedCode ? (
+            <Button onClick={() => { setInviteOpen(false); setIssuedCode(null); }}>Done</Button>
+          ) : (
+            <>
+              <Button variant="secondary" onClick={() => setInviteOpen(false)}>Cancel</Button>
+              <Button onClick={sendInvite} disabled={!invName.trim() || !invUsername.trim()}>
+                Generate invite
+              </Button>
+            </>
+          )
+        }
+      >
+        {issuedCode ? (
+          <div className="space-y-4">
+            <div>
+              <div className="section-header mb-1.5">Username</div>
+              <div className="font-mono text-sm text-[var(--text-primary)] bg-[var(--bg-surface-hover)] rounded px-3 py-2">
+                {issuedCode.username}
+              </div>
+            </div>
+            <div>
+              <div className="section-header mb-1.5">One-time invite code</div>
+              <div className="flex items-center gap-2">
+                <div className="font-mono text-lg tracking-widest text-[var(--text-primary)] bg-[var(--bg-surface-hover)] rounded px-3 py-2 flex-1">
+                  {issuedCode.code}
+                </div>
+                <Button variant="secondary" size="sm" onClick={() => copyCode(issuedCode.code)}>
+                  <Copy size={13} /> Copy
+                </Button>
+              </div>
+            </div>
+            <div className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+              The user visits the login page, clicks “Got an invite code? Redeem it →”,
+              enters their username + this code, then sets their own password.
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <label className="section-header block mb-1.5">Display name</label>
+              <input
+                value={invName}
+                onChange={(e) => setInvName(e.target.value)}
+                className="w-full"
+                placeholder="Jane Producer"
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="section-header block mb-1.5">Username</label>
+              <input
+                value={invUsername}
+                onChange={(e) => setInvUsername(e.target.value)}
+                className="w-full"
+                placeholder="jane"
+              />
+            </div>
+            <div>
+              <label className="section-header block mb-1.5">Role</label>
+              <select
+                value={invRole}
+                onChange={(e) => setInvRole(e.target.value)}
+                className="w-full"
+              >
+                {roles.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* Role modal */}

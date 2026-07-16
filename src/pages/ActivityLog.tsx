@@ -123,7 +123,7 @@ export function ActivityLog() {
       {log.length === 0 ? (
         <EmptyState
           title="No activity yet"
-          description="As people create tasks, edit hours, and update the DOOD, every action shows up here with who did it and when."
+          subtitle="As people create tasks, edit hours, and update the DOOD, every action shows up here with who did it and when."
         />
       ) : (
         <Card padding="none">
