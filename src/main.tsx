@@ -3,11 +3,10 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import { ThemeProvider } from "@/state/theme";
-import { cloudEnabled, autoSyncEnabled, startAutoSync } from "@/lib/cloud";
 import "./index.css";
 
-// Resume cloud auto-sync across reloads when it was enabled.
-if (cloudEnabled && autoSyncEnabled()) startAutoSync();
+// Cloud sync is no longer opt-in: MainLayout resumes it for any signed-in
+// user, and store.login() attaches it for new sessions.
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

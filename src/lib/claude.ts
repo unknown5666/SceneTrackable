@@ -379,6 +379,37 @@ export interface SceneBreakdownProposal {
   estimated_duration_minutes: number;
 }
 
+/**
+ * Models occasionally wrap structured output in prose or a fence even when a
+ * schema is set, so slice to the outermost JSON object rather than trusting
+ * the whole response to parse.
+ */
+function extractJson(text: string): string {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start === -1 || end === -1 || end < start) return text;
+  return text.slice(start, end + 1);
+}
+
+function normalizeProposal(parsed: any, scene?: Scene): SceneBreakdownProposal {
+  return {
+    elements: Array.isArray(parsed?.elements)
+      ? parsed.elements
+          .filter((e: ProposedElement) => e && e.name && CATEGORY_LIST.includes(e.category))
+          .map((e: ProposedElement) => ({
+            name: String(e.name).trim(),
+            category: e.category,
+            subCategory: e.subCategory ? String(e.subCategory) : undefined,
+            description: e.description ? String(e.description) : undefined,
+            notes: e.notes ? String(e.notes) : undefined,
+          }))
+      : [],
+    estimated_duration_minutes:
+      Number(parsed?.estimated_duration_minutes) ||
+      (scene ? Math.max(15, Math.round(scene.pages * 45)) : 45),
+  };
+}
+
 const BREAKDOWN_SCHEMA: Record<string, unknown> = {
   type: "object",
   additionalProperties: false,
@@ -403,7 +434,7 @@ const BREAKDOWN_SCHEMA: Record<string, unknown> = {
   },
 };
 
-const BREAKDOWN_SYSTEM = `You are an experienced 1st Assistant Director and script supervisor producing a professional shooting-script breakdown. Given one scene, extract every production element.
+const BREAKDOWN_SYSTEM = `You are an experienced 1st Assistant Director and script supervisor producing a professional shooting-script breakdown. Extract every production element a department would need to prep the scene.
 Category definitions:
 - cast: named speaking characters. extras: background/atmosphere performers.
 - props: hand props / set-critical objects. wardrobe: costumes tied to a character.
@@ -411,13 +442,117 @@ Category definitions:
 - locations: the physical place(s) needed. makeup: makeup/hair/prosthetics. stunts: stunt action.
 - production: production requirements (permits, generators, cranes, road closures, catering notes, safety).
 "subCategory" is a short qualifier (e.g. "Lead", "Hero prop", "Digital", "Picture car"). "description" is a concise production note. "notes" may be empty.
-Be specific and thorough — this feeds a real production department. Only include cast members who actually appear in THIS scene.`;
+Be specific and thorough — this feeds a real production department. Only include cast members who actually appear in the scene being analyzed.
+Use the character list you are given as the source of truth for cast naming: refer to each character by their canonical name even when the scene text uses a nickname, a description, or a dialogue cue variant.`;
 
 export interface BreakdownContext {
   /** Character names detected across the whole screenplay. */
   characters?: string[];
   /** Project / production title for context. */
   projectName?: string;
+}
+
+// ============================================================
+// CHARACTER BIBLE — one pass over the whole screenplay
+//
+// Runs once per breakdown and feeds every scene batch. Two reasons it beats
+// the ALL-CAPS dialogue-cue heuristic it replaces: a model reading the whole
+// script can tell a speaking role from a mentioned one and can collapse
+// "MRS. HALLORAN" / "EDITH" / "MOTHER" into one person — neither of which a
+// regex over cues can do. It also costs one request, not one per scene.
+// ============================================================
+
+export type CharacterImportance = "lead" | "supporting" | "minor" | "background";
+
+export interface ScriptCharacter {
+  name: string;
+  aliases?: string[];
+  speaking: boolean;
+  importance: CharacterImportance;
+  description?: string;
+  firstSceneNumber?: string;
+}
+
+const CHARACTER_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  additionalProperties: false,
+  required: ["characters"],
+  properties: {
+    characters: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["name", "speaking", "importance"],
+        properties: {
+          name: { type: "string" },
+          aliases: { type: "array", items: { type: "string" } },
+          speaking: { type: "boolean" },
+          importance: { type: "string", enum: ["lead", "supporting", "minor", "background"] },
+          description: { type: "string" },
+          firstSceneNumber: { type: "string" },
+        },
+      },
+    },
+  },
+};
+
+const CHARACTER_SYSTEM = `You are a script supervisor building the character list for a film production from a complete screenplay.
+
+Read the whole screenplay before answering. For every distinct human or creature character:
+- Give the canonical name a call sheet would use — usually the dialogue-cue name.
+- Collect every other way the script refers to them into aliases: nicknames, shortened or formal versions of the name, and the descriptive tags used before they are formally named ("THE MAN IN THE GREY COAT", "WAITRESS") when those later resolve to the same person. One person must appear exactly once, never split across their aliases.
+- Mark speaking true only if they are ever given dialogue. Characters who only appear in action lines, or who are merely talked about by others, are non-speaking — this distinction drives casting and cost, so be exact about it.
+- Judge importance from how much the story rests on them across the whole script, not from how many lines they have in any one scene.
+
+Watch for the introductions a first read misses: a character named only once in an action line and referred to by role afterwards; a character introduced under one name who is revealed to be another; voices on a phone or over radio; characters described but never named. Include them.
+Exclude places, organizations, and transitions.`;
+
+/** One request over the full screenplay. Throws on live-API failure. */
+export async function aiCharacterBible(
+  fullScript: string,
+  projectName?: string
+): Promise<{ characters: ScriptCharacter[]; result: ClaudeResult }> {
+  const result = await callClaude({
+    feature: "character_bible",
+    system: CHARACTER_SYSTEM,
+    user: `${projectName ? `PRODUCTION: ${projectName}\n\n` : ""}COMPLETE SCREENPLAY:\n\n${fullScript}`,
+    maxTokens: 8000,
+    jsonSchema: CHARACTER_SCHEMA,
+  });
+
+  let characters: ScriptCharacter[] = [];
+  try {
+    const parsed = JSON.parse(extractJson(result.text));
+    characters = Array.isArray(parsed.characters)
+      ? parsed.characters
+          .filter((c: ScriptCharacter) => c && c.name)
+          .map((c: ScriptCharacter) => ({
+            name: String(c.name).trim(),
+            aliases: Array.isArray(c.aliases) ? c.aliases.map(String) : undefined,
+            speaking: Boolean(c.speaking),
+            importance: (["lead", "supporting", "minor", "background"] as const).includes(c.importance)
+              ? c.importance
+              : "minor",
+            description: c.description ? String(c.description) : undefined,
+            firstSceneNumber: c.firstSceneNumber ? String(c.firstSceneNumber) : undefined,
+          }))
+      : [];
+  } catch {
+    if (!result.fromMock) throw new ClaudeApiError("Could not parse the character list as JSON.");
+  }
+  return { characters, result };
+}
+
+/** Render the bible into the context block each breakdown batch receives. */
+export function describeCharacters(characters: ScriptCharacter[]): string {
+  return characters
+    .map((c) => {
+      const bits = [c.importance, c.speaking ? "speaking" : "non-speaking"];
+      if (c.aliases?.length) bits.push(`also called ${c.aliases.join(", ")}`);
+      return `- ${c.name} (${bits.join("; ")})${c.description ? ` — ${c.description}` : ""}`;
+    })
+    .join("\n");
 }
 
 /** Break down a single scene. Returns the parsed proposal + usage. Throws on live-API failure. */
@@ -446,24 +581,7 @@ export async function aiBreakdownScene(
 
   let proposal: SceneBreakdownProposal;
   try {
-    const jsonStart = result.text.indexOf("{");
-    const jsonEnd = result.text.lastIndexOf("}");
-    const parsed = JSON.parse(result.text.slice(jsonStart, jsonEnd + 1));
-    proposal = {
-      elements: Array.isArray(parsed.elements)
-        ? parsed.elements
-            .filter((e: ProposedElement) => e && e.name && CATEGORY_LIST.includes(e.category))
-            .map((e: ProposedElement) => ({
-              name: String(e.name).trim(),
-              category: e.category,
-              subCategory: e.subCategory ? String(e.subCategory) : undefined,
-              description: e.description ? String(e.description) : undefined,
-              notes: e.notes ? String(e.notes) : undefined,
-            }))
-        : [],
-      estimated_duration_minutes:
-        Number(parsed.estimated_duration_minutes) || Math.max(15, Math.round(scene.pages * 45)),
-    };
+    proposal = normalizeProposal(JSON.parse(extractJson(result.text)), scene);
   } catch {
     if (!result.fromMock) {
       throw new ClaudeApiError("Could not parse the AI response as JSON.");
@@ -471,6 +589,104 @@ export async function aiBreakdownScene(
     proposal = demoBreakdown(scene);
   }
   return { proposal, result };
+}
+
+// ============================================================
+// BATCHED BREAKDOWN
+//
+// One request per group of scenes instead of one per scene. The provider's
+// context window is vast compared to a screenplay, so the limit that matters
+// is output tokens, not input — batching cuts a 60-scene script from 60
+// requests to about 7, which keeps runs well inside free-tier rate limits
+// and lets the model reason across neighbouring scenes.
+// ============================================================
+
+/** Scenes per request. Sized so a batch's JSON fits comfortably in the output budget. */
+export const BREAKDOWN_BATCH_SIZE = 10;
+
+const BATCH_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  additionalProperties: false,
+  required: ["scenes"],
+  properties: {
+    scenes: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["scene_number", "elements", "estimated_duration_minutes"],
+        properties: {
+          scene_number: { type: "string" },
+          elements: (BREAKDOWN_SCHEMA.properties as any).elements,
+          estimated_duration_minutes: { type: "number" },
+        },
+      },
+    },
+  },
+};
+
+function sceneBlock(scene: Scene): string {
+  return `### SCENE ${scene.number} — ${scene.intExt}. ${scene.location} — ${scene.timeOfDay}\n${
+    scene.scriptText || scene.synopsis
+  }`;
+}
+
+/**
+ * Break down several scenes in one request.
+ *
+ * Returns proposals keyed by scene number. A batch that comes back short is
+ * not an error — the caller fills the gaps — but a batch that fails outright
+ * throws, so the run can report it rather than quietly degrade.
+ */
+export async function aiBreakdownBatch(
+  scenes: Scene[],
+  ctx?: BreakdownContext & { characterBible?: ScriptCharacter[] }
+): Promise<{ proposals: Map<string, SceneBreakdownProposal>; result: ClaudeResult }> {
+  const contextLines: string[] = [];
+  if (ctx?.projectName) contextLines.push(`PRODUCTION: ${ctx.projectName}`);
+  if (ctx?.characterBible?.length) {
+    contextLines.push(`CHARACTERS IN THIS SCREENPLAY:\n${describeCharacters(ctx.characterBible)}`);
+  } else if (ctx?.characters?.length) {
+    contextLines.push(`KNOWN CHARACTERS IN THIS SCREENPLAY: ${ctx.characters.join(", ")}`);
+  }
+
+  const result = await callClaude(
+    {
+      feature: "script_breakdown",
+      system: BREAKDOWN_SYSTEM,
+      user: `${contextLines.join("\n\n")}${contextLines.length ? "\n\n" : ""}Break down each of the following ${
+        scenes.length
+      } scenes independently. Return one entry per scene, using the exact scene_number shown.\n\n${scenes
+        .map(sceneBlock)
+        .join("\n\n")}`,
+      // Roughly 1.4k tokens of elements per scene, plus headroom.
+      maxTokens: Math.min(32000, 1500 * scenes.length + 1000),
+      jsonSchema: BATCH_SCHEMA,
+    },
+    scenes[0]
+  );
+
+  const proposals = new Map<string, SceneBreakdownProposal>();
+  try {
+    const parsed = JSON.parse(extractJson(result.text));
+    if (Array.isArray(parsed.scenes)) {
+      for (const entry of parsed.scenes) {
+        const num = String(entry?.scene_number ?? "").trim();
+        if (!num) continue;
+        const scene = scenes.find((s) => s.number === num);
+        proposals.set(num, normalizeProposal(entry, scene));
+      }
+    }
+  } catch {
+    if (!result.fromMock) throw new ClaudeApiError("Could not parse the AI response as JSON.");
+  }
+
+  // Demo mode has no batch shape — synthesize per scene so the run still works.
+  if (result.fromMock && proposals.size === 0) {
+    for (const s of scenes) proposals.set(s.number, demoBreakdown(s));
+  }
+
+  return { proposals, result };
 }
 
 // ------------------------------------------------------------

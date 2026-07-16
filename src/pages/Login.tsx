@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Clapperboard, Sun, Moon, ArrowRight, Lock, KeyRound } from "lucide-react";
-import { useStore } from "@/state/store";
+import { useStore, cloudRecoverAccount } from "@/state/store";
+import { cloudEnabled } from "@/lib/cloud";
 import { useTheme } from "@/state/theme";
 import { Button } from "@/components/ui/Button";
 import { Footer } from "@/components/layout/Footer";
@@ -24,6 +25,8 @@ export function Login() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  /** Progress note for the slow path (fetching a workspace this device lacks). */
+  const [statusText, setStatusText] = useState("");
 
   useEffect(() => {
     if (userId) nav("/projects", { replace: true });
@@ -42,11 +45,26 @@ export function Login() {
         setError("This account still needs a password. Enter your invite code and pick one.");
         return;
       }
-      const ok = await login(username, password);
-      if (ok) nav("/projects", { replace: true });
-      else setError("Invalid username or password.");
+      if (await login(username, password)) {
+        nav("/projects", { replace: true });
+        return;
+      }
+
+      // A browser that has never seen this workspace starts blank, so a real
+      // account looks identical to a wrong one. Ask the cloud before deciding.
+      if (cloudEnabled) {
+        setStatusText("Checking your workspace…");
+        const err = await cloudRecoverAccount(username, password);
+        setStatusText("");
+        if (!err && (await login(username, password))) {
+          nav("/projects", { replace: true });
+          return;
+        }
+      }
+      setError("Invalid username or password.");
     } finally {
       setBusy(false);
+      setStatusText("");
     }
   };
 
@@ -59,14 +77,29 @@ export function Login() {
     }
     setBusy(true);
     try {
-      const err = await redeemInvite(username, inviteCode, newPassword);
-      if (err) {
-        setError(err);
-      } else {
-        nav("/projects", { replace: true });
+      let err = await redeemInvite(username, inviteCode, newPassword);
+
+      // Invited users almost always redeem on a device that has never held
+      // this workspace, so the local user list can't know them yet. Fetch it
+      // using the invite code as the credential, then redeem for real.
+      if (err && cloudEnabled) {
+        setStatusText("Finding your invite…");
+        const cloudErr = await cloudRecoverAccount(username, newPassword, {
+          inviteCode: inviteCode.trim(),
+        });
+        setStatusText("");
+        if (cloudErr) {
+          setError(cloudErr);
+          return;
+        }
+        err = await redeemInvite(username, inviteCode, newPassword);
       }
+
+      if (err) setError(err);
+      else nav("/projects", { replace: true });
     } finally {
       setBusy(false);
+      setStatusText("");
     }
   };
 
@@ -170,6 +203,9 @@ export function Login() {
                   />
                 </div>
                 {error && <div className="text-xs text-[var(--color-danger)]">{error}</div>}
+                {statusText && (
+                  <div className="text-xs text-[var(--text-secondary)]">{statusText}</div>
+                )}
                 <Button type="submit" className="w-full justify-center" disabled={busy}>
                   {busy ? "Signing in…" : "Sign in"} <ArrowRight size={14} />
                 </Button>
@@ -240,6 +276,9 @@ export function Login() {
                   </div>
                 </div>
                 {error && <div className="text-xs text-[var(--color-danger)]">{error}</div>}
+                {statusText && (
+                  <div className="text-xs text-[var(--text-secondary)]">{statusText}</div>
+                )}
                 <Button
                   type="submit"
                   className="w-full justify-center"
@@ -260,9 +299,22 @@ export function Login() {
               </form>
             )}
 
+            {/* With cloud sync on, this deployment is reachable by anyone with
+                the URL and the seeded password also unlocks the shared
+                workspace — so the default credentials stop being a hint and
+                become a way in. Only advertise them offline. */}
             <div className="mt-5 text-[11px] text-center text-[var(--text-muted)]">
-              First-time master login — <span className="text-[var(--text-secondary)]">Admin</span> /{" "}
-              <span className="text-[var(--text-secondary)]">1234</span>. Change it in Admin → Users.
+              {cloudEnabled ? (
+                <>
+                  Sign in with your SceneTrackable account — your production's data follows you to
+                  any device. No account yet? Ask your admin for an invite code.
+                </>
+              ) : (
+                <>
+                  First-time master login — <span className="text-[var(--text-secondary)]">Admin</span> /{" "}
+                  <span className="text-[var(--text-secondary)]">1234</span>. Change it in Admin → Users.
+                </>
+              )}
             </div>
           </div>
         </div>

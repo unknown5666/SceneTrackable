@@ -54,7 +54,9 @@ export default function App() {
         <Route path="/cast" element={<AccessGuard page="cast"><CastPortal /></AccessGuard>} />
         <Route path="/timesheet" element={<AccessGuard page="timesheet"><Timesheet /></AccessGuard>} />
         <Route path="/ai" element={<AdminGuard><AISettings /></AdminGuard>} />
-        <Route path="/cloud" element={<AdminGuard><CloudSync /></AdminGuard>} />
+        {/* Sync affects everyone's data, so everyone can see its state and
+            resolve their own conflicts — it is no longer an admin console. */}
+        <Route path="/cloud" element={<CloudSync />} />
         <Route path="/admin" element={<AdminGuard><Admin /></AdminGuard>} />
         <Route path="/activity" element={<AdminGuard><ActivityLog /></AdminGuard>} />
       </Route>

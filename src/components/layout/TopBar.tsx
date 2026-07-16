@@ -5,6 +5,7 @@ import { useStore, unreadCount, currentUser, currentRole, activeProject } from "
 import { useTheme } from "@/state/theme";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { CloudIndicator } from "./CloudIndicator";
 import { formatDateTime } from "@/lib/utils";
 
 export function TopBar() {
@@ -56,6 +57,8 @@ export function TopBar() {
       </button>
 
       <div className="flex items-center gap-2">
+        <CloudIndicator />
+
         <Button variant="secondary" size="sm" onClick={() => nav("/projects")}>
           <Plus size={14} /> New project
         </Button>

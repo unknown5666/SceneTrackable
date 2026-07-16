@@ -52,7 +52,7 @@ const ITEMS: NavItem[] = [
   { to: "/notifications", label: "Notifications", icon: <Bell size={18} />, badge: true },
   { to: "/tutorial", label: "Tutorial", icon: <GraduationCap size={18} /> },
   { to: "/ai", label: "AI Settings", icon: <Sparkle size={18} />, admin: true },
-  { to: "/cloud", label: "Cloud Sync", icon: <Cloud size={18} />, admin: true },
+  { to: "/cloud", label: "Cloud Sync", icon: <Cloud size={18} /> },
   { to: "/activity", label: "Activity Log", icon: <History size={18} />, admin: true },
   { to: "/admin", label: "Admin", icon: <Shield size={18} />, admin: true },
 ];

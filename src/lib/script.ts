@@ -6,7 +6,14 @@ import * as pdfjsLib from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import type { Scene, BreakdownElement, ElementCategory, AIUsageEntry } from "@/types";
 import { id } from "@/lib/utils";
-import { aiBreakdownScene, demoBreakdown, mapWithConcurrency } from "@/lib/claude";
+import {
+  aiBreakdownBatch,
+  aiCharacterBible,
+  demoBreakdown,
+  mapWithConcurrency,
+  BREAKDOWN_BATCH_SIZE,
+  type ScriptCharacter,
+} from "@/lib/claude";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -159,6 +166,8 @@ export interface BreakdownProgress {
   done: number;
   total: number;
   currentSceneNumber: string;
+  /** What the run is doing right now, for the progress label. */
+  stage: "characters" | "scenes";
 }
 
 export interface BreakdownRunResult {
@@ -167,11 +176,29 @@ export interface BreakdownRunResult {
   fromMock: boolean;
   /** Scenes where the live API failed after retries (offline fallback was used). */
   failedScenes: { sceneNumber: string; error: string }[];
+  /** Characters the AI found across the whole script. Empty in demo mode. */
+  characters: ScriptCharacter[];
 }
 
-/** How many scenes to analyze in parallel against the live API. */
-const BREAKDOWN_CONCURRENCY = 4;
+/** How many batches to run against the live API at once. */
+const BREAKDOWN_CONCURRENCY = 3;
 
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+/**
+ * Full breakdown: one character pass over the whole script, then batched
+ * scene passes that all share it.
+ *
+ * The character pass is what makes the scene passes accurate — without it
+ * every batch re-guesses who "the doctor" is — so it runs first and its
+ * output is threaded through. If it fails, the run continues on the regex
+ * fallback rather than aborting; a breakdown with weaker cast naming still
+ * beats no breakdown.
+ */
 export async function runBreakdown(
   scenes: Scene[],
   onProgress?: (p: BreakdownProgress) => void,
@@ -182,15 +209,58 @@ export async function runBreakdown(
   let anyMock = false;
   let done = 0;
 
-  const characters = extractCharacters(scenes);
-  onProgress?.({ done: 0, total: scenes.length, currentSceneNumber: scenes[0]?.number ?? "" });
+  // ---- Pass 1: who is in this script? ----
+  onProgress?.({ done: 0, total: scenes.length, currentSceneNumber: "", stage: "characters" });
 
-  const out = await mapWithConcurrency(scenes, BREAKDOWN_CONCURRENCY, async (scene) => {
-    let proposalElements;
-    let duration = scene.estimatedShootMinutes;
+  let characters: ScriptCharacter[] = [];
+  const fullScript = scenes.map((s) => `SCENE ${s.number} — ${s.intExt}. ${s.location} — ${s.timeOfDay}\n${s.scriptText}`).join("\n\n");
+  try {
+    const bible = await aiCharacterBible(fullScript, projectName);
+    characters = bible.characters;
+    if (bible.result.fromMock) anyMock = true;
+    usage.push({
+      feature: "character_bible",
+      inputTokens: bible.result.inputTokens,
+      outputTokens: bible.result.outputTokens,
+      model: bible.result.model,
+      costUsd: bible.result.costUsd,
+    });
+  } catch {
+    /* Handled by the heuristic fallback below. */
+  }
+  if (characters.length === 0) {
+    // Either the pass failed or we're in demo mode. The cue heuristic is
+    // weaker — it can't resolve nicknames or spot non-speaking roles — but
+    // it keeps cast naming anchored to something rather than nothing.
+    characters = extractCharacters(scenes).map((name) => ({
+      name,
+      speaking: true,
+      importance: "supporting" as const,
+    }));
+  }
+
+  // ---- Pass 2: break the scenes down in batches ----
+  const batches = chunk(scenes, BREAKDOWN_BATCH_SIZE);
+  const proposals = new Map<string, { elements: BreakdownElement[]; duration: number }>();
+
+  onProgress?.({ done: 0, total: scenes.length, currentSceneNumber: scenes[0]?.number ?? "", stage: "scenes" });
+
+  await mapWithConcurrency(batches, BREAKDOWN_CONCURRENCY, async (batch) => {
+    const toElements = (els: { name: string; category: string; subCategory?: string; description?: string; notes?: string }[]) =>
+      els.map((e) => ({
+        id: id("el"),
+        name: e.name,
+        category: e.category as ElementCategory,
+        subCategory: e.subCategory,
+        description: e.description,
+        notes: e.notes,
+      }));
 
     try {
-      const { proposal, result } = await aiBreakdownScene(scene, { characters, projectName });
+      const { proposals: got, result } = await aiBreakdownBatch(batch, {
+        characterBible: characters,
+        projectName,
+      });
       if (result.fromMock) anyMock = true;
       usage.push({
         feature: "script_breakdown",
@@ -199,41 +269,52 @@ export async function runBreakdown(
         model: result.model,
         costUsd: result.costUsd,
       });
-      proposalElements = proposal.elements;
-      duration = proposal.estimated_duration_minutes || duration;
+
+      for (const scene of batch) {
+        const p = got.get(scene.number);
+        if (p) {
+          proposals.set(scene.id, {
+            elements: toElements(p.elements),
+            duration: p.estimated_duration_minutes || scene.estimatedShootMinutes,
+          });
+        } else {
+          // The batch succeeded but skipped this scene — don't leave it blank.
+          failedScenes.push({
+            sceneNumber: scene.number,
+            error: "The AI returned no entry for this scene.",
+          });
+          const fb = demoBreakdown(scene);
+          proposals.set(scene.id, { elements: toElements(fb.elements), duration: fb.estimated_duration_minutes });
+        }
+        done += 1;
+        onProgress?.({ done, total: scenes.length, currentSceneNumber: scene.number, stage: "scenes" });
+      }
     } catch (err) {
-      // Live API failed after retries — keep the run going with the offline
-      // heuristic for this scene, but report it honestly to the caller.
-      failedScenes.push({
-        sceneNumber: scene.number,
-        error: (err as Error).message || "Unknown error",
-      });
-      const fallback = demoBreakdown(scene);
-      proposalElements = fallback.elements;
-      duration = fallback.estimated_duration_minutes;
+      // The whole batch failed after retries. Report every scene in it and
+      // fall back so the rest of the run still produces something usable.
+      const message = (err as Error).message || "Unknown error";
+      for (const scene of batch) {
+        failedScenes.push({ sceneNumber: scene.number, error: message });
+        const fb = demoBreakdown(scene);
+        proposals.set(scene.id, { elements: toElements(fb.elements), duration: fb.estimated_duration_minutes });
+        done += 1;
+        onProgress?.({ done, total: scenes.length, currentSceneNumber: scene.number, stage: "scenes" });
+      }
     }
+  });
 
-    const elements: BreakdownElement[] = proposalElements.map((e) => ({
-      id: id("el"),
-      name: e.name,
-      category: e.category as ElementCategory,
-      subCategory: e.subCategory,
-      description: e.description,
-      notes: e.notes,
-    }));
-
-    done += 1;
-    onProgress?.({ done, total: scenes.length, currentSceneNumber: scene.number });
-
+  const out = scenes.map((scene) => {
+    const p = proposals.get(scene.id);
+    const elements = p?.elements ?? [];
     return {
       ...scene,
       elements,
-      estimatedShootMinutes: duration,
+      estimatedShootMinutes: p?.duration ?? scene.estimatedShootMinutes,
       vfxFlags: elements.some((e) => e.category === "vfx"),
       sfxFlags: elements.some((e) => e.category === "sfx"),
     };
   });
 
-  onProgress?.({ done: scenes.length, total: scenes.length, currentSceneNumber: "" });
-  return { scenes: out, usage, fromMock: anyMock, failedScenes };
+  onProgress?.({ done: scenes.length, total: scenes.length, currentSceneNumber: "", stage: "scenes" });
+  return { scenes: out, usage, fromMock: anyMock, failedScenes, characters };
 }

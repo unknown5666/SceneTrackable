@@ -490,6 +490,7 @@ export interface ActivityLogEntry {
 
 export type AIFeature =
   | "script_breakdown"
+  | "character_bible"
   | "daily_digest"
   | "report_narration"
   | "nl_query"

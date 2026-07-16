@@ -42,6 +42,74 @@ import { isAdminRole } from "@/types";
 import { DEFAULT_ROLES } from "@/data/roles";
 import { evaluateDeadline } from "@/lib/deadlines";
 import { id, verifyPassword, hashPassword, HASH_PREFIX } from "@/lib/utils";
+import {
+  cloudEnabled,
+  cloudConnect,
+  bootstrapWorkspace,
+  cloudDisconnect,
+  pullWorkspace,
+  startCloudSync,
+  reconcile,
+  registerRehydrate,
+} from "@/lib/cloud";
+
+// ============================================================
+// CLOUD SESSION
+//
+// Signing into SceneTrackable is the only sign-in there is: the cloud
+// session is derived from the same username + password and established
+// here, so no one has to know Supabase exists. All of this is a no-op when
+// the app was built without Supabase credentials.
+// ============================================================
+
+/** Attach this device to the shared workspace and start syncing. */
+async function attachCloud(
+  username: string,
+  passwordHash: string,
+  gateSecret?: string,
+  isInvite = false
+): Promise<void> {
+  if (!cloudEnabled) return;
+  const res = await cloudConnect({ username, passwordHash, gateSecret, isInvite });
+  if (res.needsBootstrap) {
+    // Fresh deployment with no workspace yet — this device's data becomes it.
+    const boot = await bootstrapWorkspace(username);
+    if (!boot.ok) return;
+  } else if (!res.ok) {
+    return;
+  }
+  startCloudSync();
+  await reconcile();
+}
+
+/**
+ * Recover an account on a device that has never seen it.
+ *
+ * A brand-new browser starts blank, so the local user list can't authorize
+ * anyone — but the cloud can. The derived credential only signs in if this
+ * username/password already exists in the workspace, so a successful pull is
+ * itself the proof; the normal local login then runs against the pulled data.
+ * Returns null on success, or a message explaining why it couldn't.
+ */
+export async function cloudRecoverAccount(
+  username: string,
+  password: string,
+  opts?: { inviteCode?: string }
+): Promise<string | null> {
+  if (!cloudEnabled) return "Invalid username or password.";
+  const passwordHash = await hashPassword(password);
+  const res = await cloudConnect({
+    username,
+    passwordHash,
+    gateSecret: opts?.inviteCode ?? passwordHash,
+    isInvite: Boolean(opts?.inviteCode),
+  });
+  if (!res.ok) return res.error ?? "Invalid username or password.";
+  const err = await pullWorkspace();
+  if (err) return err;
+  startCloudSync();
+  return null;
+}
 
 // ============================================================
 // BLANK DATA HELPERS
@@ -292,6 +360,9 @@ export const useStore = create<State>()(
           entity: "auth",
           description: `${user.displayName} signed in`,
         });
+        // Not awaited: the cloud handshake is a few round trips and must not
+        // hold the sign-in button hostage. Sync catches up on its own.
+        void attachCloud(user.username, await hashPassword(password));
         return true;
       },
 
@@ -323,6 +394,11 @@ export const useStore = create<State>()(
           entity: "auth",
           description: `${user.displayName} set a password from invite`,
         });
+        // The invite code is the gate here, not the password: the cloud copy
+        // still has this account password-less, so a password-based join
+        // would be rejected. Redeeming also revokes any older device identity
+        // for this account, which is what makes an admin reset stick.
+        void attachCloud(user.username, hashed, inviteCode.trim(), true);
         return null;
       },
 
@@ -333,6 +409,7 @@ export const useStore = create<State>()(
           description: `Signed out`,
         });
         set({ currentUserId: "", activeRole: null });
+        void cloudDisconnect();
       },
 
       addUser: (u) => {
@@ -1100,6 +1177,11 @@ export const useStore = create<State>()(
     }
   )
 );
+
+// A pull rewrites localStorage underneath us; this is how the live store
+// picks that up without a full page reload. Awaited by the caller: a pull
+// isn't finished until the store actually reflects it.
+registerRehydrate(() => useStore.persist.rehydrate());
 
 // ============================================================
 // SELECTORS

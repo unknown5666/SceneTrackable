@@ -23,6 +23,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { formatDate } from "@/lib/utils";
 import { extractPdfText, parseScreenplay, runBreakdown, type BreakdownProgress } from "@/lib/script";
+import type { ScriptCharacter } from "@/lib/claude";
 import type { Scene } from "@/types";
 
 const CURRENCIES = ["AED", "USD", "EUR", "GBP", "INR", "CAD"];
@@ -63,6 +64,7 @@ export function Projects() {
   const [errorMsg, setErrorMsg] = useState("");
   const [usedDemo, setUsedDemo] = useState(false);
   const [failedScenes, setFailedScenes] = useState<{ sceneNumber: string; error: string }[]>([]);
+  const [foundCharacters, setFoundCharacters] = useState<ScriptCharacter[]>([]);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const openCreate = () => {
@@ -140,16 +142,17 @@ export function Projects() {
 
   const run = async () => {
     setStage("running");
-    setProgress({ done: 0, total: parsed.length, currentSceneNumber: parsed[0]?.number ?? "" });
+    setProgress({ done: 0, total: parsed.length, currentSceneNumber: "", stage: "characters" });
     try {
       const projectName = projects.find((p) => p.id === uploadFor)?.name;
-      const { scenes, usage, fromMock, failedScenes: failed } = await runBreakdown(
+      const { scenes, usage, fromMock, failedScenes: failed, characters } = await runBreakdown(
         parsed,
         setProgress,
         projectName
       );
       replaceScenes(scenes);
       setFailedScenes(failed);
+      setFoundCharacters(characters);
       setProjectScript({
         fileName: source === "pdf" ? fileName : undefined,
         rawText,
@@ -448,13 +451,29 @@ export function Projects() {
             <div className="flex flex-col items-center gap-2">
               <Sparkles size={28} className="text-[var(--color-ai)] animate-pulse" />
               <div className="text-sm font-medium text-[var(--text-primary)]">
-                Analyzing scene {Math.min(progress.done + 1, progress.total)} of {progress.total}
+                {progress.stage === "characters"
+                  ? "Reading the script for characters"
+                  : `Analyzing scene ${Math.min(progress.done + 1, progress.total)} of ${progress.total}`}
               </div>
-              {progress.currentSceneNumber && (
-                <div className="text-xs text-[var(--text-muted)]">Scene {progress.currentSceneNumber}</div>
-              )}
+              <div className="text-xs text-[var(--text-muted)]">
+                {progress.stage === "characters"
+                  ? "One pass over the whole screenplay so cast naming stays consistent"
+                  : progress.currentSceneNumber
+                    ? `Scene ${progress.currentSceneNumber}`
+                    : ""}
+              </div>
             </div>
-            <ProgressBar value={progress.total ? (progress.done / progress.total) * 100 : 0} />
+            {/* The character pass has no per-scene progress, so show it as a
+                small definite slice rather than a bar that sits at zero. */}
+            <ProgressBar
+              value={
+                progress.stage === "characters"
+                  ? 6
+                  : progress.total
+                    ? 6 + (progress.done / progress.total) * 94
+                    : 6
+              }
+            />
             <div className="text-center text-xs text-[var(--text-muted)]">
               Keep this open — larger scripts take a moment.
             </div>
@@ -471,7 +490,19 @@ export function Projects() {
             </div>
             <div className="text-lg font-semibold text-[var(--text-primary)]">Breakdown complete</div>
             <div className="text-sm text-[var(--text-secondary)] max-w-sm">
-              {parsed.length} scenes analyzed. Every element is now editable in the Breakdown workspace.
+              {parsed.length} scenes analyzed
+              {foundCharacters.length > 0 && (
+                <>
+                  {" "}
+                  and {foundCharacters.length} character
+                  {foundCharacters.length > 1 ? "s" : ""} identified
+                  {(() => {
+                    const speaking = foundCharacters.filter((c) => c.speaking).length;
+                    return speaking ? ` (${speaking} speaking)` : "";
+                  })()}
+                </>
+              )}
+              . Every element is now editable in the Breakdown workspace.
             </div>
             {usedDemo && (
               <Badge tone="ai">

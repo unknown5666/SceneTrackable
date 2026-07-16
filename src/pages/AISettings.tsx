@@ -39,6 +39,7 @@ import type { AIFeature } from "@/types";
 
 const FEATURE_LABELS: Record<AIFeature, string> = {
   script_breakdown: "Script Breakdown",
+  character_bible: "Character Pass",
   daily_digest: "Daily Digest",
   task_proposals: "Task Proposals",
   nl_query: "NL Query",
@@ -46,7 +47,10 @@ const FEATURE_LABELS: Record<AIFeature, string> = {
 };
 
 const FEATURE_EST: Record<AIFeature, { avgIn: number; avgOut: number; perUnit: string }> = {
-  script_breakdown: { avgIn: 1500, avgOut: 1000, perUnit: "per page" },
+  // Scenes are batched, so a "unit" here is a batch of ~10 scenes.
+  script_breakdown: { avgIn: 9000, avgOut: 9000, perUnit: "per 10 scenes" },
+  // One pass over the entire screenplay, once per breakdown run.
+  character_bible: { avgIn: 40000, avgOut: 3000, perUnit: "per script" },
   daily_digest: { avgIn: 500, avgOut: 300, perUnit: "per role/day" },
   task_proposals: { avgIn: 800, avgOut: 500, perUnit: "per scene" },
   nl_query: { avgIn: 600, avgOut: 200, perUnit: "per query" },
