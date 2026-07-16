@@ -41,6 +41,12 @@ import type { Scene, ShootDay, DoodStatus } from "@/types";
 // STRIP BOARD
 // ============================================================
 
+const normLoc = (v?: string) => (v ?? "").trim().toLowerCase();
+
+// A day with no location set holds any scene.
+const sceneFitsDay = (scene: Scene, day: ShootDay) =>
+  !normLoc(day.location) || normLoc(scene.location) === normLoc(day.location);
+
 export function Schedule() {
   const [tab, setTab] = useState("board");
 
@@ -149,18 +155,21 @@ function StripBoard() {
     const { active, over } = e;
     if (!over) return;
     const sceneId = active.id as string;
+    const scene = scenes.find((s) => s.id === sceneId);
+    if (!scene) return;
     const overIdStr = over.id as string;
     // over ID = day column ID = "day_N" or another scene
     const dayMatch = overIdStr.match(/^day_(\d+)$/);
     if (dayMatch) {
-      moveScene(sceneId, parseInt(dayMatch[1], 10));
+      const targetDay = shootDays.find((d) => d.dayNumber === parseInt(dayMatch[1], 10));
+      if (!targetDay || !sceneFitsDay(scene, targetDay)) return;
+      moveScene(sceneId, targetDay.dayNumber);
     } else {
       // Dropped on another scene strip — find that scene's day
       const targetDay = shootDays.find((d) => d.scenes.includes(overIdStr));
-      if (targetDay) {
-        const idx = targetDay.scenes.indexOf(overIdStr);
-        moveScene(sceneId, targetDay.dayNumber, idx);
-      }
+      if (!targetDay || !sceneFitsDay(scene, targetDay)) return;
+      const idx = targetDay.scenes.indexOf(overIdStr);
+      moveScene(sceneId, targetDay.dayNumber, idx);
     }
   };
 
@@ -222,7 +231,9 @@ function StripBoard() {
       >
         <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${visibleDays}, minmax(160px, 1fr))` }}>
           {visibleShootDays.map((day) => {
-            const dayScenes = day.scenes.map((sid) => scenes.find((s) => s.id === sid)!).filter(Boolean);
+            const assigned = day.scenes.map((sid) => scenes.find((s) => s.id === sid)!).filter(Boolean);
+            const dayScenes = assigned.filter((sc) => sceneFitsDay(sc, day));
+            const offLocationCount = assigned.length - dayScenes.length;
             const totalPages = dayScenes.reduce((s, sc) => s + sc.pages, 0);
             const isToday = day.dayNumber === production.currentShootDay;
 
@@ -289,8 +300,21 @@ function StripBoard() {
                 ))}
 
                 {/* Scene strips droppable zone */}
+                {offLocationCount > 0 && (
+                  <div
+                    className="px-3 py-1.5 text-[10px] font-medium border-b border-[var(--border-default)]"
+                    style={{ background: "rgba(245,158,11,0.08)", color: "var(--color-warning)" }}
+                    title={assigned
+                      .filter((sc) => !sceneFitsDay(sc, day))
+                      .map((sc) => `${sc.number} — ${sc.location}`)
+                      .join("\n")}
+                  >
+                    {offLocationCount} scene{offLocationCount > 1 ? "s" : ""} hidden (other location)
+                  </div>
+                )}
+
                 <SortableContext
-                  items={day.scenes}
+                  items={dayScenes.map((sc) => sc.id)}
                   strategy={verticalListSortingStrategy}
                   id={`day_${day.dayNumber}`}
                 >
