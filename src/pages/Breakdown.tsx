@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
   Film,
   Sparkles,
@@ -11,6 +11,8 @@ import {
   Printer,
   AlertTriangle,
   SlidersHorizontal,
+  ChevronDown,
+  Search,
   X,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -20,7 +22,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { aiBreakdownScene } from "@/lib/claude";
 import { extractCharacters } from "@/lib/script";
 import { exportBreakdownCSV, printBreakdownSheets } from "@/lib/export";
@@ -106,7 +108,6 @@ export function Breakdown() {
     };
   }, [scenes, sceneDateMap]);
 
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [locationFilter, setLocationFilter] = useState<Set<string>>(new Set());
   const [timeFilter, setTimeFilter] = useState<Set<string>>(new Set());
   const [intExtFilter, setIntExtFilter] = useState<Set<string>>(new Set());
@@ -120,15 +121,40 @@ export function Breakdown() {
     setter(next);
   };
 
-  const activeFilterCount =
-    locationFilter.size + timeFilter.size + intExtFilter.size + actorFilter.size + dateFilter.size;
+  const filterGroups: FilterGroupDef[] = [
+    { key: "intExt", label: "INT/EXT", options: INT_EXT, selected: intExtFilter, setter: setIntExtFilter },
+    { key: "time", label: "Time of day", options: TIMES, selected: timeFilter, setter: setTimeFilter },
+    {
+      key: "location",
+      label: "Location",
+      options: filterOptions.locations,
+      selected: locationFilter,
+      setter: setLocationFilter,
+    },
+    { key: "cast", label: "Cast", options: filterOptions.actors, selected: actorFilter, setter: setActorFilter },
+    {
+      key: "date",
+      label: "Shoot date",
+      options: filterOptions.dates,
+      selected: dateFilter,
+      setter: setDateFilter,
+      format: (v) => formatDate(v, { weekday: "short" }),
+    },
+  ];
+
+  const activeFilterCount = filterGroups.reduce((n, g) => n + g.selected.size, 0);
+
+  const activeChips = filterGroups.flatMap((g) =>
+    Array.from(g.selected).map((value) => ({
+      key: `${g.key}:${value}`,
+      group: g.label,
+      label: g.format ? g.format(value) : value,
+      remove: () => toggleInSet(g.selected, g.setter, value),
+    }))
+  );
 
   const clearFilters = () => {
-    setLocationFilter(new Set());
-    setTimeFilter(new Set());
-    setIntExtFilter(new Set());
-    setActorFilter(new Set());
-    setDateFilter(new Set());
+    for (const g of filterGroups) g.setter(new Set());
   };
 
   const filteredScenes = useMemo(() => {
@@ -265,82 +291,83 @@ export function Breakdown() {
         </div>
       </div>
 
+      {/* Filter toolbar */}
+      <Card padding="sm" className="mb-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1.5 pr-1 text-xs text-[var(--text-secondary)] shrink-0">
+            <SlidersHorizontal size={13} />
+            Filters
+          </div>
+
+          {filterGroups.map((g) => (
+            <FilterDropdown
+              key={g.key}
+              label={g.label}
+              options={g.options}
+              selected={g.selected}
+              format={g.format}
+              onToggle={(v) => toggleInSet(g.selected, g.setter, v)}
+              onClear={() => g.setter(new Set())}
+            />
+          ))}
+
+          <div className="flex items-center gap-3 ml-auto shrink-0">
+            <span className="text-xs text-[var(--text-muted)] tabular-nums">
+              {activeFilterCount > 0
+                ? `${filteredScenes.length} of ${scenes.length} scenes`
+                : `${scenes.length} scenes`}
+            </span>
+            {activeFilterCount > 0 && (
+              <button
+                onClick={clearFilters}
+                className="flex items-center gap-1 h-7 px-2 rounded-md text-xs text-[var(--text-secondary)] hover:text-[var(--color-danger)] hover:bg-[var(--bg-surface-hover)] transition-colors"
+              >
+                <X size={12} /> Clear all
+              </button>
+            )}
+          </div>
+        </div>
+
+        {activeChips.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 mt-2.5 pt-2.5 border-t border-[var(--border-default)]">
+            {activeChips.map((chip) => (
+              <button
+                key={chip.key}
+                onClick={chip.remove}
+                title={`Remove ${chip.group} filter “${chip.label}”`}
+                className="group flex items-center gap-1 h-6 pl-2 pr-1.5 rounded-badge bg-[var(--active-tint)] text-[11px] text-[var(--accent-blue)] hover:bg-[rgba(79,123,247,0.18)] transition-colors"
+              >
+                <span className="opacity-60">{chip.group}</span>
+                <span className="font-medium truncate max-w-[160px]">{chip.label}</span>
+                <X size={11} className="opacity-50 group-hover:opacity-100" />
+              </button>
+            ))}
+          </div>
+        )}
+      </Card>
+
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
         {/* Scene list */}
         <div className="lg:col-span-1">
           <Card padding="sm" className="max-h-[calc(100vh-180px)] overflow-y-auto">
-            <div className="flex items-center justify-between gap-2 mb-1">
-              <CardHeader title={`Scenes (${filteredScenes.length}/${scenes.length})`} className="mb-0" />
-              <button
-                onClick={() => setFiltersOpen((v) => !v)}
-                className={cn(
-                  "relative flex items-center gap-1 shrink-0 h-7 px-2 rounded-md text-[11px] transition-colors",
-                  filtersOpen || activeFilterCount
-                    ? "bg-[var(--active-tint)] text-[var(--accent-blue)]"
-                    : "text-[var(--text-secondary)] hover:bg-[var(--bg-surface-hover)]"
-                )}
-              >
-                <SlidersHorizontal size={12} />
-                Filters
-                {activeFilterCount > 0 && (
-                  <span className="ml-0.5 min-w-[15px] h-[15px] px-1 rounded-full bg-[var(--accent-blue)] text-white text-[9px] flex items-center justify-center leading-none">
-                    {activeFilterCount}
-                  </span>
-                )}
-              </button>
-            </div>
-
-            {filtersOpen && (
-              <div className="mb-2 p-2 rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface-hover)] space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] uppercase tracking-wide text-[var(--text-muted)]">Filter scenes</span>
-                  {activeFilterCount > 0 && (
-                    <button
-                      onClick={clearFilters}
-                      className="flex items-center gap-0.5 text-[10px] text-[var(--text-muted)] hover:text-[var(--color-danger)]"
-                    >
-                      <X size={10} /> Clear all
-                    </button>
-                  )}
-                </div>
-
-                <FilterGroup
-                  label="INT/EXT"
-                  options={INT_EXT}
-                  selected={intExtFilter}
-                  onToggle={(v) => toggleInSet(intExtFilter, setIntExtFilter, v)}
-                />
-                <FilterGroup
-                  label="Time of day"
-                  options={TIMES}
-                  selected={timeFilter}
-                  onToggle={(v) => toggleInSet(timeFilter, setTimeFilter, v)}
-                />
-                <FilterGroup
-                  label="Location"
-                  options={filterOptions.locations}
-                  selected={locationFilter}
-                  onToggle={(v) => toggleInSet(locationFilter, setLocationFilter, v)}
-                />
-                <FilterGroup
-                  label="Actors / Cast"
-                  options={filterOptions.actors}
-                  selected={actorFilter}
-                  onToggle={(v) => toggleInSet(actorFilter, setActorFilter, v)}
-                />
-                <FilterGroup
-                  label="Shoot date"
-                  options={filterOptions.dates}
-                  selected={dateFilter}
-                  onToggle={(v) => toggleInSet(dateFilter, setDateFilter, v)}
-                />
-              </div>
-            )}
+            <CardHeader
+              title="Scenes"
+              subtitle={
+                activeFilterCount > 0 ? `${filteredScenes.length} of ${scenes.length} shown` : undefined
+              }
+              className="mb-2"
+            />
 
             <div className="space-y-0.5">
               {filteredScenes.length === 0 && (
-                <div className="text-xs text-[var(--text-muted)] text-center py-6">
-                  No scenes match these filters.
+                <div className="text-center py-6 px-2">
+                  <div className="text-xs text-[var(--text-muted)]">No scenes match these filters.</div>
+                  <button
+                    onClick={clearFilters}
+                    className="mt-2 text-xs text-[var(--accent-blue)] hover:underline"
+                  >
+                    Clear all filters
+                  </button>
                 </div>
               )}
               {filteredScenes.map((s) => (
@@ -613,37 +640,134 @@ export function Breakdown() {
   );
 }
 
-function FilterGroup({
+type FilterGroupDef = {
+  key: string;
+  label: string;
+  options: readonly string[];
+  selected: Set<string>;
+  setter: (s: Set<string>) => void;
+  format?: (value: string) => string;
+};
+
+/** Options become searchable once the list is long enough to need scrolling. */
+const SEARCHABLE_AT = 8;
+
+function FilterDropdown({
   label,
   options,
   selected,
+  format,
   onToggle,
+  onClear,
 }: {
   label: string;
-  options: string[];
+  options: readonly string[];
   selected: Set<string>;
+  format?: (value: string) => string;
   onToggle: (value: string) => void;
+  onClear: () => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) setQuery("");
+  }, [open]);
+
   if (options.length === 0) return null;
+
+  const searchable = options.length >= SEARCHABLE_AT;
+  const shown = query
+    ? options.filter((o) => (format ? format(o) : o).toLowerCase().includes(query.toLowerCase()))
+    : options;
+
   return (
-    <div>
-      <div className="text-[10px] font-medium text-[var(--text-secondary)] mb-1">{label}</div>
-      <div className="max-h-32 overflow-y-auto space-y-0.5 pr-1">
-        {options.map((opt) => (
-          <label
-            key={opt}
-            className="flex items-center gap-1.5 text-xs text-[var(--text-primary)] cursor-pointer px-1 py-0.5 rounded hover:bg-[var(--row-hover)]"
-          >
-            <input
-              type="checkbox"
-              checked={selected.has(opt)}
-              onChange={() => onToggle(opt)}
-              className="accent-[var(--accent-blue)]"
-            />
-            <span className="truncate">{opt}</span>
-          </label>
-        ))}
-      </div>
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          "flex items-center gap-1.5 h-8 px-2.5 rounded-md border text-xs transition-colors",
+          selected.size
+            ? "border-[var(--accent-blue)] bg-[var(--active-tint)] text-[var(--accent-blue)]"
+            : "border-[var(--border-default)] text-[var(--text-secondary)] hover:border-[var(--border-hover)] hover:bg-[var(--bg-surface-hover)]"
+        )}
+      >
+        {label}
+        {selected.size > 0 && (
+          <span className="min-w-[16px] h-4 px-1 rounded-full bg-[var(--accent-blue)] text-white text-[9px] font-medium flex items-center justify-center leading-none">
+            {selected.size}
+          </span>
+        )}
+        <ChevronDown size={12} className={cn("opacity-60 transition-transform", open && "rotate-180")} />
+      </button>
+
+      {open && (
+        <div className="absolute z-20 left-0 mt-1 w-56 rounded-lg border border-[var(--border-default)] bg-[var(--bg-elevated)] shadow-xl p-1.5">
+          {searchable && (
+            <div className="relative mb-1.5">
+              <Search
+                size={12}
+                className="absolute left-2 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none"
+              />
+              <input
+                autoFocus
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={`Search ${label.toLowerCase()}…`}
+                className="w-full h-7 text-xs pl-7"
+              />
+            </div>
+          )}
+
+          <div className="max-h-56 overflow-y-auto space-y-0.5">
+            {shown.length === 0 && (
+              <div className="text-xs text-[var(--text-muted)] text-center py-3">No matches</div>
+            )}
+            {shown.map((opt) => (
+              <label
+                key={opt}
+                className="flex items-center gap-2 text-xs text-[var(--text-primary)] cursor-pointer px-1.5 py-1 rounded hover:bg-[var(--row-hover)]"
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.has(opt)}
+                  onChange={() => onToggle(opt)}
+                  className="accent-[var(--accent-blue)] shrink-0"
+                />
+                <span className="truncate">{format ? format(opt) : opt}</span>
+              </label>
+            ))}
+          </div>
+
+          {selected.size > 0 && (
+            <div className="mt-1 pt-1 border-t border-[var(--border-default)]">
+              <button
+                onClick={onClear}
+                className="w-full text-left text-[11px] text-[var(--text-muted)] hover:text-[var(--color-danger)] px-1.5 py-1"
+              >
+                Clear {label.toLowerCase()}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
