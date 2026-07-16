@@ -1,0 +1,370 @@
+import React, { useState, useRef } from "react";
+import { Shield, Plus, Trash2, UserPlus, KeyRound, Users as UsersIcon, Lock, Database, Download, Upload } from "lucide-react";
+import { useStore } from "@/state/store";
+import { ACCESS_KEYS } from "@/data/roles";
+import { isAdminRole } from "@/types";
+import { hashPassword } from "@/lib/utils";
+import { exportBackup, importBackup } from "@/lib/export";
+import { Card, CardHeader } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
+import { Modal } from "@/components/ui/Modal";
+import type { Role } from "@/types";
+
+export function Admin() {
+  const users = useStore((s) => s.users);
+  const roles = useStore((s) => s.roles);
+  const currentUserId = useStore((s) => s.currentUserId);
+  const addUser = useStore((s) => s.addUser);
+  const updateUser = useStore((s) => s.updateUser);
+  const removeUser = useStore((s) => s.removeUser);
+  const addRole = useStore((s) => s.addRole);
+  const updateRole = useStore((s) => s.updateRole);
+  const removeRole = useStore((s) => s.removeRole);
+
+  const roleLabel = (id: string) => roles.find((r) => r.id === id)?.label ?? id;
+
+  // ---- User modal ----
+  const [userModal, setUserModal] = useState<null | { id?: string }>(null);
+  const [uName, setUName] = useState("");
+  const [uDisplay, setUDisplay] = useState("");
+  const [uPass, setUPass] = useState("");
+  const [uRole, setURole] = useState(roles[0]?.id ?? "");
+
+  const openAddUser = () => {
+    setUserModal({});
+    setUName("");
+    setUDisplay("");
+    setUPass("");
+    setURole(roles.find((r) => !isAdminRole(r))?.id ?? roles[0]?.id ?? "");
+  };
+  const openEditUser = (id: string) => {
+    const u = users.find((x) => x.id === id);
+    if (!u) return;
+    setUserModal({ id });
+    setUName(u.username);
+    setUDisplay(u.displayName);
+    setUPass(""); // blank = keep the current password
+    setURole(u.roleId);
+  };
+  const saveUser = async () => {
+    if (!uName.trim() || !uDisplay.trim()) return;
+    if (userModal?.id) {
+      const patch: { username: string; displayName: string; roleId: string; password?: string } = {
+        username: uName.trim(),
+        displayName: uDisplay.trim(),
+        roleId: uRole,
+      };
+      if (uPass) patch.password = await hashPassword(uPass);
+      updateUser(userModal.id, patch);
+    } else {
+      if (!uPass) return;
+      addUser({
+        username: uName.trim(),
+        displayName: uDisplay.trim(),
+        password: await hashPassword(uPass),
+        roleId: uRole,
+        active: true,
+      });
+    }
+    setUserModal(null);
+  };
+
+  // ---- Role modal ----
+  const [roleModal, setRoleModal] = useState<null | { id?: string }>(null);
+  const [rLabel, setRLabel] = useState("");
+  const [rDesc, setRDesc] = useState("");
+  const [rAdmin, setRAdmin] = useState(false);
+  const [rAccess, setRAccess] = useState<string[]>([]);
+
+  const openAddRole = () => {
+    setRoleModal({});
+    setRLabel("");
+    setRDesc("");
+    setRAdmin(false);
+    setRAccess([]);
+  };
+  const openEditRole = (role: Role) => {
+    setRoleModal({ id: role.id });
+    setRLabel(role.label);
+    setRDesc(role.description);
+    setRAdmin(role.access.includes("all"));
+    setRAccess(role.access.filter((a) => a !== "all"));
+  };
+  const saveRole = () => {
+    if (!rLabel.trim()) return;
+    const access = rAdmin ? ["all"] : rAccess;
+    if (roleModal?.id) {
+      updateRole(roleModal.id, { label: rLabel.trim(), description: rDesc.trim(), access });
+    } else {
+      addRole({ label: rLabel.trim(), description: rDesc.trim(), access });
+    }
+    setRoleModal(null);
+  };
+  const deleteRole = (id: string) => {
+    const err = removeRole(id);
+    if (err) alert(err);
+  };
+
+  const toggleAccess = (key: string) =>
+    setRAccess((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+
+  // ---- Backup / restore ----
+  const restoreInput = useRef<HTMLInputElement>(null);
+  const onRestoreFile = async (file: File) => {
+    if (
+      !confirm(
+        "Restoring a backup REPLACES all current data (projects, users, breakdowns). The app will reload. Continue?"
+      )
+    )
+      return;
+    const err = await importBackup(file);
+    if (err) alert(err);
+  };
+
+  return (
+    <div className="max-w-[1200px] mx-auto space-y-6">
+      <div className="flex items-center gap-2">
+        <Shield size={18} className="text-[var(--accent-blue)]" />
+        <div>
+          <div className="section-header">Administration</div>
+          <div className="page-title">Users & Roles</div>
+        </div>
+      </div>
+
+      {/* Users */}
+      <Card padding="none">
+        <div className="p-4 flex items-center justify-between">
+          <CardHeader title={<span className="flex items-center gap-2"><UsersIcon size={13} /> Users</span>} subtitle={`${users.length} accounts`} className="mb-0" />
+          <Button size="sm" onClick={openAddUser}>
+            <UserPlus size={13} /> Add user
+          </Button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="pos-table text-sm">
+            <thead>
+              <tr>
+                <th>User</th>
+                <th>Username</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th className="text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((u) => (
+                <tr key={u.id}>
+                  <td className="font-medium">{u.displayName}{u.id === currentUserId && <span className="text-[var(--text-muted)] font-normal"> (you)</span>}</td>
+                  <td className="text-[var(--text-secondary)] font-mono text-xs">{u.username}</td>
+                  <td>
+                    {isAdminRole(roles.find((r) => r.id === u.roleId)) ? (
+                      <Badge tone="ai">{roleLabel(u.roleId)}</Badge>
+                    ) : (
+                      <Badge tone="muted">{roleLabel(u.roleId)}</Badge>
+                    )}
+                  </td>
+                  <td>
+                    <button
+                      onClick={() => updateUser(u.id, { active: !u.active })}
+                      disabled={u.id === currentUserId}
+                    >
+                      <Badge tone={u.active ? "success" : "muted"} dot>
+                        {u.active ? "Active" : "Disabled"}
+                      </Badge>
+                    </button>
+                  </td>
+                  <td className="text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <Button size="sm" variant="ghost" onClick={() => openEditUser(u.id)}>
+                        <KeyRound size={13} /> Edit
+                      </Button>
+                      <button
+                        onClick={() => {
+                          if (u.id === currentUserId) return alert("You can't delete your own account.");
+                          if (confirm(`Delete user “${u.displayName}”?`)) removeUser(u.id);
+                        }}
+                        disabled={u.id === currentUserId}
+                        className="p-1.5 rounded text-[var(--text-muted)] hover:text-[var(--color-danger)] disabled:opacity-30"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {/* Roles */}
+      <Card padding="none">
+        <div className="p-4 flex items-center justify-between">
+          <CardHeader title={<span className="flex items-center gap-2"><Lock size={13} /> Roles</span>} subtitle={`${roles.length} roles`} className="mb-0" />
+          <Button size="sm" onClick={openAddRole}>
+            <Plus size={13} /> Add role
+          </Button>
+        </div>
+        <div className="divide-y divide-[var(--border-default)]">
+          {roles.map((r) => (
+            <div key={r.id} className="p-4 flex items-start gap-4">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-[var(--text-primary)]">{r.label}</span>
+                  {r.builtIn && <Badge tone="muted">Built-in</Badge>}
+                  {isAdminRole(r) && <Badge tone="ai">Full access</Badge>}
+                </div>
+                <div className="text-xs text-[var(--text-secondary)] mt-0.5">{r.description}</div>
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {r.access.includes("all") ? (
+                    <span className="text-[11px] text-[var(--text-muted)]">All pages + user/role management + AI settings</span>
+                  ) : r.access.length ? (
+                    r.access.map((a) => (
+                      <span key={a} className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-surface-hover)] text-[var(--text-secondary)]">
+                        {ACCESS_KEYS.find((k) => k.key === a)?.label ?? a}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-[11px] text-[var(--text-muted)]">Dashboard only</span>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <Button size="sm" variant="ghost" onClick={() => openEditRole(r)}>
+                  Edit
+                </Button>
+                {!r.builtIn && (
+                  <button
+                    onClick={() => deleteRole(r.id)}
+                    className="p-1.5 rounded text-[var(--text-muted)] hover:text-[var(--color-danger)]"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {/* Data backup / restore */}
+      <Card padding="none">
+        <div className="p-4 flex items-center justify-between">
+          <CardHeader
+            title={<span className="flex items-center gap-2"><Database size={13} /> Data</span>}
+            subtitle="Back up the entire workspace (all projects, users, breakdowns) to a file, or restore from one."
+            className="mb-0"
+          />
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="secondary" onClick={exportBackup}>
+              <Download size={13} /> Download backup
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => restoreInput.current?.click()}>
+              <Upload size={13} /> Restore backup
+            </Button>
+            <input
+              ref={restoreInput}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) onRestoreFile(f);
+                e.target.value = "";
+              }}
+            />
+          </div>
+        </div>
+      </Card>
+
+      {/* User modal */}
+      <Modal
+        open={!!userModal}
+        onClose={() => setUserModal(null)}
+        title={userModal?.id ? "Edit user" : "Add user"}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setUserModal(null)}>Cancel</Button>
+            <Button onClick={saveUser} disabled={!uName.trim() || !uDisplay.trim() || (!userModal?.id && !uPass)}>Save</Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="section-header block mb-1.5">Display name</label>
+            <input value={uDisplay} onChange={(e) => setUDisplay(e.target.value)} className="w-full" placeholder="Jane Producer" />
+          </div>
+          <div>
+            <label className="section-header block mb-1.5">Username</label>
+            <input value={uName} onChange={(e) => setUName(e.target.value)} className="w-full" placeholder="jane" />
+          </div>
+          <div>
+            <label className="section-header block mb-1.5">Password</label>
+            <input
+              type="password"
+              value={uPass}
+              onChange={(e) => setUPass(e.target.value)}
+              className="w-full"
+              placeholder={userModal?.id ? "Leave blank to keep current password" : "••••"}
+            />
+          </div>
+          <div>
+            <label className="section-header block mb-1.5">Role</label>
+            <select value={uRole} onChange={(e) => setURole(e.target.value)} className="w-full">
+              {roles.map((r) => (
+                <option key={r.id} value={r.id}>{r.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Role modal */}
+      <Modal
+        open={!!roleModal}
+        onClose={() => setRoleModal(null)}
+        title={roleModal?.id ? "Edit role" : "Add role"}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setRoleModal(null)}>Cancel</Button>
+            <Button onClick={saveRole} disabled={!rLabel.trim()}>Save</Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="section-header block mb-1.5">Role name</label>
+            <input value={rLabel} onChange={(e) => setRLabel(e.target.value)} className="w-full" placeholder="e.g. Line Producer" />
+          </div>
+          <div>
+            <label className="section-header block mb-1.5">Description</label>
+            <input value={rDesc} onChange={(e) => setRDesc(e.target.value)} className="w-full" placeholder="What this role does" />
+          </div>
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" checked={rAdmin} onChange={(e) => setRAdmin(e.target.checked)} className="accent-[var(--color-ai)]" />
+            <span className="text-[var(--text-primary)]">Administrator — full access (users, roles, AI settings)</span>
+          </label>
+          {!rAdmin && (
+            <div>
+              <label className="section-header block mb-2">Page access</label>
+              <div className="grid grid-cols-2 gap-2">
+                {ACCESS_KEYS.map((k) => (
+                  <label key={k.key} className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={rAccess.includes(k.key)}
+                      onChange={() => toggleAccess(k.key)}
+                      className="accent-[var(--accent-blue)]"
+                    />
+                    <span className="text-[var(--text-secondary)]">{k.label}</span>
+                  </label>
+                ))}
+              </div>
+              <div className="text-[11px] text-[var(--text-muted)] mt-2">Dashboard, Projects, Notifications & Tutorial are available to everyone.</div>
+            </div>
+          )}
+        </div>
+      </Modal>
+    </div>
+  );
+}
