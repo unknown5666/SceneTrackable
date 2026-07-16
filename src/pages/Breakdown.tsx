@@ -54,6 +54,7 @@ export function Breakdown() {
   const nav = useNavigate();
   const project = useStore(activeProject);
   const scenes = useStore((s) => s.scenes);
+  const characterBible = useStore((s) => s.characterBible);
   const shootDays = useStore((s) => s.shootDays);
   const updateScene = useStore((s) => s.updateScene);
   const addElement = useStore((s) => s.addElementToScene);
@@ -190,7 +191,10 @@ export function Breakdown() {
     setAiError("");
     try {
       const { proposal, result } = await aiBreakdownScene(scene, {
-        characters: extractCharacters(scenes),
+        // The stored bible knows aliases and non-speaking roles; the cue regex
+        // is only reached when no breakdown run has produced one yet.
+        characterBible: characterBible.length ? characterBible : undefined,
+        characters: characterBible.length ? undefined : extractCharacters(scenes),
         projectName: project?.name,
       });
       recordAIUsage({

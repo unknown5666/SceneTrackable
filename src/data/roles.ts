@@ -8,6 +8,7 @@ import type { Role } from "@/types";
 export const ACCESS_KEYS: { key: string; label: string }[] = [
   { key: "breakdown", label: "Script Breakdown" },
   { key: "schedule", label: "Schedule" },
+  { key: "locations", label: "Locations" },
   { key: "tasks", label: "Tasks" },
   { key: "budget", label: "Budget" },
   { key: "vfx", label: "VFX Pipeline" },
@@ -31,7 +32,7 @@ export const DEFAULT_ROLES: Role[] = [
     id: "scheduler",
     label: "1st AD / Scheduler",
     description: "Owns the shooting schedule, strip board, and DOOD.",
-    access: ["breakdown", "schedule", "tasks", "cast", "reports"],
+    access: ["breakdown", "schedule", "locations", "tasks", "cast", "reports"],
     builtIn: true,
   },
   {
@@ -55,7 +56,8 @@ export const DEFAULT_ROLES: Role[] = [
     label: "RF / Comms",
     description: "Frequency coordination and wireless equipment.",
     department: "rf",
-    access: ["rf", "schedule", "tasks"],
+    // Comms plans are built per location, so this role reads the bible too.
+    access: ["rf", "schedule", "locations", "tasks"],
     builtIn: true,
   },
   {

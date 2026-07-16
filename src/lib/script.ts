@@ -9,9 +9,12 @@ import { id } from "@/lib/utils";
 import {
   aiBreakdownBatch,
   aiCharacterBible,
+  aiLocationBible,
+  fallbackLocations,
   demoBreakdown,
   mapWithConcurrency,
   BREAKDOWN_BATCH_SIZE,
+  type ProposedLocation,
   type ScriptCharacter,
 } from "@/lib/claude";
 
@@ -168,6 +171,8 @@ export interface BreakdownProgress {
   currentSceneNumber: string;
   /** What the run is doing right now, for the progress label. */
   stage: "characters" | "scenes";
+  /** Set while the run is parked on a provider rate limit. */
+  waitingSeconds?: number;
 }
 
 export interface BreakdownRunResult {
@@ -178,6 +183,52 @@ export interface BreakdownRunResult {
   failedScenes: { sceneNumber: string; error: string }[];
   /** Characters the AI found across the whole script. Empty in demo mode. */
   characters: ScriptCharacter[];
+  /** Locations consolidated from the script — AI, or the deterministic fallback. */
+  locations: ProposedLocation[];
+}
+
+/** The heading line the AI passes quote back, and the app matches on. */
+export const sceneHeading = (s: Scene): string =>
+  `SCENE ${s.number} — ${s.intExt}. ${s.location} — ${s.timeOfDay}`;
+
+/** Full script text as the AI passes see it. */
+export const fullScriptText = (scenes: Scene[]): string =>
+  scenes.map((s) => `${sceneHeading(s)}\n${s.scriptText}`).join("\n\n");
+
+/**
+ * One location pass over the script, with the deterministic grouping as a
+ * safety net. Never throws: a breakdown shouldn't fail because the location
+ * consolidation did, and the fallback still fills the Locations page.
+ */
+export async function runLocationPass(
+  scenes: Scene[],
+  projectName?: string,
+  onWait?: (seconds: number) => void
+): Promise<{ locations: ProposedLocation[]; usage?: Omit<AIUsageEntry, "id" | "at">; fromMock: boolean }> {
+  try {
+    const { locations, result } = await aiLocationBible(
+      fullScriptText(scenes),
+      scenes.map(sceneHeading),
+      projectName,
+      onWait
+    );
+    if (locations.length > 0) {
+      return {
+        locations,
+        usage: {
+          feature: "location_bible",
+          inputTokens: result.inputTokens,
+          outputTokens: result.outputTokens,
+          model: result.model,
+          costUsd: result.costUsd,
+        },
+        fromMock: result.fromMock,
+      };
+    }
+  } catch {
+    /* Falls through to the deterministic grouping. */
+  }
+  return { locations: fallbackLocations(scenes), fromMock: true };
 }
 
 /** How many batches to run against the live API at once. */
@@ -208,14 +259,26 @@ export async function runBreakdown(
   const failedScenes: { sceneNumber: string; error: string }[] = [];
   let anyMock = false;
   let done = 0;
+  let stage: BreakdownProgress["stage"] = "characters";
+  let currentSceneNumber = "";
 
-  // ---- Pass 1: who is in this script? ----
-  onProgress?.({ done: 0, total: scenes.length, currentSceneNumber: "", stage: "characters" });
+  const report = (waitingSeconds?: number) =>
+    onProgress?.({ done, total: scenes.length, currentSceneNumber, stage, waitingSeconds });
+
+  // A long free-tier run spends real time parked on the limiter. Saying so
+  // keeps it from looking hung.
+  const onWait = (seconds: number) => report(seconds);
+
+  // ---- Pass 1: who and where is this script? ----
+  // The location pass doesn't feed the scene passes, so it rides alongside the
+  // character pass rather than adding a third wait.
+  report();
 
   let characters: ScriptCharacter[] = [];
-  const fullScript = scenes.map((s) => `SCENE ${s.number} — ${s.intExt}. ${s.location} — ${s.timeOfDay}\n${s.scriptText}`).join("\n\n");
+  const fullScript = fullScriptText(scenes);
+  const locationPass = runLocationPass(scenes, projectName, onWait);
   try {
-    const bible = await aiCharacterBible(fullScript, projectName);
+    const bible = await aiCharacterBible(fullScript, projectName, onWait);
     characters = bible.characters;
     if (bible.result.fromMock) anyMock = true;
     usage.push({
@@ -241,9 +304,14 @@ export async function runBreakdown(
 
   // ---- Pass 2: break the scenes down in batches ----
   const batches = chunk(scenes, BREAKDOWN_BATCH_SIZE);
-  const proposals = new Map<string, { elements: BreakdownElement[]; duration: number }>();
+  const proposals = new Map<
+    string,
+    { elements: BreakdownElement[]; duration: number; synopsis?: string }
+  >();
 
-  onProgress?.({ done: 0, total: scenes.length, currentSceneNumber: scenes[0]?.number ?? "", stage: "scenes" });
+  stage = "scenes";
+  currentSceneNumber = scenes[0]?.number ?? "";
+  report();
 
   await mapWithConcurrency(batches, BREAKDOWN_CONCURRENCY, async (batch) => {
     const toElements = (els: { name: string; category: string; subCategory?: string; description?: string; notes?: string }[]) =>
@@ -260,6 +328,7 @@ export async function runBreakdown(
       const { proposals: got, result } = await aiBreakdownBatch(batch, {
         characterBible: characters,
         projectName,
+        onWait,
       });
       if (result.fromMock) anyMock = true;
       usage.push({
@@ -276,6 +345,7 @@ export async function runBreakdown(
           proposals.set(scene.id, {
             elements: toElements(p.elements),
             duration: p.estimated_duration_minutes || scene.estimatedShootMinutes,
+            synopsis: p.synopsis,
           });
         } else {
           // The batch succeeded but skipped this scene — don't leave it blank.
@@ -287,7 +357,8 @@ export async function runBreakdown(
           proposals.set(scene.id, { elements: toElements(fb.elements), duration: fb.estimated_duration_minutes });
         }
         done += 1;
-        onProgress?.({ done, total: scenes.length, currentSceneNumber: scene.number, stage: "scenes" });
+        currentSceneNumber = scene.number;
+        report();
       }
     } catch (err) {
       // The whole batch failed after retries. Report every scene in it and
@@ -298,7 +369,8 @@ export async function runBreakdown(
         const fb = demoBreakdown(scene);
         proposals.set(scene.id, { elements: toElements(fb.elements), duration: fb.estimated_duration_minutes });
         done += 1;
-        onProgress?.({ done, total: scenes.length, currentSceneNumber: scene.number, stage: "scenes" });
+        currentSceneNumber = scene.number;
+        report();
       }
     }
   });
@@ -309,12 +381,27 @@ export async function runBreakdown(
     return {
       ...scene,
       elements,
+      // The parser's synopsis is just the first 140 characters of the action —
+      // usually a fragment. Prefer the model's sentence whenever it wrote one.
+      synopsis: p?.synopsis ?? scene.synopsis,
       estimatedShootMinutes: p?.duration ?? scene.estimatedShootMinutes,
       vfxFlags: elements.some((e) => e.category === "vfx"),
       sfxFlags: elements.some((e) => e.category === "sfx"),
     };
   });
 
-  onProgress?.({ done: scenes.length, total: scenes.length, currentSceneNumber: "", stage: "scenes" });
-  return { scenes: out, usage, fromMock: anyMock, failedScenes, characters };
+  const loc = await locationPass;
+  if (loc.usage) usage.push(loc.usage);
+
+  done = scenes.length;
+  currentSceneNumber = "";
+  report();
+  return {
+    scenes: out,
+    usage,
+    fromMock: anyMock,
+    failedScenes,
+    characters,
+    locations: loc.locations,
+  };
 }

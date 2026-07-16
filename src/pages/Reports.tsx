@@ -1,10 +1,12 @@
 import React, { useMemo, useState } from "react";
-import { FileDown, Printer, FileText, Eye } from "lucide-react";
-import { useStore } from "@/state/store";
+import { FileDown, Printer, FileText, Eye, Sparkles, Loader2 } from "lucide-react";
+import { useStore, activeProject } from "@/state/store";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { aiNarrateReport, NARRATION_ROW_CAP } from "@/lib/claude";
+import { formatCompact } from "@/lib/utils";
 import type { ProductionData } from "@/types";
 import {
   REPORTS,
@@ -13,6 +15,15 @@ import {
   printReport,
   type ReportId,
 } from "@/lib/reports";
+
+interface Narration {
+  /** The report this describes — it must never be shown above another. */
+  reportId: ReportId;
+  text: string;
+  tokens: number;
+  fromMock: boolean;
+  truncated: boolean;
+}
 
 export function Reports() {
   // Assemble a ProductionData view from the active project's store slices.
@@ -24,8 +35,13 @@ export function Reports() {
   const dood = useStore((s) => s.dood);
   const tasks = useStore((s) => s.tasks);
   const budgetLines = useStore((s) => s.budgetLines);
+  const locations = useStore((s) => s.locations);
   const activeProjectId = useStore((s) => s.activeProjectId);
+  const project = useStore(activeProject);
+  const recordAIUsage = useStore((s) => s.recordAIUsage);
 
+  // Every slice a report reads must be listed here — a report that reaches for
+  // a missing one gets `undefined`, not a type error.
   const data = useMemo(
     () =>
       ({
@@ -37,11 +53,53 @@ export function Reports() {
         dood,
         tasks,
         budgetLines,
+        locations,
       } as unknown as ProductionData),
-    [production, crew, cast, scenes, shootDays, dood, tasks, budgetLines]
+    [production, crew, cast, scenes, shootDays, dood, tasks, budgetLines, locations]
   );
 
   const [preview, setPreview] = useState<ReportId | null>(null);
+  const [narration, setNarration] = useState<Narration | null>(null);
+  const [narrating, setNarrating] = useState(false);
+  const [narrationError, setNarrationError] = useState("");
+
+  // A narration describes one table; showing it above another would be a lie.
+  const showPreview = (id: ReportId) => {
+    setPreview(id);
+    setNarration(null);
+    setNarrationError("");
+  };
+
+  const narrate = async () => {
+    if (!previewTable) return;
+    setNarrating(true);
+    setNarrationError("");
+    try {
+      const { def, table } = previewTable;
+      const res = await aiNarrateReport(def.title, table.columns, table.rows, project?.name);
+      recordAIUsage({
+        feature: "report_narration",
+        inputTokens: res.result.inputTokens,
+        outputTokens: res.result.outputTokens,
+        model: res.result.model,
+        costUsd: res.result.costUsd,
+      });
+      setNarration({
+        reportId: def.id,
+        text: res.narration,
+        tokens: res.result.inputTokens + res.result.outputTokens,
+        fromMock: res.result.fromMock,
+        truncated: res.truncated,
+      });
+    } catch (e) {
+      setNarrationError((e as Error).message || "Couldn't narrate this report.");
+    } finally {
+      setNarrating(false);
+    }
+  };
+
+  const activeNarration =
+    narration && preview && narration.reportId === preview ? narration : null;
 
   const previewTable = useMemo(() => {
     if (!preview) return null;
@@ -89,7 +147,7 @@ export function Reports() {
                   variant="secondary"
                   leftIcon={<Eye size={14} />}
                   disabled={empty}
-                  onClick={() => setPreview(def.id)}
+                  onClick={() => showPreview(def.id)}
                 >
                   Preview
                 </Button>
@@ -129,6 +187,17 @@ export function Reports() {
             <div className="flex gap-2">
               <Button
                 size="sm"
+                variant="ai"
+                leftIcon={
+                  narrating ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />
+                }
+                disabled={narrating}
+                onClick={narrate}
+              >
+                {activeNarration ? "Re-narrate" : "Narrate (AI)"}
+              </Button>
+              <Button
+                size="sm"
                 variant="secondary"
                 leftIcon={<FileDown size={14} />}
                 onClick={() => exportReportCSV(previewTable.def, data)}
@@ -139,12 +208,40 @@ export function Reports() {
                 size="sm"
                 variant="ghost"
                 leftIcon={<Printer size={14} />}
-                onClick={() => printReport(previewTable.def, data)}
+                onClick={() => printReport(previewTable.def, data, activeNarration?.text)}
               >
                 Print / PDF
               </Button>
             </div>
           </div>
+
+          {(activeNarration || narrationError) && (
+            <div className="p-4 border-b border-[var(--border-default)] bg-[rgba(139,92,246,0.04)]">
+              {narrationError ? (
+                <div className="text-xs text-[var(--color-danger)]">{narrationError}</div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                    <div className="section-header">Summary</div>
+                    <Badge tone="ai">{formatCompact(activeNarration!.tokens)} tokens</Badge>
+                    {activeNarration!.fromMock && <Badge tone="muted">Demo mode</Badge>}
+                    {activeNarration!.truncated && (
+                      <Badge tone="warning">
+                        First {NARRATION_ROW_CAP} rows only
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="text-sm text-[var(--text-secondary)] leading-relaxed">
+                    {activeNarration!.text}
+                  </div>
+                  <div className="text-[11px] text-[var(--text-muted)] mt-2">
+                    Included in Print / PDF. AI-written from the table below — check any figure you
+                    plan to act on.
+                  </div>
+                </>
+              )}
+            </div>
+          )}
           <div className="overflow-x-auto max-h-[560px] overflow-y-auto">
             <table className="pos-table">
               <thead>

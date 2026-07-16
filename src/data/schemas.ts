@@ -10,6 +10,7 @@ import type { ActivityEntity, DepartmentId, ProductionData } from "@/types";
 
 /** Collections that hold `{ id, ... }` records and are editable through the generic editor. */
 export type RecordCollection =
+  | "locations"
   | "shootDays"
   | "budgetLines"
   | "pettyCash"
@@ -98,7 +99,70 @@ export const DEPARTMENTS: readonly DepartmentId[] = [
   "cast",
 ];
 
+export const LOCATION_PERMIT_STATUSES = [
+  "scouting",
+  "optioned",
+  "permit_pending",
+  "locked",
+  "wrapped",
+] as const;
+
 export const SCHEMAS: Record<RecordCollection, RecordSchema> = {
+  // ----------------------------------------------------------
+  locations: {
+    singular: "Location",
+    idPrefix: "loc",
+    entity: "location",
+    label: (r) => r.name,
+    fields: [
+      {
+        key: "name",
+        label: "Name",
+        type: "text",
+        required: true,
+        placeholder: "JOHN'S APARTMENT",
+        help: "Use the name as it appears in scene headings.",
+      },
+      {
+        key: "type",
+        label: "Type",
+        type: "select",
+        options: ["INT", "EXT", "INT/EXT", "STAGE"],
+        default: "INT",
+        required: true,
+      },
+      {
+        key: "permitStatus",
+        label: "Permit Status",
+        type: "select",
+        options: LOCATION_PERMIT_STATUSES,
+        default: "scouting",
+        required: true,
+      },
+      {
+        key: "lockDate",
+        label: "Lock Date",
+        type: "date",
+        help: "Drives location_lock(…) task deadlines.",
+      },
+      { key: "address", label: "Address", type: "text", wide: true },
+      { key: "contactName", label: "Contact", type: "text" },
+      { key: "contactPhone", label: "Contact Phone", type: "text" },
+      { key: "costPerDay", label: "Cost / Day", type: "number", step: 0.01, min: 0 },
+      {
+        key: "aliases",
+        label: "Aliases",
+        type: "tags",
+        wide: true,
+        help: "One per line — other names the script uses for this place.",
+        default: [],
+      },
+      { key: "parkingNotes", label: "Parking", type: "textarea", wide: true },
+      { key: "powerNotes", label: "Power", type: "textarea", wide: true },
+      { key: "notes", label: "Notes", type: "textarea", wide: true },
+    ],
+  },
+
   // ----------------------------------------------------------
   shootDays: {
     singular: "Shoot Day",

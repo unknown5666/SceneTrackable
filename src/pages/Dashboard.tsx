@@ -14,6 +14,8 @@ import {
   Check,
   X,
   RefreshCw,
+  Loader2,
+  MessageCircleQuestion,
 } from "lucide-react";
 import {
   ComposedChart,
@@ -44,9 +46,24 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { formatCurrency, formatCompact, formatDate, isOverdue } from "@/lib/utils";
-import { callClaude } from "@/lib/claude";
+import {
+  aiAskProduction,
+  aiDailyDigest,
+  demoDigest,
+  hasApiKey,
+} from "@/lib/claude";
+import { demoAnswer } from "@/lib/askDemo";
+import { buildSnapshot } from "@/lib/snapshot";
+import {
+  buildDigestInput,
+  buildPaceChart,
+  buildSpendChart,
+  computeMetrics,
+  radarAxes,
+  shotSceneIds,
+} from "@/lib/metrics";
 import { FolderKanban, Upload } from "lucide-react";
-import type { RoleId, DepartmentId } from "@/types";
+import type { ProductionData, RoleId, DepartmentId } from "@/types";
 
 export function Dashboard() {
   const nav = useNavigate();
@@ -136,74 +153,67 @@ function PageHeader({ role }: { role: RoleId }) {
 function AdminDashboard() {
   const nav = useNavigate();
   const production = useStore((s) => s.production);
-  const shootDays = useStore((s) => s.shootDays);
   const tasks = useStore((s) => s.tasks);
   const purchaseOrders = useStore((s) => s.purchaseOrders);
   const budgetLines = useStore((s) => s.budgetLines);
   const crew = useStore((s) => s.crew);
-  const scenes = useStore((s) => s.scenes);
-  const vfxShots = useStore((s) => s.vfxShots);
 
   const advancePO = useStore((s) => s.advancePO);
   const currentUserId = useStore((s) => s.currentUserId);
+  const data = useProductionData();
 
-  // ------- KPIs -------
-  const daysShot = production.currentShootDay;
-  const totalDays = production.totalShootDays;
-  const scheduleProgress = daysShot / totalDays;
-
-  const totalBudgeted = budgetLines.reduce((s, l) => s + l.budgeted, 0);
-  const totalSpent = budgetLines.reduce((s, l) => s + l.spent, 0);
-  const totalCommitted = budgetLines.reduce((s, l) => s + l.committed, 0);
-  const budgetBurn = totalSpent / totalBudgeted;
+  // Every KPI on this page comes from here. Anything it can't compute comes
+  // back undefined and is rendered as "not tracked", never as a placeholder.
+  const m = useMemo(() => computeMetrics(data), [data]);
+  const scheduleChart = useMemo(() => buildPaceChart(data), [data]);
+  const radarData = useMemo(() => radarAxes(m), [m]);
 
   const overdueTasks = tasks.filter(
     (t) => t.status !== "completed" && isOverdue(t.computedDeadline)
   );
-  const completedTasks = tasks.filter((t) => t.status === "completed").length;
-  const taskCompletion = tasks.length > 0 ? completedTasks / tasks.length : 0;
 
-  // Composite health score
-  const scheduleAdh = 91 / 100;
-  const budgetVar = 1 - Math.abs(budgetBurn - scheduleProgress) * 2;
-  const health = Math.round(
-    (scheduleAdh * 0.4 + Math.max(0, budgetVar) * 0.3 + taskCompletion * 0.3) * 100
-  );
-
-  const healthTone: "success" | "warning" | "danger" =
-    health >= 80 ? "success" : health >= 60 ? "warning" : "danger";
-
-  const burnTone: "success" | "warning" | "danger" =
-    budgetBurn < scheduleProgress - 0.05
+  const healthTone: "success" | "warning" | "danger" | undefined =
+    m.health === undefined
+      ? undefined
+      : m.health >= 80
       ? "success"
-      : budgetBurn > scheduleProgress + 0.05
+      : m.health >= 60
+      ? "warning"
+      : "danger";
+
+  const burnTone: "success" | "warning" | "danger" | undefined =
+    m.budgetBurn === undefined || m.scheduleProgress === undefined
+      ? undefined
+      : m.budgetBurn < m.scheduleProgress - 0.05
+      ? "success"
+      : m.budgetBurn > m.scheduleProgress + 0.05
       ? "danger"
       : "warning";
 
-  // ------- Schedule chart data -------
-  const scheduleChart = useMemo(() => {
-    const targetPPD = production.plannedPagesPerDay;
-    const actualBase = 1.2;
-    let cumulPlanned = 0;
-    let cumulActual = 0;
-    return shootDays.map((d, i) => {
-      const dayNum = d.dayNumber;
-      const planned = targetPPD + (i % 5 === 0 ? 0.2 : 0);
-      const actual = dayNum <= daysShot ? actualBase + ((i * 0.11) % 0.6) : 0;
-      const projected = dayNum > daysShot ? actualBase + 0.05 : 0;
-      cumulPlanned += planned;
-      if (dayNum <= daysShot) cumulActual += actual;
-      return {
-        day: dayNum,
-        planned: parseFloat(planned.toFixed(2)),
-        actual: parseFloat(actual.toFixed(2)),
-        projected: parseFloat(projected.toFixed(2)),
-        cumulPlanned: parseFloat(cumulPlanned.toFixed(1)),
-        cumulActual:
-          dayNum <= daysShot ? parseFloat(cumulActual.toFixed(1)) : undefined,
-      };
-    });
-  }, [shootDays, daysShot, production.plannedPagesPerDay]);
+  const healthHistory = useStore((s) => s.healthHistory);
+  const recordHealth = useStore((s) => s.recordHealth);
+
+  // The sparkline needs history, and the only honest source of it is history:
+  // one snapshot per day, appended as the dashboard is opened.
+  React.useEffect(() => {
+    if (m.health !== undefined) recordHealth(m.health);
+  }, [m.health, recordHealth]);
+
+  const healthTrend = useMemo(() => {
+    if (healthHistory.length < 2) return undefined;
+    const first = healthHistory[0].health;
+    const last = healthHistory[healthHistory.length - 1].health;
+    const delta = last - first;
+    const dir = delta > 1 ? "up" : delta < -1 ? "down" : "flat";
+    return {
+      direction: dir as "up" | "down" | "flat",
+      label:
+        dir === "flat"
+          ? `Steady over ${healthHistory.length} days`
+          : `${delta > 0 ? "+" : ""}${delta} over ${healthHistory.length} days`,
+      upIsGood: true,
+    };
+  }, [healthHistory]);
 
   // ------- Dept health rows -------
   const deptHealth = useMemo(() => {
@@ -242,44 +252,7 @@ function AdminDashboard() {
     (p) => p.status === "submitted" || p.status === "accountant_review" || p.status === "admin_approval"
   );
 
-  // ------- Radar -------
-  const radarData = [
-    { axis: "Pages/Day", planned: 100, actual: 86 },
-    { axis: "Scene Completion", planned: 100, actual: 88 },
-    { axis: "Budget Adherence", planned: 100, actual: 93 },
-    { axis: "Task Completion", planned: 100, actual: Math.round(taskCompletion * 100) },
-    { axis: "VFX Delivery", planned: 100, actual: 74 },
-    { axis: "Equipment Readiness", planned: 100, actual: 95 },
-  ];
-
-  // ------- AI Digest -------
-  const [digest, setDigest] = useState<string | null>(null);
-  const [digestLoading, setDigestLoading] = useState(false);
-  const [digestTokens, setDigestTokens] = useState<{ in: number; out: number; mock: boolean } | null>(null);
-  const recordAIUsage = useStore((s) => s.recordAIUsage);
-
-  const runDigest = async () => {
-    setDigestLoading(true);
-    try {
-      const res = await callClaude({
-        feature: "daily_digest",
-        system: "You are a production analyst. Given the current state, produce 3-5 concise bullet insights about production health for the Production Manager. Use actual numbers.",
-        user: `Production: ${production.title}, Day ${daysShot}/${totalDays}. Schedule adherence 91%. Budget burn ${Math.round(budgetBurn * 100)}% vs ${Math.round(scheduleProgress * 100)}% schedule. Overdue tasks: ${overdueTasks.length}. Pending POs: ${pendingPOs.length}.`,
-        maxTokens: 400,
-      });
-      setDigest(res.text);
-      setDigestTokens({ in: res.inputTokens, out: res.outputTokens, mock: res.fromMock });
-      recordAIUsage({
-        feature: "daily_digest",
-        inputTokens: res.inputTokens,
-        outputTokens: res.outputTokens,
-        model: res.model,
-        costUsd: res.costUsd,
-      });
-    } finally {
-      setDigestLoading(false);
-    }
-  };
+  const digest = useDailyDigest(data);
 
   return (
     <>
@@ -288,26 +261,70 @@ function AdminDashboard() {
         <StatCard
           icon={<Activity size={20} />}
           label="Production Health"
-          value={`${health}`}
-          hint="Composite score / 100"
+          value={m.health === undefined ? "—" : `${m.health}`}
+          hint={
+            m.health === undefined
+              ? "Needs a schedule, budget or tasks"
+              : "Composite score / 100"
+          }
           tone={healthTone}
-          trend={{ direction: "flat", label: "Steady vs last week", upIsGood: true }}
-          sparklineData={[72, 75, 74, 78, 76, 79, health].map((v) => ({ v }))}
+          trend={healthTrend}
+          // Only a real series is worth drawing; one point is not a trend.
+          sparklineData={
+            healthHistory.length >= 2
+              ? healthHistory.map((h) => ({ v: h.health }))
+              : undefined
+          }
         />
         <StatCard
           icon={<Calendar size={20} />}
           label="Days Shot"
-          value={`${daysShot} / ${totalDays}`}
-          hint={`${Math.round(scheduleProgress * 100)}% of schedule`}
-          trend={{ direction: "down", label: "~0.2 pages/day behind", upIsGood: true }}
+          value={`${m.daysShot} / ${m.totalDays || "—"}`}
+          hint={
+            m.scheduleProgress === undefined
+              ? "No shoot days scheduled"
+              : m.pagesPerDay === undefined
+              ? `${Math.round(m.scheduleProgress * 100)}% of schedule · no scenes on shot days`
+              : `${Math.round(m.scheduleProgress * 100)}% of schedule`
+          }
+          trend={
+            m.pagesPerDayDelta === undefined
+              ? undefined
+              : {
+                  direction:
+                    m.pagesPerDayDelta > 0.05
+                      ? "up"
+                      : m.pagesPerDayDelta < -0.05
+                      ? "down"
+                      : "flat",
+                  label: `${Math.abs(m.pagesPerDayDelta).toFixed(2)} pages/day ${
+                    m.pagesPerDayDelta < 0 ? "behind" : "ahead of"
+                  } target`,
+                  upIsGood: true,
+                }
+          }
         />
         <StatCard
           icon={<DollarSign size={20} />}
           label="Budget Burn"
-          value={`${Math.round(budgetBurn * 100)}%`}
-          hint={`Spent vs ${Math.round(scheduleProgress * 100)}% schedule`}
+          value={m.budgetBurn === undefined ? "—" : `${Math.round(m.budgetBurn * 100)}%`}
+          hint={
+            m.budgetBurn === undefined
+              ? "No budget lines loaded"
+              : m.scheduleProgress === undefined
+              ? "Spent vs budget"
+              : `Spent vs ${Math.round(m.scheduleProgress * 100)}% schedule`
+          }
           tone={burnTone}
-          trend={{ direction: "up", label: `${formatCurrency(totalSpent, production.currency)} spent`, upIsGood: false }}
+          trend={
+            m.totalSpent > 0
+              ? {
+                  direction: "up",
+                  label: `${formatCurrency(m.totalSpent, production.currency)} spent`,
+                  upIsGood: false,
+                }
+              : undefined
+          }
         />
         <StatCard
           icon={<AlertCircle size={20} />}
@@ -322,16 +339,23 @@ function AdminDashboard() {
       <Card>
         <CardHeader
           title="Shooting Pace"
-          subtitle="Pages planned vs actual per day, cumulative page count overlay"
+          subtitle="Pages scheduled per shoot day against the daily target, with the cumulative page count"
           right={
             <div className="flex items-center gap-3 text-xs">
-              <LegendDot color="rgba(79,123,247,0.35)" label="Planned" />
-              <LegendDot color="var(--accent-blue)" label="Actual" />
-              <LegendDot color="var(--color-warning)" label="Projected" square />
+              <LegendDot color="var(--accent-blue)" label="Shot" />
+              <LegendDot color="rgba(79,123,247,0.35)" label="Upcoming" />
+              <LegendDot color="var(--color-warning)" line label="Target/day" />
               <LegendDot color="var(--color-success)" line label="Cumulative" />
             </div>
           }
         />
+        {scheduleChart.length === 0 ? (
+          <EmptyState
+            icon={<Calendar size={40} />}
+            title="No shoot days on the board"
+            subtitle="Build the strip board and this chart tracks pages per day against your target."
+          />
+        ) : (
         <div className="h-72">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={scheduleChart} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
@@ -366,13 +390,29 @@ function AdminDashboard() {
                 }}
                 labelStyle={{ color: "var(--text-primary)" }}
               />
-              <Bar yAxisId="pages" dataKey="planned" fill="rgba(79,123,247,0.35)" radius={[2, 2, 0, 0]} />
-              <Bar yAxisId="pages" dataKey="actual" fill="var(--accent-blue)" radius={[2, 2, 0, 0]} />
-              <Bar yAxisId="pages" dataKey="projected" fill="transparent" stroke="var(--color-warning)" strokeDasharray="3 3" />
+              <Bar yAxisId="pages" dataKey="shot" name="Shot" fill="var(--accent-blue)" radius={[2, 2, 0, 0]} />
+              <Bar
+                yAxisId="pages"
+                dataKey="upcoming"
+                name="Upcoming"
+                fill="rgba(79,123,247,0.35)"
+                radius={[2, 2, 0, 0]}
+              />
+              <Line
+                yAxisId="pages"
+                type="monotone"
+                dataKey="target"
+                name="Target/day"
+                stroke="var(--color-warning)"
+                strokeDasharray="4 4"
+                dot={false}
+                strokeWidth={2}
+              />
               <Line
                 yAxisId="cumul"
                 type="monotone"
-                dataKey="cumulPlanned"
+                dataKey="cumulativeScheduled"
+                name="Cumulative scheduled"
                 stroke="rgba(34,197,94,0.4)"
                 strokeDasharray="4 4"
                 dot={false}
@@ -381,27 +421,31 @@ function AdminDashboard() {
               <Line
                 yAxisId="cumul"
                 type="monotone"
-                dataKey="cumulActual"
+                dataKey="cumulativeShot"
+                name="Cumulative shot"
                 stroke="var(--color-success)"
                 dot={false}
                 strokeWidth={2}
                 connectNulls={false}
               />
-              <ReferenceLine
-                yAxisId="pages"
-                x={daysShot}
-                stroke="var(--text-secondary)"
-                strokeDasharray="2 2"
-                label={{
-                  value: "Today",
-                  fill: "var(--text-secondary)",
-                  fontSize: 10,
-                  position: "top",
-                }}
-              />
+              {m.daysShot > 0 && (
+                <ReferenceLine
+                  yAxisId="pages"
+                  x={m.daysShot}
+                  stroke="var(--text-secondary)"
+                  strokeDasharray="2 2"
+                  label={{
+                    value: "Today",
+                    fill: "var(--text-secondary)",
+                    fontSize: 10,
+                    position: "top",
+                  }}
+                />
+              )}
             </ComposedChart>
           </ResponsiveContainer>
         </div>
+        )}
       </Card>
 
       {/* Row 3 — Dept table + Approvals */}
@@ -557,9 +601,22 @@ function AdminDashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <Card>
           <CardHeader
-            title="Schedule Adherence"
-            subtitle="Planned vs actual across production dimensions"
+            title="Production Dimensions"
+            subtitle={
+              radarData.length >= 3
+                ? `Target vs actual across the ${radarData.length} dimensions this production tracks`
+                : "Target vs actual across production dimensions"
+            }
           />
+          {/* Two spokes is a shape, not a chart — and axes with no underlying
+              data are exactly what this rewrite removed. */}
+          {radarData.length < 3 ? (
+            <EmptyState
+              icon={<Activity size={40} />}
+              title="Not enough tracked yet"
+              subtitle="This chart appears once at least three of pace, scene completion, budget, tasks, VFX or equipment have data behind them."
+            />
+          ) : (
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <RadarChart data={radarData}>
@@ -575,7 +632,7 @@ function AdminDashboard() {
                   axisLine={false}
                 />
                 <Radar
-                  name="Planned"
+                  name="Target"
                   dataKey="planned"
                   stroke="rgba(79,123,247,0.4)"
                   fill="transparent"
@@ -598,6 +655,7 @@ function AdminDashboard() {
               </RadarChart>
             </ResponsiveContainer>
           </div>
+          )}
         </Card>
 
         <Card variant="ai">
@@ -608,44 +666,314 @@ function AdminDashboard() {
                 <span>AI Insights</span>
               </div>
             }
-            subtitle="Daily digest, generated by Claude"
+            subtitle={
+              digest.staleness === "stale"
+                ? "The production has changed since this digest — regenerate for the current picture."
+                : digest.at
+                ? `Daily digest · generated ${formatDate(digest.at)}`
+                : "Daily digest of the current production state"
+            }
             right={
-              <Button
-                variant="ai"
-                size="sm"
-                onClick={runDigest}
-                loading={digestLoading}
-              >
-                <RefreshCw size={12} /> Regenerate
+              <Button variant="ai" size="sm" onClick={digest.run} loading={digest.loading}>
+                <RefreshCw size={12} /> {digest.text ? "Regenerate" : "Generate"}
               </Button>
             }
           />
-          {!digest ? (
+          {digest.error ? (
+            <div className="text-sm text-[var(--color-danger)]">{digest.error}</div>
+          ) : !digest.text ? (
             <EmptyState
               icon={<Sparkles size={40} />}
               title="No digest yet"
-              subtitle="Click Regenerate to summarize today's production state."
+              subtitle="Generate a digest of overdue tasks, budget pressure, upcoming location locks and cast conflicts."
             />
           ) : (
             <>
               <div className="whitespace-pre-wrap text-sm text-[var(--text-primary)] leading-relaxed">
-                {digest}
+                {digest.text}
               </div>
-              {digestTokens && (
-                <div className="mt-4 pt-3 border-t border-[var(--border-default)] flex items-center justify-between">
-                  <Badge tone="ai">
-                    ~{digestTokens.in} in / {digestTokens.out} out
-                  </Badge>
-                  {digestTokens.mock && (
-                    <Badge tone="muted">Mock response</Badge>
-                  )}
-                </div>
-              )}
+              <div className="mt-4 pt-3 border-t border-[var(--border-default)] flex items-center gap-2 flex-wrap">
+                {digest.tokens !== undefined && (
+                  <Badge tone="ai">{formatCompact(digest.tokens)} tokens</Badge>
+                )}
+                {digest.staleness === "stale" && <Badge tone="warning">Out of date</Badge>}
+                {digest.fromMock && <Badge tone="muted">Demo mode</Badge>}
+              </div>
             </>
           )}
         </Card>
       </div>
+
+      <AskProduction data={data} />
     </>
+  );
+}
+
+// ============================================================
+// SHARED HOOKS
+// ============================================================
+
+/** The active project's data, in the shape the metric and AI helpers take. */
+function useProductionData(): ProductionData {
+  const production = useStore((s) => s.production);
+  const scenes = useStore((s) => s.scenes);
+  const shootDays = useStore((s) => s.shootDays);
+  const cast = useStore((s) => s.cast);
+  const crew = useStore((s) => s.crew);
+  const dood = useStore((s) => s.dood);
+  const tasks = useStore((s) => s.tasks);
+  const budgetLines = useStore((s) => s.budgetLines);
+  const purchaseOrders = useStore((s) => s.purchaseOrders);
+  const pettyCash = useStore((s) => s.pettyCash);
+  const locations = useStore((s) => s.locations);
+  const vfxShots = useStore((s) => s.vfxShots);
+  const equipmentCheckouts = useStore((s) => s.equipmentCheckouts);
+
+  return useMemo(
+    () =>
+      ({
+        production,
+        scenes,
+        shootDays,
+        cast,
+        crew,
+        dood,
+        tasks,
+        budgetLines,
+        purchaseOrders,
+        pettyCash,
+        locations,
+        vfxShots,
+        equipmentCheckouts,
+      } as unknown as ProductionData),
+    [
+      production,
+      scenes,
+      shootDays,
+      cast,
+      crew,
+      dood,
+      tasks,
+      budgetLines,
+      purchaseOrders,
+      pettyCash,
+      locations,
+      vfxShots,
+      equipmentCheckouts,
+    ]
+  );
+}
+
+/**
+ * The daily digest, cached against a hash of the numbers it was written from.
+ *
+ * Two things this buys: the digest doesn't cost a request on every dashboard
+ * visit, and when the production moves underneath it the card can say the
+ * digest is out of date instead of quietly showing yesterday's news as today's.
+ */
+function useDailyDigest(data: ProductionData) {
+  const cached = useStore((s) => s.aiDigest);
+  const setAIDigest = useStore((s) => s.setAIDigest);
+  const recordAIUsage = useStore((s) => s.recordAIUsage);
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [fromMock, setFromMock] = useState(false);
+  const [tokens, setTokens] = useState<number | undefined>(undefined);
+
+  const input = useMemo(() => buildDigestInput(data), [data]);
+
+  const run = React.useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const { digest, result } = await aiDailyDigest(input.text);
+      // Demo mode echoes the facts only — the notes in `text` are addressed to
+      // the model and would read as nonsense on the dashboard.
+      const text = result.fromMock ? demoDigest(input.facts) : digest;
+      recordAIUsage({
+        feature: "daily_digest",
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        model: result.model,
+        costUsd: result.costUsd,
+      });
+      setFromMock(result.fromMock);
+      setTokens(result.inputTokens + result.outputTokens);
+      setAIDigest({
+        at: new Date().toISOString(),
+        text,
+        hash: input.hash,
+        model: result.model,
+      });
+    } catch (e) {
+      setError((e as Error).message || "Couldn't generate the digest.");
+    } finally {
+      setLoading(false);
+    }
+  }, [input, recordAIUsage, setAIDigest]);
+
+  // Auto-run at most once a day, and only when the numbers have actually
+  // moved — a regenerate that would produce the same text isn't worth a call.
+  const ranRef = React.useRef(false);
+  React.useEffect(() => {
+    if (ranRef.current || loading) return;
+    if (!hasApiKey()) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const fresh = cached && cached.hash === input.hash;
+    const ranToday = cached?.at.slice(0, 10) === today;
+    if (fresh || ranToday) return;
+    ranRef.current = true;
+    void run();
+  }, [cached, input.hash, loading, run]);
+
+  return {
+    text: cached?.text ?? null,
+    at: cached?.at,
+    staleness: cached && cached.hash !== input.hash ? ("stale" as const) : ("fresh" as const),
+    loading,
+    error,
+    fromMock,
+    tokens,
+    run,
+  };
+}
+
+// ============================================================
+// ASK THE PRODUCTION
+// ============================================================
+
+interface QA {
+  question: string;
+  answer: string;
+  fromMock: boolean;
+  omitted: string[];
+}
+
+/**
+ * A question box over a compact snapshot of the production — one request per
+ * question, no script text, and an answer the model is instructed to draw only
+ * from the data it was handed.
+ */
+function AskProduction({ data }: { data: ProductionData }) {
+  const project = useStore(activeProject);
+  const recordAIUsage = useStore((s) => s.recordAIUsage);
+  const [question, setQuestion] = useState("");
+  const [history, setHistory] = useState<QA[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const ask = async (q: string) => {
+    const text = q.trim();
+    if (!text || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const snapshot = buildSnapshot(data);
+      const { answer, result } = await aiAskProduction(text, snapshot.json, project?.name);
+      recordAIUsage({
+        feature: "nl_query",
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        model: result.model,
+        costUsd: result.costUsd,
+      });
+      setHistory((h) => [
+        {
+          question: text,
+          // Demo mode has no model to reason with — the keyword lookup stands
+          // in, and says so rather than dressing itself up as an answer.
+          answer: result.fromMock ? demoAnswer(text, data) : answer,
+          fromMock: result.fromMock,
+          omitted: snapshot.omitted,
+        },
+        ...h,
+      ]);
+      setQuestion("");
+    } catch (e) {
+      setError((e as Error).message || "Couldn't answer that.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const suggestions = [
+    "Which days is the cast heaviest?",
+    "What's unspent in art?",
+    "Which locations aren't locked yet?",
+    "What's overdue this week?",
+  ];
+
+  return (
+    <Card variant="ai">
+      <CardHeader
+        title={
+          <div className="flex items-center gap-2">
+            <MessageCircleQuestion size={14} className="text-[var(--color-ai)]" />
+            <span>Ask the production</span>
+          </div>
+        }
+        subtitle="Questions answered from this project's schedule, cast, budget, tasks and locations. One request per question."
+      />
+      <div className="flex items-center gap-2">
+        <input
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && ask(question)}
+          placeholder="e.g. which days is BEA on set?"
+          className="flex-1"
+          disabled={busy}
+        />
+        <Button variant="ai" onClick={() => ask(question)} disabled={busy || !question.trim()}>
+          {busy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+          Ask
+        </Button>
+      </div>
+
+      {history.length === 0 && !error && (
+        <div className="flex flex-wrap gap-1.5 mt-3">
+          {suggestions.map((s) => (
+            <button
+              key={s}
+              onClick={() => ask(s)}
+              disabled={busy}
+              className="text-[11px] px-2 py-1 rounded-badge border border-[var(--border-default)] text-[var(--text-secondary)] hover:border-[var(--border-hover)] hover:text-[var(--text-primary)]"
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {error && <div className="text-xs text-[var(--color-danger)] mt-3">{error}</div>}
+
+      {history.length > 0 && (
+        <div className="mt-4 space-y-3">
+          {history.map((qa, i) => (
+            <div
+              key={i}
+              className="p-3 rounded-lg border border-[var(--border-default)]"
+              style={{ background: "var(--bg-elevated)" }}
+            >
+              <div className="text-xs text-[var(--text-muted)]">{qa.question}</div>
+              <div className="text-sm text-[var(--text-primary)] mt-1.5 whitespace-pre-wrap leading-relaxed">
+                {qa.answer}
+              </div>
+              {(qa.fromMock || qa.omitted.length > 0) && (
+                <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+                  {qa.fromMock && <Badge tone="muted">Demo mode</Badge>}
+                  {qa.omitted.length > 0 && (
+                    <Badge tone="warning">
+                      {qa.omitted.join(", ")} omitted — too large to send
+                    </Badge>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -659,6 +987,9 @@ function SchedulerDashboard() {
   const scenes = useStore((s) => s.scenes);
   const tasks = useStore((s) => s.tasks);
   const production = useStore((s) => s.production);
+  const dood = useStore((s) => s.dood);
+  const cast = useStore((s) => s.cast);
+  const data = useProductionData();
 
   const overdue = tasks.filter(
     (t) => (t.department === "production" || t.department === "cast") &&
@@ -666,13 +997,24 @@ function SchedulerDashboard() {
       isOverdue(t.computedDeadline)
   ).length;
 
+  const scenesLeft = scenes.length - shotSceneIds(data).size;
+  // The DOOD is the record of who's on hold, so read it rather than guess.
+  const onHoldToday = cast.filter(
+    (c) => dood[c.id]?.[production.currentShootDay] === "H"
+  ).length;
+
   return (
     <>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard icon={<Calendar size={20} />} label="Days Shot" value={`${production.currentShootDay} / ${production.totalShootDays}`} />
-        <StatCard icon={<Film size={20} />} label="Scenes Left" value={scenes.length - shootDays.slice(0, production.currentShootDay).flatMap((d) => d.scenes).length} />
+        <StatCard icon={<Calendar size={20} />} label="Days Shot" value={`${production.currentShootDay} / ${production.totalShootDays || "—"}`} />
+        <StatCard icon={<Film size={20} />} label="Scenes Left" value={scenesLeft} hint={`of ${scenes.length}`} />
         <StatCard icon={<AlertCircle size={20} />} label="Overdue" value={overdue} tone={overdue ? "danger" : "success"} />
-        <StatCard icon={<Users size={20} />} label="Cast on Hold Today" value={2} />
+        <StatCard
+          icon={<Users size={20} />}
+          label="Cast on Hold Today"
+          value={onHoldToday}
+          hint={production.currentShootDay ? `Day ${production.currentShootDay}` : "No current day set"}
+        />
       </div>
 
       <Card>
@@ -720,15 +1062,11 @@ function AccountantDashboard() {
   const pendingReview = purchaseOrders.filter((p) => p.status === "accountant_review" || p.status === "submitted");
   const pettyBalance = pettyCash.reduce((s, e) => s + e.amount, 0);
 
-  const spendData = useMemo(() => {
-    // Weekly buckets
-    const weeks = 4;
-    return Array.from({ length: weeks }, (_, i) => ({
-      week: `W${i + 1}`,
-      spent: 40000 + i * 30000 + Math.round(Math.random() * 15000),
-      committed: 60000 + i * 25000,
-    }));
-  }, []);
+  const data = useProductionData();
+  // Built from dated records — petty cash and POs. Budget lines carry no
+  // dates, so they cannot produce a time series; the previous version of this
+  // chart filled the gap with Math.random().
+  const spendData = useMemo(() => buildSpendChart(data), [data]);
 
   return (
     <>
@@ -741,7 +1079,17 @@ function AccountantDashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <Card className="lg:col-span-2">
-          <CardHeader title="Weekly Burn" subtitle="Spend vs committed" />
+          <CardHeader
+            title="Weekly Burn"
+            subtitle="Approved POs and petty cash by week, against POs still awaiting approval"
+          />
+          {spendData.length === 0 ? (
+            <EmptyState
+              icon={<DollarSign size={40} />}
+              title="No dated spend yet"
+              subtitle="This chart is built from purchase orders and petty cash entries. Log some and the weekly burn appears here."
+            />
+          ) : (
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={spendData}>
@@ -749,11 +1097,18 @@ function AccountantDashboard() {
                 <XAxis dataKey="week" stroke="var(--text-muted)" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
                 <YAxis stroke="var(--text-muted)" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => formatCompact(v)} />
                 <Tooltip contentStyle={{ background: "var(--tooltip-bg)", border: "1px solid var(--border-default)", borderRadius: 8 }} />
-                <Bar dataKey="spent" stackId="a" fill="var(--accent-blue)" radius={[0, 0, 0, 0]} />
-                <Bar dataKey="committed" stackId="a" fill="var(--color-warning)" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="spent" name="Spent" stackId="a" fill="var(--accent-blue)" radius={[0, 0, 0, 0]} />
+                <Bar
+                  dataKey="committed"
+                  name="Awaiting approval"
+                  stackId="a"
+                  fill="var(--color-warning)"
+                  radius={[2, 2, 0, 0]}
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>
+          )}
         </Card>
 
         <Card>
@@ -856,17 +1211,28 @@ function CameraDashboard() {
   const cameraKits = useStore((s) => s.cameraKits);
   const equipmentCheckouts = useStore((s) => s.equipmentCheckouts);
   const checklists = useStore((s) => s.checklists);
+  const shootDays = useStore((s) => s.shootDays);
+  const production = useStore((s) => s.production);
   const openChecks = checklists.reduce(
     (s, c) => s + c.items.filter((i) => !i.done).length,
     0
   );
+  // The next day still ahead on the board — not a number typed into the page.
+  const nextDay = [...shootDays]
+    .sort((a, b) => a.dayNumber - b.dayNumber)
+    .find((d) => d.dayNumber > production.currentShootDay);
   return (
     <>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard icon={<Camera size={20} />} label="Kits" value={cameraKits.length} />
         <StatCard icon={<Check size={20} />} label="Checkouts" value={equipmentCheckouts.length} />
         <StatCard icon={<AlertCircle size={20} />} label="Open Checklist Items" value={openChecks} tone={openChecks > 5 ? "warning" : "neutral"} />
-        <StatCard icon={<Calendar size={20} />} label="Next Prep Day" value="Day 15" />
+        <StatCard
+          icon={<Calendar size={20} />}
+          label="Next Shoot Day"
+          value={nextDay ? `Day ${nextDay.dayNumber}` : "—"}
+          hint={nextDay?.date ? formatDate(nextDay.date) : "Nothing scheduled ahead"}
+        />
       </div>
       <Card>
         <CardHeader title="Prep Progress" right={<Button variant="secondary" size="sm" onClick={() => nav("/camera")}>Open portal</Button>} />

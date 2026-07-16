@@ -85,6 +85,18 @@ export interface BreakdownElement {
   linkedDepartment?: DepartmentId;
 }
 
+export type CharacterImportance = "lead" | "supporting" | "minor" | "background";
+
+/** One character as identified by the AI character-bible pass over a script. */
+export interface ScriptCharacter {
+  name: string;
+  aliases?: string[];
+  speaking: boolean;
+  importance: CharacterImportance;
+  description?: string;
+  firstSceneNumber?: string;
+}
+
 export interface Scene {
   id: string;
   number: string; // e.g. "42A"
@@ -99,6 +111,34 @@ export interface Scene {
   vfxFlags: boolean;
   sfxFlags: boolean;
   notes?: string;
+}
+
+// ============================================================
+// LOCATIONS
+// ============================================================
+
+export type LocationPermitStatus =
+  | "scouting"
+  | "optioned"
+  | "permit_pending"
+  | "locked"
+  | "wrapped";
+
+export interface ProductionLocation {
+  id: string;
+  name: string; // canonical name used in scene headings
+  aliases?: string[]; // other spellings that appear in the script
+  type: "INT" | "EXT" | "INT/EXT" | "STAGE";
+  address?: string;
+  contactName?: string;
+  contactPhone?: string;
+  permitStatus: LocationPermitStatus;
+  lockDate?: string; // ISO — supersedes locationLockDates entries
+  parkingNotes?: string;
+  powerNotes?: string;
+  costPerDay?: number;
+  notes?: string;
+  createdByAI?: boolean;
 }
 
 // ============================================================
@@ -117,6 +157,9 @@ export interface ShootDay {
   callTime?: string;
   wrapTime?: string;
 }
+
+/** A shoot day before it's created. */
+export type ProposedDayRecord = Omit<ShootDay, "id">;
 
 export interface SchedulePublication {
   id: string;
@@ -191,6 +234,9 @@ export interface Task {
   updatedAt: string;
   createdByAI?: boolean;
 }
+
+/** A task before it's created — what `createTask` accepts. */
+export type ProposedTaskRecord = Omit<Task, "id" | "createdAt" | "updatedAt">;
 
 // ============================================================
 // BUDGET & ACCOUNTING
@@ -470,6 +516,7 @@ export type ActivityEntity =
   | "auth"
   | "project"
   | "art_element"
+  | "location"
   | "vfx_shot"
   | "frequency"
   | "rf_equipment";
@@ -496,7 +543,9 @@ export type AIFeature =
   | "daily_digest"
   | "report_narration"
   | "nl_query"
-  | "task_proposals";
+  | "task_proposals"
+  | "location_bible"
+  | "schedule_draft";
 
 export interface AIUsageEntry {
   id: string;
@@ -511,6 +560,12 @@ export interface AIUsageEntry {
 export interface AIConfig {
   apiKey?: string;
   model: string;
+  /**
+   * Model used for cheap, high-frequency features (digest, narration, NL
+   * query). Lets an admin run a heavyweight model for breakdowns while the
+   * light work rides a free tier. Unset = use `model` for everything.
+   */
+  lightModel?: string;
   dailyBudgetTokens?: number;
   weeklyBudgetTokens?: number;
   monthlyBudgetTokens?: number;
@@ -586,14 +641,33 @@ export interface PublishedSchedule {
   lastChanges: { sceneId: string; fromDay: number; toDay: number }[];
 }
 
+/** Cached output of the daily-digest AI pass, keyed by a hash of its inputs. */
+export interface AIDigest {
+  at: string;
+  text: string;
+  /** Hash of the production numbers the digest was written from. */
+  hash: string;
+  model: string;
+}
+
+/** One daily snapshot of production health, appended once per day. */
+export interface HealthSnapshot {
+  date: string; // YYYY-MM-DD
+  health: number; // 0-100
+}
+
 export interface ProductionData {
   production: ProductionMeta;
   crew: CrewMember[];
   cast: CastMember[];
   scenes: Scene[];
+  /** Characters the AI identified in the script, kept for cast + re-runs. */
+  characterBible: ScriptCharacter[];
+  locations: ProductionLocation[];
   shootDays: ShootDay[];
   dood: DoodMatrix;
   publishedSchedule: PublishedSchedule;
+  /** Legacy lock dates. `locations[].lockDate` supersedes this; kept so old data resolves. */
   locationLockDates: Record<string, string>;
   tasks: Task[];
   budgetLines: BudgetLine[];
@@ -611,6 +685,8 @@ export interface ProductionData {
   timesheet: TimesheetEntry[];
   notifications: AppNotification[];
   activityLog: ActivityLogEntry[];
+  aiDigest?: AIDigest;
+  healthHistory: HealthSnapshot[];
 }
 
 // ============================================================

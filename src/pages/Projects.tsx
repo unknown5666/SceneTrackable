@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useMemo, useState, useRef } from "react";
 import {
   FolderKanban,
   Plus,
@@ -23,7 +23,18 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { formatDate } from "@/lib/utils";
 import { extractPdfText, parseScreenplay, runBreakdown, type BreakdownProgress } from "@/lib/script";
-import type { ScriptCharacter } from "@/lib/claude";
+import type { ProposedLocation, ScriptCharacter } from "@/lib/claude";
+import {
+  ProposalPicker,
+  defaultSelection,
+  type ProposalItem,
+} from "@/components/ui/ProposalPicker";
+import {
+  castFromCharacter,
+  characterExists,
+  locationExists,
+  locationFromProposal,
+} from "@/lib/proposals";
 import type { Scene } from "@/types";
 
 const CURRENCIES = ["AED", "USD", "EUR", "GBP", "INR", "CAD"];
@@ -41,6 +52,11 @@ export function Projects() {
   const setProjectScript = useStore((s) => s.setProjectScript);
   const replaceScenes = useStore((s) => s.replaceScenes);
   const recordAIUsage = useStore((s) => s.recordAIUsage);
+  const setCharacterBible = useStore((s) => s.setCharacterBible);
+  const addCastMember = useStore((s) => s.addCastMember);
+  const addRecord = useStore((s) => s.addRecord);
+  const cast = useStore((s) => s.cast);
+  const storeLocations = useStore((s) => s.locations);
 
   // Create modal
   const [createOpen, setCreateOpen] = useState(false);
@@ -65,7 +81,31 @@ export function Projects() {
   const [usedDemo, setUsedDemo] = useState(false);
   const [failedScenes, setFailedScenes] = useState<{ sceneNumber: string; error: string }[]>([]);
   const [foundCharacters, setFoundCharacters] = useState<ScriptCharacter[]>([]);
+  const [foundLocations, setFoundLocations] = useState<ProposedLocation[]>([]);
+  const [castSel, setCastSel] = useState<Set<string>>(new Set());
+  const [locSel, setLocSel] = useState<Set<string>>(new Set());
   const fileInput = useRef<HTMLInputElement>(null);
+
+  /**
+   * Commits the accepted proposals. The breakdown itself is already saved —
+   * this is the step that stops the cast bible and the location list from
+   * being thrown away the moment this modal closes.
+   */
+  const acceptProposals = () => {
+    const scenes = useStore.getState().scenes;
+    for (const c of foundCharacters) {
+      if (!castSel.has(c.name)) continue;
+      if (characterExists(c, useStore.getState().cast)) continue;
+      addCastMember(castFromCharacter(c, scenes));
+    }
+    for (const l of foundLocations) {
+      if (!locSel.has(l.name)) continue;
+      if (locationExists(l, useStore.getState().locations)) continue;
+      addRecord("locations", locationFromProposal(l));
+    }
+  };
+
+  const acceptedCount = castSel.size + locSel.size;
 
   const openCreate = () => {
     setNewName("");
@@ -99,6 +139,8 @@ export function Projects() {
     setErrorMsg("");
     setUsedDemo(false);
     setFailedScenes([]);
+    setFoundCharacters([]);
+    setFoundLocations([]);
   };
 
   const closeUpload = () => {
@@ -145,14 +187,44 @@ export function Projects() {
     setProgress({ done: 0, total: parsed.length, currentSceneNumber: "", stage: "characters" });
     try {
       const projectName = projects.find((p) => p.id === uploadFor)?.name;
-      const { scenes, usage, fromMock, failedScenes: failed, characters } = await runBreakdown(
-        parsed,
-        setProgress,
-        projectName
-      );
+      const {
+        scenes,
+        usage,
+        fromMock,
+        failedScenes: failed,
+        characters,
+        locations,
+      } = await runBreakdown(parsed, setProgress, projectName);
       replaceScenes(scenes);
       setFailedScenes(failed);
       setFoundCharacters(characters);
+      setFoundLocations(locations);
+      // Persisted, not just displayed: the cast step below reads it, and so
+      // does every later single-scene re-run.
+      setCharacterBible(characters);
+      // Pre-check the speaking roles and the unrecorded locations — the
+      // common case is accepting them, and anything already on the books is
+      // left out by defaultSelection.
+      setCastSel(
+        defaultSelection(
+          characters
+            .filter((c) => c.speaking)
+            .map((c) => ({
+              key: c.name,
+              label: c.name,
+              existing: Boolean(characterExists(c, cast)),
+            }))
+        )
+      );
+      setLocSel(
+        defaultSelection(
+          locations.map((l) => ({
+            key: l.name,
+            label: l.name,
+            existing: Boolean(locationExists(l, storeLocations)),
+          }))
+        )
+      );
       setProjectScript({
         fileName: source === "pdf" ? fileName : undefined,
         rawText,
@@ -360,14 +432,29 @@ export function Projects() {
               </Button>
             </>
           ) : stage === "done" ? (
-            <Button
-              onClick={() => {
-                setUploadFor(null);
-                nav("/breakdown");
-              }}
-            >
-              View breakdown <ArrowRight size={14} />
-            </Button>
+            <>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setUploadFor(null);
+                  nav("/breakdown");
+                }}
+              >
+                Skip
+              </Button>
+              <Button
+                onClick={() => {
+                  acceptProposals();
+                  setUploadFor(null);
+                  nav("/breakdown");
+                }}
+              >
+                {acceptedCount > 0
+                  ? `Create ${acceptedCount} record${acceptedCount === 1 ? "" : "s"} & continue`
+                  : "Continue"}{" "}
+                <ArrowRight size={14} />
+              </Button>
+            </>
           ) : stage === "error" ? (
             <Button variant="secondary" onClick={() => setStage("input")}>
               Try again
@@ -452,15 +539,17 @@ export function Projects() {
               <Sparkles size={28} className="text-[var(--color-ai)] animate-pulse" />
               <div className="text-sm font-medium text-[var(--text-primary)]">
                 {progress.stage === "characters"
-                  ? "Reading the script for characters"
+                  ? "Reading the script for characters and locations"
                   : `Analyzing scene ${Math.min(progress.done + 1, progress.total)} of ${progress.total}`}
               </div>
               <div className="text-xs text-[var(--text-muted)]">
-                {progress.stage === "characters"
-                  ? "One pass over the whole screenplay so cast naming stays consistent"
-                  : progress.currentSceneNumber
-                    ? `Scene ${progress.currentSceneNumber}`
-                    : ""}
+                {progress.waitingSeconds
+                  ? `Waiting ${progress.waitingSeconds}s for the model's rate limit…`
+                  : progress.stage === "characters"
+                    ? "Two passes over the whole screenplay, so cast and locations stay consistent"
+                    : progress.currentSceneNumber
+                      ? `Scene ${progress.currentSceneNumber}`
+                      : ""}
               </div>
             </div>
             {/* The character pass has no per-scene progress, so show it as a
@@ -481,48 +570,169 @@ export function Projects() {
         )}
 
         {stage === "done" && (
-          <div className="py-8 flex flex-col items-center gap-3 text-center">
-            <div
-              className="w-14 h-14 rounded-full flex items-center justify-center"
-              style={{ background: "rgba(34,197,94,0.12)" }}
-            >
-              <Check size={28} className="text-[var(--color-success)]" />
-            </div>
-            <div className="text-lg font-semibold text-[var(--text-primary)]">Breakdown complete</div>
-            <div className="text-sm text-[var(--text-secondary)] max-w-sm">
-              {parsed.length} scenes analyzed
-              {foundCharacters.length > 0 && (
-                <>
-                  {" "}
-                  and {foundCharacters.length} character
-                  {foundCharacters.length > 1 ? "s" : ""} identified
-                  {(() => {
-                    const speaking = foundCharacters.filter((c) => c.speaking).length;
-                    return speaking ? ` (${speaking} speaking)` : "";
-                  })()}
-                </>
-              )}
-              . Every element is now editable in the Breakdown workspace.
-            </div>
-            {usedDemo && (
-              <Badge tone="ai">
-                Demo mode — add a Claude or Gemini API key in AI Settings for live analysis
-              </Badge>
-            )}
-            {failedScenes.length > 0 && (
-              <div className="text-xs text-[var(--color-warning,#F59E0B)] max-w-sm">
-                {failedScenes.length} scene{failedScenes.length > 1 ? "s" : ""} could not be
-                analyzed live and used the offline fallback ({failedScenes[0].error}). Re-run
-                the breakdown, or re-analyze those scenes individually in the Breakdown page.
-              </div>
-            )}
-          </div>
+          <BreakdownResults
+            sceneCount={parsed.length}
+            characters={foundCharacters}
+            locations={foundLocations}
+            usedDemo={usedDemo}
+            failedScenes={failedScenes}
+            castSelection={castSel}
+            onCastSelection={setCastSel}
+            locationSelection={locSel}
+            onLocationSelection={setLocSel}
+          />
         )}
 
         {stage === "error" && (
           <EmptyState icon={<Film size={40} />} title="Couldn't parse the script" subtitle={errorMsg} />
         )}
       </Modal>
+    </div>
+  );
+}
+
+/**
+ * What the breakdown found, as records the user can accept.
+ *
+ * The run already produced a character bible and a consolidated location list;
+ * without this step both are shown once and discarded, and the Cast and
+ * Locations pages start empty even though the AI already did the work.
+ */
+function BreakdownResults({
+  sceneCount,
+  characters,
+  locations,
+  usedDemo,
+  failedScenes,
+  castSelection,
+  onCastSelection,
+  locationSelection,
+  onLocationSelection,
+}: {
+  sceneCount: number;
+  characters: ScriptCharacter[];
+  locations: ProposedLocation[];
+  usedDemo: boolean;
+  failedScenes: { sceneNumber: string; error: string }[];
+  castSelection: Set<string>;
+  onCastSelection: (s: Set<string>) => void;
+  locationSelection: Set<string>;
+  onLocationSelection: (s: Set<string>) => void;
+}) {
+  const cast = useStore((s) => s.cast);
+  const storeLocations = useStore((s) => s.locations);
+  const scenes = useStore((s) => s.scenes);
+  const [showNonSpeaking, setShowNonSpeaking] = useState(false);
+
+  const toCastItem = (c: ScriptCharacter): ProposalItem => {
+    const dupe = characterExists(c, cast);
+    const sceneCount = castFromCharacter(c, scenes).scenes.length;
+    return {
+      key: c.name,
+      label: c.name,
+      detail: [
+        c.aliases?.length ? `also ${c.aliases.join(", ")}` : "",
+        c.description ?? "",
+      ]
+        .filter(Boolean)
+        .join(" — "),
+      badge: (
+        <div className="flex items-center gap-1.5">
+          <Badge tone={c.importance === "lead" ? "ai" : "muted"}>{c.importance}</Badge>
+          {sceneCount > 0 && <Badge tone="muted">{sceneCount} sc.</Badge>}
+        </div>
+      ),
+      existing: Boolean(dupe),
+      existingLabel: "On cast list",
+    };
+  };
+
+  const speaking = useMemo(
+    () => characters.filter((c) => c.speaking).map(toCastItem),
+    [characters, cast, scenes]
+  );
+  const nonSpeaking = useMemo(
+    () => characters.filter((c) => !c.speaking).map(toCastItem),
+    [characters, cast, scenes]
+  );
+
+  const locationItems: ProposalItem[] = useMemo(
+    () =>
+      locations.map((l) => ({
+        key: l.name,
+        label: l.name,
+        detail: [l.aliases?.length ? `also ${l.aliases.join(", ")}` : "", l.suggestedNotes ?? ""]
+          .filter(Boolean)
+          .join(" — "),
+        badge: (
+          <div className="flex items-center gap-1.5">
+            <Badge tone="neutral">{l.type}</Badge>
+            {l.sceneNumbers?.length ? <Badge tone="muted">{l.sceneNumbers.length} sc.</Badge> : null}
+          </div>
+        ),
+        existing: Boolean(locationExists(l, storeLocations)),
+        existingLabel: "Recorded",
+      })),
+    [locations, storeLocations]
+  );
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-col items-center gap-2 text-center">
+        <div
+          className="w-12 h-12 rounded-full flex items-center justify-center"
+          style={{ background: "rgba(34,197,94,0.12)" }}
+        >
+          <Check size={24} className="text-[var(--color-success)]" />
+        </div>
+        <div className="text-lg font-semibold text-[var(--text-primary)]">Breakdown complete</div>
+        <div className="text-sm text-[var(--text-secondary)] max-w-md">
+          {sceneCount} scene{sceneCount === 1 ? "" : "s"} analyzed. Pick what to add to the
+          production — everything here is editable afterwards.
+        </div>
+        {usedDemo && (
+          <Badge tone="ai">
+            Demo mode — add a Claude or Gemini API key in AI Settings for live analysis
+          </Badge>
+        )}
+        {failedScenes.length > 0 && (
+          <div className="text-xs text-[var(--color-warning)] max-w-md">
+            {failedScenes.length} scene{failedScenes.length > 1 ? "s" : ""} could not be analyzed
+            live and used the offline fallback ({failedScenes[0].error}). Re-run the breakdown, or
+            re-analyze those scenes individually in the Breakdown page.
+          </div>
+        )}
+      </div>
+
+      {speaking.length + nonSpeaking.length > 0 && (
+        <div className="space-y-2">
+          <ProposalPicker
+            items={showNonSpeaking ? [...speaking, ...nonSpeaking] : speaking}
+            selected={castSelection}
+            onChange={onCastSelection}
+            groupLabel={`Cast list — ${speaking.length} speaking`}
+            emptyMessage="No speaking characters were identified."
+          />
+          {nonSpeaking.length > 0 && (
+            <button
+              onClick={() => setShowNonSpeaking(!showNonSpeaking)}
+              className="text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+            >
+              {showNonSpeaking ? "Hide" : "Show"} {nonSpeaking.length} non-speaking character
+              {nonSpeaking.length === 1 ? "" : "s"}
+            </button>
+          )}
+        </div>
+      )}
+
+      {locationItems.length > 0 && (
+        <ProposalPicker
+          items={locationItems}
+          selected={locationSelection}
+          onChange={onLocationSelection}
+          groupLabel={`Locations — ${locationItems.length} consolidated`}
+        />
+      )}
     </div>
   );
 }

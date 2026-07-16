@@ -6,6 +6,7 @@ import { Dashboard } from "@/pages/Dashboard";
 import { Projects } from "@/pages/Projects";
 import { Breakdown } from "@/pages/Breakdown";
 import { Schedule } from "@/pages/Schedule";
+import { Locations } from "@/pages/Locations";
 import { Tasks } from "@/pages/Tasks";
 import { Budget } from "@/pages/Budget";
 import { Reports } from "@/pages/Reports";
@@ -44,6 +45,7 @@ export default function App() {
         <Route path="/notifications" element={<Notifications />} />
         <Route path="/breakdown" element={<AccessGuard page="breakdown"><Breakdown /></AccessGuard>} />
         <Route path="/schedule" element={<AccessGuard page="schedule"><Schedule /></AccessGuard>} />
+        <Route path="/locations" element={<AccessGuard page="locations"><Locations /></AccessGuard>} />
         <Route path="/tasks" element={<AccessGuard page="tasks"><Tasks /></AccessGuard>} />
         <Route path="/budget" element={<AccessGuard page="budget"><Budget /></AccessGuard>} />
         <Route path="/reports" element={<AccessGuard page="reports"><Reports /></AccessGuard>} />

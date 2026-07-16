@@ -22,6 +22,7 @@ const ENTITY_TONE: Record<ActivityEntity, "info" | "ai" | "warning" | "muted" | 
   purchase_order: "warning",
   auth: "muted",
   project: "info",
+  location: "info",
   art_element: "ai",
   vfx_shot: "ai",
   frequency: "info",

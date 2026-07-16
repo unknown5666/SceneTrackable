@@ -28,6 +28,9 @@ import type {
   AIConfig,
   ProductionMeta,
   ProductionData,
+  ProductionLocation,
+  ScriptCharacter,
+  AIDigest,
   Project,
   ProjectScript,
   PublishedSchedule,
@@ -42,6 +45,7 @@ import type {
 import { isAdminRole } from "@/types";
 import { DEFAULT_ROLES } from "@/data/roles";
 import { evaluateDeadline } from "@/lib/deadlines";
+import { resolveLockDates, locKey } from "@/lib/locations";
 import { id, verifyPassword, hashPassword, HASH_PREFIX } from "@/lib/utils";
 import {
   cloudEnabled,
@@ -137,6 +141,8 @@ export function blankData(title: string, currency = "AED"): ProductionData {
     crew: [],
     cast: [],
     scenes: [],
+    characterBible: [],
+    locations: [],
     shootDays: [],
     dood: {},
     publishedSchedule: { ...BLANK_PUBLISHED },
@@ -157,11 +163,26 @@ export function blankData(title: string, currency = "AED"): ProductionData {
     timesheet: [],
     notifications: [],
     activityLog: [],
+    // Explicitly present so DATA_KEYS covers it and project switches carry it.
+    aiDigest: undefined,
+    healthHistory: [],
   };
 }
 
 /** Field names that make up the active-project working set. */
 const DATA_KEYS = Object.keys(blankData("")) as (keyof ProductionData)[];
+
+/**
+ * The context every deadline rule is evaluated against. Always build it from
+ * here — location lock dates live in two places (records + the legacy map) and
+ * this is the only spot that knows how they merge.
+ */
+function scheduleContext(state: State) {
+  return {
+    shootDays: state.shootDays,
+    locationLockDates: resolveLockDates(state.locations, state.locationLockDates),
+  };
+}
 
 function captureActive(state: State): ProductionData {
   const out = {} as ProductionData;
@@ -170,6 +191,44 @@ function captureActive(state: State): ProductionData {
     out[k] = state[k];
   }
   return out;
+}
+
+/**
+ * Turn a pre-v2 dataset's `locationLockDates` into `ProductionLocation`
+ * records, in place. The legacy map is left untouched: it stays the fallback
+ * for anything this misses, and `resolveLockDates` lets the records win.
+ */
+function adoptLegacyLocations(data: Record<string, any> | undefined): void {
+  if (!data || typeof data !== "object") return;
+  const legacy: Record<string, string> = data.locationLockDates ?? {};
+  const existing: ProductionLocation[] = Array.isArray(data.locations) ? data.locations : [];
+  const known = new Set(existing.map((l) => locKey(l.name)));
+
+  // A scene heading is the only clue we have to whether a place is interior.
+  const scenes: { location?: string; intExt?: string }[] = Array.isArray(data.scenes)
+    ? data.scenes
+    : [];
+  const typeOf = (name: string): ProductionLocation["type"] => {
+    const hit = scenes.find((s) => locKey(s.location ?? "") === locKey(name));
+    const t = hit?.intExt;
+    return t === "INT" || t === "EXT" || t === "INT/EXT" ? t : "INT";
+  };
+
+  const added: ProductionLocation[] = [];
+  for (const [name, lockDate] of Object.entries(legacy)) {
+    if (!name.trim() || known.has(locKey(name))) continue;
+    known.add(locKey(name));
+    added.push({
+      id: id("loc"),
+      name: name.trim(),
+      type: typeOf(name),
+      permitStatus: lockDate ? "locked" : "scouting",
+      lockDate: lockDate || undefined,
+    });
+  }
+  data.locations = [...existing, ...added];
+  if (!Array.isArray(data.characterBible)) data.characterBible = [];
+  if (!Array.isArray(data.healthHistory)) data.healthHistory = [];
 }
 
 // ============================================================
@@ -259,9 +318,22 @@ interface State extends ProductionData {
   moveSceneToDay: (sceneId: string, toDay: number, indexInDay?: number) => void;
   publishSchedule: () => void;
   recomputeAllDeadlines: () => void;
-  setLocationLock: (locationId: string, date: string) => void;
+  /** Records a lock date against a location by name. */
+  setLocationLock: (locationName: string, date: string) => void;
+  /** Replaces the persisted character bible after a breakdown run. */
+  setCharacterBible: (characters: ScriptCharacter[]) => void;
+  /** Caches the daily digest so it isn't regenerated on every dashboard visit. */
+  setAIDigest: (digest: AIDigest) => void;
+  /** Appends today's health score, once per day. */
+  recordHealth: (health: number) => void;
 
   cycleDoodCell: (castId: string, day: number) => void;
+  /**
+   * Fills the DOOD matrix from the schedule: W on days holding one of a cast
+   * member's scenes, H on the gaps between their first and last day. Never
+   * overwrites a cell someone already set. Returns cells filled.
+   */
+  seedDoodFromSchedule: () => number;
 
   createTask: (task: Omit<Task, "id" | "createdAt" | "updatedAt" | "computedDeadline"> & { computedDeadline?: string }) => void;
   updateTaskStatus: (id: string, status: TaskStatus) => void;
@@ -560,9 +632,11 @@ export const useStore = create<State>()(
         if (state.activeProjectId) {
           projectData[state.activeProjectId] = captureActive(state);
         }
-        const target =
-          projectData[pid] ??
-          blankData(state.projects.find((p) => p.id === pid)?.name ?? "Project");
+        const name = state.projects.find((p) => p.id === pid)?.name ?? "Project";
+        // Spread over a blank set, not over the outgoing project: a snapshot
+        // taken before a collection existed has no key for it, and a bare
+        // spread would leave the previous project's rows sitting in it.
+        const target = { ...blankData(name), ...(projectData[pid] ?? {}) };
         set({ ...target, projectData, activeProjectId: pid });
       },
 
@@ -583,7 +657,7 @@ export const useStore = create<State>()(
         if (pid === state.activeProjectId) {
           const next = projects[0];
           if (next) {
-            const target = projectData[next.id] ?? blankData(next.name);
+            const target = { ...blankData(next.name), ...(projectData[next.id] ?? {}) };
             set({ ...target, projectData, projects, activeProjectId: next.id });
           } else {
             set({
@@ -749,10 +823,7 @@ export const useStore = create<State>()(
 
       recomputeAllDeadlines: () => {
         const state = get();
-        const ctx = {
-          shootDays: state.shootDays,
-          locationLockDates: state.locationLockDates,
-        };
+        const ctx = scheduleContext(state);
         set({
           tasks: state.tasks.map((t) => {
             const nd = evaluateDeadline(t.deadlineRule, ctx);
@@ -761,11 +832,47 @@ export const useStore = create<State>()(
         });
       },
 
-      setLocationLock: (locationId, date) => {
-        set((s) => ({
-          locationLockDates: { ...s.locationLockDates, [locationId]: date },
-        }));
+      /**
+       * Sets a lock date by location name. Writes to the location record when
+       * one exists — that's the source of truth — and only falls back to the
+       * legacy map for a name no record covers.
+       */
+      setLocationLock: (locationName, date) => {
+        const match = get().locations.find(
+          (l) =>
+            locKey(l.name) === locKey(locationName) ||
+            (l.aliases ?? []).some((a) => locKey(a) === locKey(locationName))
+        );
+        if (match) {
+          set((s) => ({
+            locations: s.locations.map((l) =>
+              l.id === match.id ? { ...l, lockDate: date } : l
+            ),
+          }));
+          get().logActivity({
+            action: "lock_date_set",
+            entity: "location",
+            entityId: match.id,
+            description: `Locked ${match.name} on ${date.slice(0, 10)}`,
+          });
+        } else {
+          set((s) => ({
+            locationLockDates: { ...s.locationLockDates, [locationName]: date },
+          }));
+        }
         get().recomputeAllDeadlines();
+      },
+
+      setCharacterBible: (characters) => set({ characterBible: characters }),
+
+      setAIDigest: (digest) => set({ aiDigest: digest }),
+
+      recordHealth: (health) => {
+        const today = new Date().toISOString().slice(0, 10);
+        const history = get().healthHistory ?? [];
+        if (history[history.length - 1]?.date === today) return;
+        // 30 days is all the sparkline shows; keeping more just bloats storage.
+        set({ healthHistory: [...history, { date: today, health }].slice(-30) });
       },
 
       // ---- DOOD ----
@@ -786,10 +893,7 @@ export const useStore = create<State>()(
         const s = get();
         const computed =
           task.computedDeadline ??
-          evaluateDeadline(task.deadlineRule, {
-            shootDays: s.shootDays,
-            locationLockDates: s.locationLockDates,
-          }) ??
+          evaluateDeadline(task.deadlineRule, scheduleContext(s)) ??
           new Date().toISOString();
         const nt: Task = {
           ...task,
@@ -1061,6 +1165,9 @@ export const useStore = create<State>()(
           entityId: rec.id,
           description: `Added ${schema.singular.toLowerCase()}: ${schema.label(rec)}`,
         });
+        // A location's lockDate is a deadline anchor, so writing one has to
+        // move every task hanging off it.
+        if (collection === "locations") get().recomputeAllDeadlines();
         return rec.id;
       },
 
@@ -1084,6 +1191,7 @@ export const useStore = create<State>()(
           entityId: rid,
           description: `Updated ${schema.singular.toLowerCase()}: ${schema.label(next)}`,
         });
+        if (collection === "locations") get().recomputeAllDeadlines();
       },
 
       deleteRecord: (collection, rid) => {
@@ -1099,6 +1207,7 @@ export const useStore = create<State>()(
           entityId: rid,
           description: `Deleted ${schema.singular.toLowerCase()}: ${schema.label(prev)}`,
         });
+        if (collection === "locations") get().recomputeAllDeadlines();
       },
 
       // ========================================================
@@ -1142,6 +1251,60 @@ export const useStore = create<State>()(
           entityId: cid,
           description: `Removed cast ${c?.name ?? cid}`,
         });
+      },
+
+      /**
+       * Derives the DOOD grid from what the schedule already says: a cast
+       * member works the days holding their scenes, holds through the gaps in
+       * between, and is off outside that span. It's a first draft — the AD's
+       * own edits are never touched, only blank cells are filled.
+       */
+      seedDoodFromSchedule: () => {
+        const state = get();
+        const days = [...state.shootDays].sort((a, b) => a.dayNumber - b.dayNumber);
+        if (days.length === 0 || state.cast.length === 0) return 0;
+
+        const dood: DoodMatrix = { ...state.dood };
+        let filled = 0;
+
+        for (const member of state.cast) {
+          const scenes = new Set(member.scenes);
+          const working = days
+            .filter((d) => d.scenes.some((sid) => scenes.has(sid)))
+            .map((d) => d.dayNumber);
+          if (working.length === 0) continue;
+
+          const first = working[0];
+          const last = working[working.length - 1];
+          const row = { ...(dood[member.id] ?? {}) };
+
+          for (const day of days) {
+            const n = day.dayNumber;
+            if (row[n] !== undefined) continue; // someone set this already
+            let status: DoodStatus;
+            if (working.includes(n)) {
+              status =
+                first === last ? "SWF" : n === first ? "SW" : n === last ? "WF" : "W";
+            } else if (n > first && n < last) {
+              status = "H";
+            } else {
+              status = "OFF";
+            }
+            row[n] = status;
+            filled += 1;
+          }
+          dood[member.id] = row;
+        }
+
+        if (filled === 0) return 0;
+        set({ dood });
+        get().logActivity({
+          action: "dood_seeded",
+          entity: "dood",
+          description: `Seeded ${filled} DOOD cell${filled === 1 ? "" : "s"} from the schedule`,
+          meta: { cells: filled },
+        });
+        return filled;
       },
 
       setDoodStatus: (castId, day, status) => {
@@ -1244,7 +1407,20 @@ export const useStore = create<State>()(
     {
       name: "scenetrackable-v1",
       storage: createJSONStorage(() => localStorage),
-      version: 1,
+      version: 2,
+      migrate: (persisted, from) => {
+        const s = persisted as Record<string, any>;
+        if (from < 2) {
+          // v2 gave locations their own collection. Lock dates were the only
+          // location data the app held, so they become the first records —
+          // stranding them would silently break location_lock deadlines.
+          adoptLegacyLocations(s);
+          for (const pid of Object.keys(s.projectData ?? {})) {
+            adoptLegacyLocations(s.projectData[pid]);
+          }
+        }
+        return s;
+      },
     }
   )
 );

@@ -14,6 +14,10 @@ import type { ShootDay } from "@/types";
 
 export interface ScheduleContext {
   shootDays: ShootDay[];
+  /**
+   * Location name -> lock date. Build it with `resolveLockDates()` so records
+   * in the locations collection win over legacy entries and aliases resolve.
+   */
   locationLockDates?: Record<string, string>;
 }
 
@@ -37,6 +41,18 @@ export function parseDeadlineRule(rule: string): ParsedDeadlineRule | null {
     offsetDays,
     raw: rule,
   };
+}
+
+function lookupLock(
+  map: Record<string, string> | undefined,
+  name: string
+): string | undefined {
+  if (!map) return undefined;
+  const want = name.trim().toLowerCase();
+  for (const [k, v] of Object.entries(map)) {
+    if (k.trim().toLowerCase() === want) return v;
+  }
+  return undefined;
 }
 
 const addDays = (dateISO: string, days: number): string => {
@@ -65,7 +81,9 @@ export function evaluateDeadline(
       return addDays(day.date, parsed.offsetDays);
     }
     case "location_lock": {
-      const lockDate = ctx.locationLockDates?.[parsed.arg];
+      // Rules are written by hand and by the AI against whatever spelling the
+      // script uses, so match on a normalized key rather than exactly.
+      const lockDate = lookupLock(ctx.locationLockDates, parsed.arg);
       if (!lockDate) return null;
       return addDays(lockDate, parsed.offsetDays);
     }

@@ -1,5 +1,6 @@
 import type { ProductionData } from "@/types";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { scenesAtLocation } from "@/lib/locations";
 
 // ============================================================
 // REPORTS — build tabular exports from a production dataset
@@ -16,6 +17,7 @@ export type ReportId =
   | "cast"
   | "dood"
   | "schedule"
+  | "locations"
   | "budget"
   | "tasks";
 
@@ -203,6 +205,49 @@ export const REPORTS: ReportDef[] = [
     },
   },
   {
+    id: "locations",
+    title: "Location Report",
+    description:
+      "Every location with permit status, lock date, the scenes that play there, and shoot days.",
+    isEmpty: (d) => d.locations.length === 0,
+    build: (d) => ({
+      columns: [
+        "Location",
+        "Type",
+        "Permit Status",
+        "Lock Date",
+        "Scenes",
+        "Shoot Days",
+        "Cost/Day",
+        "Address",
+        "Contact",
+      ],
+      rows: [...d.locations]
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((loc) => {
+          const at = scenesAtLocation(d.scenes, loc);
+          const sceneIds = new Set(at.map((s) => s.id));
+          const days = d.shootDays
+            .filter((day) => day.scenes.some((id) => sceneIds.has(id)))
+            .map((day) => day.dayNumber)
+            .sort((a, b) => a - b);
+          return [
+            cleanCell(loc.name),
+            cleanCell(loc.type),
+            cleanCell(loc.permitStatus.replace(/_/g, " ")),
+            loc.lockDate ? formatDate(loc.lockDate, { year: "numeric" }) : "",
+            cleanCell(at.map((s) => s.number).join(", ")),
+            cleanCell(days.join(", ")),
+            loc.costPerDay === undefined
+              ? ""
+              : formatCurrency(loc.costPerDay, d.production.currency),
+            cleanCell(loc.address),
+            cleanCell([loc.contactName, loc.contactPhone].filter(Boolean).join(" · ")),
+          ];
+        }),
+    }),
+  },
+  {
     id: "budget",
     title: "Budget Top Sheet",
     description:
@@ -332,7 +377,7 @@ const escapeHTML = (s: string) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 
-export function printReport(def: ReportDef, d: ProductionData) {
+export function printReport(def: ReportDef, d: ProductionData, narration?: string) {
   const table = def.build(d);
   const title = d.production.title || "Production";
   const generated = new Date().toLocaleString();
@@ -353,6 +398,8 @@ export function printReport(def: ReportDef, d: ProductionData) {
     h1 { font-size: 18px; margin: 0; }
     h2 { font-size: 14px; font-weight: 600; margin: 4px 0 0; color: #555; }
     .meta { font-size: 11px; color: #888; margin-top: 6px; }
+    .summary { font-size: 12px; line-height: 1.5; margin: 0 0 16px; padding: 10px 12px; background: #f7f7f9; border-left: 3px solid #666; }
+    .summary h3 { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: #666; margin: 0 0 4px; }
     table { width: 100%; border-collapse: collapse; font-size: 11px; }
     th, td { border: 1px solid #ccc; padding: 5px 7px; text-align: left; vertical-align: top; }
     th { background: #f2f2f2; font-weight: 600; }
@@ -367,6 +414,11 @@ export function printReport(def: ReportDef, d: ProductionData) {
     generated
   )}</div>
     </header>
+    ${
+      narration
+        ? `<div class="summary"><h3>Summary</h3>${escapeHTML(narration)}</div>`
+        : ""
+    }
     <table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>
     <footer>SceneTrackable · Built by OverExposure Productions</footer>
   </body></html>`;

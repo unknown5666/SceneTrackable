@@ -25,8 +25,12 @@ import {
   Moon,
   MapPin,
   Users,
+  Wand2,
+  Sparkles,
+  Loader2,
+  Check,
 } from "lucide-react";
-import { useStore } from "@/state/store";
+import { useStore, activeProject } from "@/state/store";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -35,7 +39,16 @@ import { Tabs } from "@/components/ui/Tabs";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useRecordEditor } from "@/components/ui/RecordEditor";
 import { formatDate, cn } from "@/lib/utils";
-import type { Scene, ShootDay, DoodStatus } from "@/types";
+import { aiScheduleDraft } from "@/lib/claude";
+import {
+  buildScheduleDigest,
+  defaultStartDate,
+  demoScheduleDraft,
+  shootDayFromProposal,
+  validateSchedule,
+  type ScheduleValidation,
+} from "@/lib/scheduleDraft";
+import type { ProductionData, Scene, ShootDay, DoodStatus } from "@/types";
 
 // ============================================================
 // STRIP BOARD
@@ -130,6 +143,7 @@ function StripBoard() {
   const production = useStore((s) => s.production);
 
   const [activeDrag, setActiveDrag] = useState<string | null>(null);
+  const [draftOpen, setDraftOpen] = useState(false);
   const ed = useRecordEditor("shootDays");
 
   // Page range for horizontal scroll
@@ -182,11 +196,25 @@ function StripBoard() {
           <EmptyState
             icon={<Calendar size={48} />}
             title="No shoot days yet"
-            subtitle="Add your shooting days first — the strip board, DOOD, frequencies and kit assignments all hang off them."
-            cta={<ed.AddButton size="md" label="Add First Shoot Day" />}
+            subtitle={
+              scenes.length > 0
+                ? "Draft a board from your scenes — grouped by location, with nights batched together — then adjust it. Or add days by hand."
+                : "Add your shooting days first — the strip board, DOOD, frequencies and kit assignments all hang off them."
+            }
+            cta={
+              <div className="flex items-center gap-2">
+                {scenes.length > 0 && (
+                  <Button variant="ai" onClick={() => setDraftOpen(true)}>
+                    <Sparkles size={14} /> Draft schedule (AI)
+                  </Button>
+                )}
+                <ed.AddButton size="md" label="Add First Shoot Day" />
+              </div>
+            }
           />
         </Card>
         {ed.modal}
+        <DraftScheduleModal open={draftOpen} onClose={() => setDraftOpen(false)} />
       </>
     );
   }
@@ -217,7 +245,12 @@ function StripBoard() {
           >
             <ChevronRight size={14} />
           </Button>
-          <div className="ml-2">
+          <div className="ml-2 flex items-center gap-2">
+            {scenes.length > 0 && (
+              <Button variant="ai" size="sm" onClick={() => setDraftOpen(true)}>
+                <Sparkles size={14} /> Draft schedule (AI)
+              </Button>
+            )}
             <ed.AddButton label="Add Day" />
           </div>
         </div>
@@ -359,7 +392,255 @@ function StripBoard() {
         </DragOverlay>
       </DndContext>
       {ed.modal}
+      <DraftScheduleModal open={draftOpen} onClose={() => setDraftOpen(false)} />
     </>
+  );
+}
+
+// ============================================================
+// AI SCHEDULE DRAFT
+// ============================================================
+
+/**
+ * Drafts a whole strip board in one request, shows it for review, and only
+ * writes shoot days once accepted.
+ *
+ * Overwriting is deliberately hard to do by accident: published days are never
+ * touched, and replacing unpublished ones takes an explicit choice.
+ */
+function DraftScheduleModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const scenes = useStore((s) => s.scenes);
+  const shootDays = useStore((s) => s.shootDays);
+  const publishedSchedule = useStore((s) => s.publishedSchedule);
+  const project = useStore(activeProject);
+  const addRecord = useStore((s) => s.addRecord);
+  const deleteRecord = useStore((s) => s.deleteRecord);
+  const recordAIUsage = useStore((s) => s.recordAIUsage);
+
+  const data = useScheduleData();
+  const [startDate, setStartDate] = useState(() => defaultStartDate(data));
+  const [replace, setReplace] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<ScheduleValidation | null>(null);
+  const [fromMock, setFromMock] = useState(false);
+  const [error, setError] = useState("");
+
+  // A published board has gone out to departments; redrafting over it would
+  // silently contradict call sheets people are already working from.
+  const isPublished = Boolean(publishedSchedule.publishedAt);
+  const hasDays = shootDays.length > 0;
+
+  const run = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const digest = buildScheduleDigest(data, startDate, scenes);
+      const { days, result: res } = await aiScheduleDraft(digest, project?.name);
+      recordAIUsage({
+        feature: "schedule_draft",
+        inputTokens: res.inputTokens,
+        outputTokens: res.outputTokens,
+        model: res.model,
+        costUsd: res.costUsd,
+      });
+      const mock = res.fromMock || days.length === 0;
+      const proposed = mock ? demoScheduleDraft(data, scenes, startDate) : days;
+      setFromMock(mock);
+      setResult(validateSchedule(proposed, scenes, startDate));
+    } catch (e) {
+      setError((e as Error).message || "Couldn't draft a schedule.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const accept = () => {
+    if (!result) return;
+    if (replace) {
+      for (const day of shootDays) deleteRecord("shootDays", day.id);
+    }
+    for (const v of result.days) addRecord("shootDays", shootDayFromProposal(v));
+    close();
+  };
+
+  const close = () => {
+    setResult(null);
+    setError("");
+    setReplace(false);
+    setFromMock(false);
+    onClose();
+  };
+
+  const totalPages = result?.days.reduce((s, d) => s + d.pages, 0) ?? 0;
+
+  return (
+    <Modal
+      open={open}
+      onClose={busy ? () => undefined : close}
+      size="lg"
+      title="Draft a shooting schedule"
+      subtitle="One AI pass over every scene — grouped by location to cut company moves, nights batched together, packed to your page target."
+      footer={
+        result ? (
+          <>
+            <Button variant="secondary" onClick={close}>
+              Cancel
+            </Button>
+            <Button onClick={accept} disabled={result.days.length === 0}>
+              <Check size={14} /> Create {result.days.length} shoot day
+              {result.days.length === 1 ? "" : "s"}
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button variant="secondary" onClick={close} disabled={busy}>
+              Cancel
+            </Button>
+            <Button variant="ai" onClick={run} disabled={busy || scenes.length === 0}>
+              {busy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+              {busy ? "Building the board…" : "Draft schedule"}
+            </Button>
+          </>
+        )
+      }
+    >
+      {error ? (
+        <EmptyState icon={<Calendar size={40} />} title="Couldn't draft a schedule" subtitle={error} />
+      ) : result ? (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge tone="success" dot>
+              {result.days.length} days · {Math.round(totalPages * 10) / 10} pages
+            </Badge>
+            {result.unplaced.length > 0 && (
+              <Badge tone="warning">{result.unplaced.length} scenes unplaced</Badge>
+            )}
+            {fromMock && <Badge tone="ai">Demo mode — grouped by location and time of day</Badge>}
+          </div>
+
+          {hasDays && (
+            <div
+              className="p-3 rounded-lg border"
+              style={{
+                borderColor: isPublished ? "var(--color-danger)" : "var(--border-default)",
+                background: "var(--bg-elevated)",
+              }}
+            >
+              {isPublished ? (
+                <div className="text-xs text-[var(--text-secondary)]">
+                  <span className="font-medium text-[var(--color-danger)]">
+                    This schedule is published (v{publishedSchedule.version}).
+                  </span>{" "}
+                  Departments are working from it, so these days will be <strong>added</strong>{" "}
+                  alongside the existing {shootDays.length}. Delete the old days yourself if you
+                  mean to replace them.
+                </div>
+              ) : (
+                <label className="flex items-start gap-2 text-xs cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={replace}
+                    onChange={(e) => setReplace(e.target.checked)}
+                  />
+                  <span className="text-[var(--text-secondary)]">
+                    Replace the {shootDays.length} existing unpublished shoot day
+                    {shootDays.length === 1 ? "" : "s"}. Leave unchecked to add these alongside
+                    them.
+                  </span>
+                </label>
+              )}
+            </div>
+          )}
+
+          <div className="rounded-card border border-[var(--border-default)] divide-y divide-[var(--border-default)] max-h-[340px] overflow-y-auto">
+            {result.days.map((v) => (
+              <div key={v.day.dayNumber} className="p-3">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-semibold text-[var(--text-primary)]">
+                    Day {v.day.dayNumber}
+                  </span>
+                  <span className="text-xs text-[var(--text-muted)]">
+                    {formatDate(v.day.date, { year: "numeric" })}
+                  </span>
+                  <Badge tone="muted">
+                    <MapPin size={9} /> {v.day.location}
+                  </Badge>
+                  <Badge tone="neutral">
+                    {v.pages} pg · ~{v.day.estimatedHours}h
+                  </Badge>
+                </div>
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {v.scenes.map((s) => (
+                    <span
+                      key={s.id}
+                      className="text-[10px] px-1.5 py-0.5 rounded-badge bg-[var(--bg-elevated)] border border-[var(--border-default)] text-[var(--text-secondary)]"
+                    >
+                      {s.number}
+                      {s.timeOfDay === "NIGHT" ? " 🌙" : ""}
+                    </span>
+                  ))}
+                </div>
+                {v.day.rationale && (
+                  <div className="text-[11px] text-[var(--text-muted)] mt-1.5">
+                    {v.day.rationale}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {result.unplaced.length > 0 && (
+            <div className="text-[11px] text-[var(--text-muted)]">
+              Left unplaced (they stay in the unassigned pool):{" "}
+              {result.unplaced.map((s) => s.number).join(", ")}.
+            </div>
+          )}
+          {result.problems.length > 0 && (
+            <div className="text-[11px] text-[var(--color-warning)]">
+              Fixed while validating: {result.problems.slice(0, 3).join(" ")}
+              {result.problems.length > 3 && ` +${result.problems.length - 3} more.`}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div>
+            <label className="section-header block mb-1.5">First shooting day</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="w-full"
+            />
+            <div className="text-[11px] text-[var(--text-muted)] mt-1">
+              Days run Monday–Friday from here.
+            </div>
+          </div>
+          <div className="text-sm text-[var(--text-secondary)]">
+            {scenes.length === 0
+              ? "This project has no scenes yet — upload a script first."
+              : `Reads all ${scenes.length} scenes in one request. ${
+                  useStore.getState().production.plannedPagesPerDay
+                    ? `Packing to ${useStore.getState().production.plannedPagesPerDay} pages/day.`
+                    : "No pages-per-day target is set on this production, so the draft will aim for balanced days."
+                } You review the board before any day is created.`}
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+/** The slices the schedule draft reads. */
+function useScheduleData(): ProductionData {
+  const production = useStore((s) => s.production);
+  const scenes = useStore((s) => s.scenes);
+  const shootDays = useStore((s) => s.shootDays);
+  const locations = useStore((s) => s.locations);
+  return useMemo(
+    () => ({ production, scenes, shootDays, locations } as unknown as ProductionData),
+    [production, scenes, shootDays, locations]
   );
 }
 
@@ -444,8 +725,22 @@ function DOODChart() {
   const dood = useStore((s) => s.dood);
   const shootDays = useStore((s) => s.shootDays);
   const setDoodStatus = useStore((s) => s.setDoodStatus);
+  const seedDood = useStore((s) => s.seedDoodFromSchedule);
   const activeRole = useStore((s) => s.activeRole);
   const canEdit = activeRole === "admin" || activeRole === "scheduler" || activeRole === "cast";
+
+  // Cast carry their scene ids from the breakdown, and shoot days carry
+  // theirs — so the first draft of this grid is already implied by the
+  // schedule and needs no AI call to derive.
+  const seedable = cast.some((c) => c.scenes.length > 0);
+  const runSeed = () => {
+    const filled = seedDood();
+    if (filled === 0) {
+      alert(
+        "Nothing to seed. Every cell is already set, or no cast member's scenes appear on a shoot day."
+      );
+    }
+  };
 
   if (cast.length === 0) {
     return (
@@ -480,7 +775,20 @@ function DOODChart() {
               ? "Pick a status from the dropdown for each cast × day cell. All changes are logged."
               : "Read-only view. Admin, scheduler, and cast coordinator roles can edit."
           }
+          right={
+            canEdit && seedable ? (
+              <Button variant="secondary" size="sm" onClick={runSeed}>
+                <Wand2 size={14} /> Seed from schedule
+              </Button>
+            ) : undefined
+          }
         />
+        {canEdit && seedable && (
+          <div className="text-[11px] text-[var(--text-muted)] -mt-1">
+            Fills blank cells from each cast member's scenes — W on their days, H in between. Your
+            existing entries are never overwritten.
+          </div>
+        )}
       </div>
       <div className="overflow-x-auto">
         <table className="pos-table text-[11px]">

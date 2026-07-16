@@ -7,15 +7,25 @@ import {
   AlertCircle,
   Pencil,
   Trash2,
+  Loader2,
 } from "lucide-react";
-import { useStore, currentUser, isCurrentAdmin } from "@/state/store";
+import { useStore, currentUser, isCurrentAdmin, activeProject } from "@/state/store";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge, StatusBadge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ProposalPicker } from "@/components/ui/ProposalPicker";
 import { formatDate, isOverdue, cn } from "@/lib/utils";
 import { humanizeRule } from "@/lib/deadlines";
+import { aiTaskProposals, MAX_TASK_PROPOSALS, type ProposedTask } from "@/lib/claude";
+import {
+  buildTaskDigest,
+  demoTaskProposals,
+  taskFromProposal,
+  validateProposals,
+  type ValidatedTask,
+} from "@/lib/taskProposals";
 import type { Task, TaskStatus, TaskPriority, DepartmentId } from "@/types";
 
 const STATUS_COLUMNS: TaskStatus[] = [
@@ -73,7 +83,12 @@ export function Tasks() {
   const [view, setView] = useState<"kanban" | "list">("kanban");
   const [filter, setFilter] = useState<"all" | "mine">("all");
   const [newTaskOpen, setNewTaskOpen] = useState(false);
+  const [proposeOpen, setProposeOpen] = useState(false);
   const [editTask, setEditTask] = useState<Task | null>(null);
+
+  // Proposals are inferred from breakdown elements — with none, there's
+  // nothing for the model to reason from.
+  const hasBreakdown = useStore((s) => s.scenes.some((sc) => sc.elements.length > 0));
 
   const filteredTasks = useMemo(
     () =>
@@ -137,6 +152,12 @@ export function Tasks() {
             <option value="mine">My tasks</option>
           </select>
 
+          {hasBreakdown && (
+            <Button variant="ai" onClick={() => setProposeOpen(true)} disabled={!me}>
+              <Sparkles size={14} /> Propose tasks (AI)
+            </Button>
+          )}
+
           <Button onClick={() => setNewTaskOpen(true)} disabled={!me}>
             <Plus size={14} /> New task
           </Button>
@@ -189,7 +210,179 @@ export function Tasks() {
         users={users}
         canEdit={editTask ? canModify(editTask) : false}
       />
+      <ProposeTasksModal open={proposeOpen} onClose={() => setProposeOpen(false)} />
     </div>
+  );
+}
+
+// ============================================================
+// AI TASK PROPOSALS
+// ============================================================
+
+/**
+ * One request over the breakdown digest, then a reviewable list.
+ *
+ * Every proposed deadline is validated against the real evaluator before the
+ * user sees it: a rule naming a shoot day or location that doesn't exist would
+ * create a task with a meaningless date, which is worse than no task.
+ */
+function ProposeTasksModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const project = useStore(activeProject);
+  const createTask = useStore((s) => s.createTask);
+  const recordAIUsage = useStore((s) => s.recordAIUsage);
+  const me = useStore(currentUser);
+
+  const [busy, setBusy] = useState(false);
+  const [valid, setValid] = useState<ValidatedTask[] | null>(null);
+  const [rejected, setRejected] = useState<{ title: string; reason: string }[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [fromMock, setFromMock] = useState(false);
+  const [error, setError] = useState("");
+
+  const run = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const data = useStore.getState();
+      // A live failure propagates to the catch below rather than degrading to
+      // demo output — the user asked for a real pass.
+      const { tasks, result } = await aiTaskProposals(buildTaskDigest(data), project?.name);
+      recordAIUsage({
+        feature: "task_proposals",
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        model: result.model,
+        costUsd: result.costUsd,
+      });
+      // Demo mode has no task JSON to return, so the rule-based set stands in.
+      const mock = result.fromMock || tasks.length === 0;
+      const proposals: ProposedTask[] = mock ? demoTaskProposals(data) : tasks;
+
+      const { valid: ok, rejected: bad } = validateProposals(proposals, data);
+      setValid(ok);
+      setRejected(bad);
+      setFromMock(mock);
+      setSelected(new Set(ok.map((v) => v.proposal.title)));
+    } catch (e) {
+      setError((e as Error).message || "Couldn't propose tasks.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const byDepartment = useMemo(() => {
+    const map = new Map<DepartmentId, ValidatedTask[]>();
+    for (const v of valid ?? []) {
+      const arr = map.get(v.proposal.department) ?? [];
+      arr.push(v);
+      map.set(v.proposal.department, arr);
+    }
+    return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [valid]);
+
+  const accept = () => {
+    for (const v of valid ?? []) {
+      if (!selected.has(v.proposal.title)) continue;
+      createTask(taskFromProposal(v, me?.id ?? ""));
+    }
+    close();
+  };
+
+  const close = () => {
+    setValid(null);
+    setRejected([]);
+    setSelected(new Set());
+    setError("");
+    setFromMock(false);
+    onClose();
+  };
+
+  return (
+    <Modal
+      open={open}
+      onClose={busy ? () => undefined : close}
+      size="lg"
+      title="Propose tasks from the breakdown"
+      subtitle="One AI pass over every department's elements, the shoot days, and the locations — proposing prep work anchored to real deadlines."
+      footer={
+        valid ? (
+          <>
+            <Button variant="secondary" onClick={close}>
+              Cancel
+            </Button>
+            <Button onClick={accept} disabled={selected.size === 0}>
+              Create {selected.size} task{selected.size === 1 ? "" : "s"}
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button variant="secondary" onClick={close} disabled={busy}>
+              Cancel
+            </Button>
+            <Button variant="ai" onClick={run} disabled={busy}>
+              {busy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+              {busy ? "Thinking…" : "Propose tasks"}
+            </Button>
+          </>
+        )
+      }
+    >
+      {error ? (
+        <EmptyState title="Couldn't propose tasks" subtitle={error} />
+      ) : valid ? (
+        <div className="space-y-4">
+          {fromMock && (
+            <Badge tone="ai">
+              Demo mode — these are rule-based proposals. Add an API key in AI Settings for a real
+              pass.
+            </Badge>
+          )}
+          {byDepartment.length === 0 ? (
+            <EmptyState
+              title="Nothing to propose"
+              subtitle="Every task this breakdown implies already exists — or there are no shoot days and locations yet to anchor deadlines to."
+            />
+          ) : (
+            byDepartment.map(([dept, items]) => (
+              <ProposalPicker
+                key={dept}
+                groupLabel={dept}
+                items={items.map((v) => ({
+                  key: v.proposal.title,
+                  label: v.proposal.title,
+                  detail: (
+                    <span>
+                      {humanizeRule(v.proposal.deadlineRule)} ·{" "}
+                      {formatDate(v.computedDeadline, { year: "numeric" })}
+                      {v.scene && ` · Sc. ${v.scene.number}`}
+                      {v.proposal.notes && ` — ${v.proposal.notes}`}
+                    </span>
+                  ),
+                  badge: <Badge tone={PRIORITY_TONE[v.proposal.priority]}>{v.proposal.priority}</Badge>,
+                }))}
+                selected={selected}
+                onChange={setSelected}
+              />
+            ))
+          )}
+          {rejected.length > 0 && (
+            <div className="text-[11px] text-[var(--text-muted)]">
+              {rejected.length} proposal{rejected.length === 1 ? "" : "s"} dropped —{" "}
+              {rejected
+                .slice(0, 3)
+                .map((r) => `“${r.title}” (${r.reason})`)
+                .join("; ")}
+              {rejected.length > 3 && `; +${rejected.length - 3} more`}.
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="text-sm text-[var(--text-secondary)] py-4">
+          Reads the whole breakdown in one request and proposes up to {MAX_TASK_PROPOSALS} tasks.
+          You review them before anything is created.
+        </div>
+      )}
+    </Modal>
   );
 }
 

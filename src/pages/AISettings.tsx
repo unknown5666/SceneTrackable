@@ -40,9 +40,11 @@ import type { AIFeature } from "@/types";
 const FEATURE_LABELS: Record<AIFeature, string> = {
   script_breakdown: "Script Breakdown",
   character_bible: "Character Pass",
+  location_bible: "Location Pass",
   daily_digest: "Daily Digest",
   task_proposals: "Task Proposals",
-  nl_query: "NL Query",
+  schedule_draft: "Schedule Draft",
+  nl_query: "Ask the Production",
   report_narration: "Report Narration",
 };
 
@@ -51,11 +53,16 @@ const FEATURE_EST: Record<AIFeature, { avgIn: number; avgOut: number; perUnit: s
   script_breakdown: { avgIn: 9000, avgOut: 9000, perUnit: "per 10 scenes" },
   // One pass over the entire screenplay, once per breakdown run.
   character_bible: { avgIn: 40000, avgOut: 3000, perUnit: "per script" },
-  daily_digest: { avgIn: 500, avgOut: 300, perUnit: "per role/day" },
-  task_proposals: { avgIn: 800, avgOut: 500, perUnit: "per scene" },
-  nl_query: { avgIn: 600, avgOut: 200, perUnit: "per query" },
-  report_narration: { avgIn: 800, avgOut: 400, perUnit: "per report" },
+  location_bible: { avgIn: 40000, avgOut: 2500, perUnit: "per script" },
+  daily_digest: { avgIn: 1500, avgOut: 400, perUnit: "per day" },
+  task_proposals: { avgIn: 6000, avgOut: 2500, perUnit: "per run" },
+  schedule_draft: { avgIn: 8000, avgOut: 3000, perUnit: "per run" },
+  nl_query: { avgIn: 8000, avgOut: 300, perUnit: "per question" },
+  report_narration: { avgIn: 2500, avgOut: 250, perUnit: "per report" },
 };
+
+/** Features that route to the light model when one is configured (WO-9). */
+const LIGHT_FEATURES: AIFeature[] = ["daily_digest", "report_narration", "nl_query"];
 
 export function AISettings() {
   const aiUsage = useStore((s) => s.aiUsage);
@@ -64,12 +71,17 @@ export function AISettings() {
 
   const [keyInput, setKeyInput] = useState("");
   const [showKey, setShowKey] = useState(false);
+  // Which provider's key the card is editing. Defaults to the main model's —
+  // that's the one the next breakdown needs — but both are reachable, because
+  // a light model can sit on the other provider.
+  const [keyProvider, setKeyProvider] = useState<AIProvider | null>(null);
 
-  // The provider follows the selected model, so the key card always edits the
-  // key that the next breakdown will actually use.
-  const provider: AIProvider = providerForModel(aiConfig.model);
+  const provider: AIProvider = keyProvider ?? providerForModel(aiConfig.model);
   const keyHint = PROVIDER_KEY_HINTS[provider];
   const keySet = hasApiKey(provider);
+  const lightProvider = aiConfig.lightModel ? providerForModel(aiConfig.lightModel) : null;
+  // Re-render the key card when a key is saved/removed for the shown provider.
+  const [, bumpKeys] = useState(0);
 
   const totalIn = aiUsage.reduce((s, e) => s + e.inputTokens, 0);
   const totalOut = aiUsage.reduce((s, e) => s + e.outputTokens, 0);
@@ -110,6 +122,13 @@ export function AISettings() {
   const saveKey = () => {
     setApiKey(keyInput.trim() || null, provider);
     setKeyInput("");
+    bumpKeys((n) => n + 1);
+  };
+
+  const removeKey = () => {
+    setApiKey(null, provider);
+    setKeyInput("");
+    bumpKeys((n) => n + 1);
   };
 
   return (
@@ -128,8 +147,28 @@ export function AISettings() {
               {PROVIDER_LABELS[provider]} API Key
             </div>
           }
-          subtitle={`Keys are stored locally in localStorage — never sent to our servers. Each provider has its own key; this one applies because the model selected below is from ${PROVIDER_LABELS[provider]}.`}
+          subtitle="Keys are stored locally in localStorage — never sent to our servers. Each provider has its own key."
         />
+        <div className="flex items-center gap-2 mb-3">
+          {(["anthropic", "google"] as AIProvider[]).map((p) => (
+            <button
+              key={p}
+              onClick={() => {
+                setKeyProvider(p);
+                setKeyInput("");
+              }}
+              className={cn(
+                "text-xs px-3 py-1.5 rounded-lg border transition-colors flex items-center gap-2",
+                provider === p
+                  ? "border-[var(--accent-blue)] bg-[var(--active-tint)] text-[var(--text-primary)]"
+                  : "border-[var(--border-default)] text-[var(--text-secondary)] hover:border-[var(--border-hover)]"
+              )}
+            >
+              {PROVIDER_LABELS[p]}
+              {hasApiKey(p) && <Badge tone="success">Key set</Badge>}
+            </button>
+          ))}
+        </div>
         <div className="flex items-center gap-3">
           <div className="flex-1 relative">
             <input
@@ -150,11 +189,7 @@ export function AISettings() {
             Save
           </Button>
           {keySet && (
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => { setApiKey(null, provider); setKeyInput(""); }}
-            >
+            <Button variant="destructive" size="sm" onClick={removeKey}>
               Remove
             </Button>
           )}
@@ -210,6 +245,71 @@ export function AISettings() {
               </div>
             </div>
           ))}
+        </div>
+      </Card>
+
+      {/* Light-task model */}
+      <Card>
+        <CardHeader
+          title="Light Tasks Model"
+          subtitle={`Small, frequent work — ${LIGHT_FEATURES.map((f) => FEATURE_LABELS[f]).join(
+            ", "
+          )} — can run on a cheaper model than the breakdown. Set one to keep those free while the main model stays heavyweight. Needs a key for its provider; without one, light work falls back to the main model.`}
+        />
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <button
+              onClick={() => setConfig({ lightModel: undefined })}
+              className={cn(
+                "text-left p-3 rounded-card border transition-colors",
+                !aiConfig.lightModel
+                  ? "border-[var(--accent-blue)] bg-[var(--active-tint)]"
+                  : "border-[var(--border-default)] hover:border-[var(--border-hover)]"
+              )}
+            >
+              <div className="text-sm font-medium text-[var(--text-primary)]">
+                Use the main model
+              </div>
+              <div className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                Everything runs on {MODELS.find((m) => m.id === aiConfig.model)?.label ?? aiConfig.model}
+              </div>
+            </button>
+            {MODELS.map((m) => {
+              const selected = aiConfig.lightModel === m.id;
+              const usable = hasApiKey(m.provider);
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => setConfig({ lightModel: m.id })}
+                  className={cn(
+                    "text-left p-3 rounded-card border transition-colors",
+                    selected
+                      ? "border-[var(--accent-blue)] bg-[var(--active-tint)]"
+                      : "border-[var(--border-default)] hover:border-[var(--border-hover)]"
+                  )}
+                >
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-medium text-[var(--text-primary)]">{m.label}</span>
+                    {m.freeTier && <Badge tone="success">Free tier</Badge>}
+                    {selected && !usable && <Badge tone="warning">No key</Badge>}
+                  </div>
+                  <div className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                    {PROVIDER_LABELS[m.provider]}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          {lightProvider === "google" && (
+            <div className="flex items-start gap-2 text-xs text-[var(--text-secondary)]">
+              <AlertCircle size={14} className="mt-0.5 shrink-0 text-[var(--color-warning)]" />
+              <span>
+                Digests and answers include production data — scene headings, cast names, budget
+                figures. On Google's <strong>free tier those prompts train their models</strong>. Fine
+                for a demo; use a paid key for a real production.
+              </span>
+            </div>
+          )}
         </div>
       </Card>
 
