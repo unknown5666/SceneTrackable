@@ -475,7 +475,7 @@ export function Projects() {
             </div>
             {usedDemo && (
               <Badge tone="ai">
-                Demo mode — add an Anthropic API key in AI Settings for live analysis
+                Demo mode — add a Claude or Gemini API key in AI Settings for live analysis
               </Badge>
             )}
             {failedScenes.length > 0 && (

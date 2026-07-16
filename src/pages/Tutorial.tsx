@@ -55,7 +55,7 @@ const ADMIN_STEPS = [
   {
     icon: <KeyRound size={18} />,
     title: "Connect AI (optional)",
-    body: "Paste an Anthropic API key in AI Settings for live analysis. Without a key, SceneTrackable runs an intelligent demo breakdown so you can explore everything.",
+    body: "Paste a Claude or Gemini API key in AI Settings for live analysis — Gemini has a free tier to start on. Without a key, SceneTrackable runs an intelligent demo breakdown so you can explore everything.",
     to: "/ai",
     cta: "Open AI Settings",
   },

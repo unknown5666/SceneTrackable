@@ -1,51 +1,98 @@
 // ============================================================
-// CLAUDE API WRAPPER — SceneTrackable
+// AI API WRAPPER — SceneTrackable
 // Browser-direct calls (admin supplies key in AI Settings) with a
 // high-quality built-in demo fallback so the app works with no key.
 // Live calls retry on transient errors and never silently degrade
 // to demo output — API failures surface to the caller.
+//
+// Two providers are supported: Anthropic (Claude) and Google (Gemini).
+// The provider is derived from the selected model id rather than stored
+// separately, so the two can never drift out of sync.
 // ============================================================
 
 import type { AIFeature, ElementCategory, Scene } from "@/types";
 import { useStore } from "@/state/store";
 
-const API_URL = "https://api.anthropic.com/v1/messages";
+const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
+const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 const DEFAULT_MODEL = "claude-opus-4-8";
-const KEY_STORAGE = "scenetrackable-claude-key";
 
-// Approximate blended pricing per 1M tokens (Opus-tier reference).
-const PRICE_PER_M_INPUT_USD = 5.0;
-const PRICE_PER_M_OUTPUT_USD = 25.0;
+export type AIProvider = "anthropic" | "google";
 
-export function estimateCost(inputTokens: number, outputTokens: number): number {
-  return (
-    (inputTokens / 1_000_000) * PRICE_PER_M_INPUT_USD +
-    (outputTokens / 1_000_000) * PRICE_PER_M_OUTPUT_USD
-  );
+const KEY_STORAGE: Record<AIProvider, string> = {
+  anthropic: "scenetrackable-claude-key",
+  google: "scenetrackable-gemini-key",
+};
+
+export interface ModelInfo {
+  id: string;
+  label: string;
+  desc: string;
+  provider: AIProvider;
+  /** Usable on the provider's no-cost tier. */
+  freeTier?: boolean;
+}
+
+export const MODELS: ModelInfo[] = [
+  { id: "claude-opus-4-8", label: "Opus 4.8", desc: "Most capable · highest quality", provider: "anthropic" },
+  { id: "claude-sonnet-5", label: "Sonnet 5", desc: "Balanced · fast & cost-effective", provider: "anthropic" },
+  { id: "claude-haiku-4-5", label: "Haiku 4.5", desc: "Fastest · lowest cost", provider: "anthropic" },
+  { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro", desc: "Most capable Gemini · paid only", provider: "google" },
+  { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash", desc: "Free tier · best free-tier quality", provider: "google", freeTier: true },
+  { id: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite", desc: "Free tier · fastest, lighter analysis", provider: "google", freeTier: true },
+];
+
+export const PROVIDER_LABELS: Record<AIProvider, string> = {
+  anthropic: "Anthropic Claude",
+  google: "Google Gemini",
+};
+
+export const PROVIDER_KEY_HINTS: Record<AIProvider, { placeholder: string; console: string }> = {
+  anthropic: { placeholder: "sk-ant-api03-…", console: "console.anthropic.com" },
+  google: { placeholder: "AIza…", console: "aistudio.google.com/apikey" },
+};
+
+export function providerForModel(model: string): AIProvider {
+  return model.startsWith("gemini") ? "google" : "anthropic";
+}
+
+// Approximate list pricing per 1M tokens, by model.
+const PRICING: Record<string, { in: number; out: number }> = {
+  "claude-opus-4-8": { in: 5.0, out: 25.0 },
+  "claude-sonnet-5": { in: 3.0, out: 15.0 },
+  "claude-haiku-4-5": { in: 1.0, out: 5.0 },
+  "gemini-2.5-pro": { in: 1.25, out: 10.0 },
+  "gemini-2.5-flash": { in: 0.3, out: 2.5 },
+  "gemini-2.5-flash-lite": { in: 0.1, out: 0.4 },
+};
+
+export function estimateCost(inputTokens: number, outputTokens: number, model?: string): number {
+  const price = PRICING[model ?? activeModel()] ?? PRICING[DEFAULT_MODEL];
+  return (inputTokens / 1_000_000) * price.in + (outputTokens / 1_000_000) * price.out;
 }
 
 // ------------------------------------------------------------
 // Key management (admin-only surface enforces access in the UI)
 // ------------------------------------------------------------
-export function getApiKey(): string | null {
+export function getApiKey(provider: AIProvider = activeProvider()): string | null {
   try {
-    return localStorage.getItem(KEY_STORAGE);
+    return localStorage.getItem(KEY_STORAGE[provider]);
   } catch {
     return null;
   }
 }
 
-export function setApiKey(key: string | null): void {
+export function setApiKey(key: string | null, provider: AIProvider = activeProvider()): void {
   try {
-    if (!key) localStorage.removeItem(KEY_STORAGE);
-    else localStorage.setItem(KEY_STORAGE, key);
+    if (!key) localStorage.removeItem(KEY_STORAGE[provider]);
+    else localStorage.setItem(KEY_STORAGE[provider], key);
   } catch {
     /* noop */
   }
 }
 
-export function hasApiKey(): boolean {
-  return Boolean(getApiKey());
+export function hasApiKey(provider: AIProvider = activeProvider()): boolean {
+  return Boolean(getApiKey(provider));
 }
 
 function activeModel(): string {
@@ -54,6 +101,10 @@ function activeModel(): string {
   } catch {
     return DEFAULT_MODEL;
   }
+}
+
+export function activeProvider(): AIProvider {
+  return providerForModel(activeModel());
 }
 
 // ------------------------------------------------------------
@@ -93,40 +144,115 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-async function callClaudeLive(opts: ClaudeCallOptions): Promise<ClaudeResult> {
-  const apiKey = getApiKey();
+/** One provider-specific HTTP attempt. Returns null-free parsed output or throws. */
+interface LiveRequest {
+  url: string;
+  headers: Record<string, string>;
+  body: string;
+  /** Pull text + token counts out of the provider's response shape. */
+  parse: (data: any) => { text: string; inputTokens: number; outputTokens: number };
+}
+
+function anthropicRequest(opts: ClaudeCallOptions, model: string, apiKey: string): LiveRequest {
+  // NOTE: no temperature / top_p — those are rejected (400) on Opus 4.8 / Sonnet 5.
+  return {
+    url: ANTHROPIC_URL,
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: opts.maxTokens ?? 1200,
+      system: opts.system,
+      output_config: {
+        effort: "low",
+        ...(opts.jsonSchema
+          ? { format: { type: "json_schema", schema: opts.jsonSchema } }
+          : {}),
+      },
+      messages: [{ role: "user", content: opts.user }],
+    }),
+    parse: (data) => ({
+      text: data.content?.find((b: { type: string }) => b.type === "text")?.text || "",
+      inputTokens: data.usage?.input_tokens ?? 0,
+      outputTokens: data.usage?.output_tokens ?? 0,
+    }),
+  };
+}
+
+/**
+ * Gemini's responseSchema is an OpenAPI subset — it rejects the
+ * `additionalProperties` that the Anthropic schema carries.
+ */
+function toGeminiSchema(schema: Record<string, unknown>): Record<string, unknown> {
+  const strip = (node: unknown): unknown => {
+    if (Array.isArray(node)) return node.map(strip);
+    if (!node || typeof node !== "object") return node;
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+      if (k === "additionalProperties") continue;
+      out[k] = strip(v);
+    }
+    return out;
+  };
+  return strip(schema) as Record<string, unknown>;
+}
+
+function geminiRequest(opts: ClaudeCallOptions, model: string, apiKey: string): LiveRequest {
+  // Gemini 2.5 counts thinking against maxOutputTokens; Flash tiers let us
+  // switch it off, which mirrors the "low effort" setting on the Claude path.
+  // Pro has a non-zero minimum thinking budget, so it is left at the default.
+  const canDisableThinking = model !== "gemini-2.5-pro";
+  return {
+    url: `${GEMINI_BASE}/${model}:generateContent`,
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": apiKey,
+    },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: opts.system }] },
+      contents: [{ role: "user", parts: [{ text: opts.user }] }],
+      generationConfig: {
+        maxOutputTokens: opts.maxTokens ?? 1200,
+        ...(canDisableThinking ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+        ...(opts.jsonSchema
+          ? {
+              responseMimeType: "application/json",
+              responseSchema: toGeminiSchema(opts.jsonSchema),
+            }
+          : {}),
+      },
+    }),
+    parse: (data) => ({
+      text:
+        data.candidates?.[0]?.content?.parts
+          ?.map((p: { text?: string }) => p.text ?? "")
+          .join("") || "",
+      inputTokens: data.usageMetadata?.promptTokenCount ?? 0,
+      outputTokens: data.usageMetadata?.candidatesTokenCount ?? 0,
+    }),
+  };
+}
+
+async function callLive(opts: ClaudeCallOptions): Promise<ClaudeResult> {
+  const provider = activeProvider();
+  const apiKey = getApiKey(provider);
   if (!apiKey) throw new ClaudeApiError("No API key set");
   const model = activeModel();
-
-  // NOTE: no temperature / top_p — those are rejected (400) on Opus 4.8 / Sonnet 5.
-  const body = JSON.stringify({
-    model,
-    max_tokens: opts.maxTokens ?? 1200,
-    system: opts.system,
-    output_config: {
-      effort: "low",
-      ...(opts.jsonSchema
-        ? { format: { type: "json_schema", schema: opts.jsonSchema } }
-        : {}),
-    },
-    messages: [{ role: "user", content: opts.user }],
-  });
+  const req =
+    provider === "google"
+      ? geminiRequest(opts, model, apiKey)
+      : anthropicRequest(opts, model, apiKey);
 
   let lastError: ClaudeApiError | null = null;
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     let res: Response;
     try {
-      res = await fetch(API_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-        },
-        body,
-      });
+      res = await fetch(req.url, { method: "POST", headers: req.headers, body: req.body });
     } catch (e) {
       // Network failure — retryable.
       lastError = new ClaudeApiError(`Network error: ${(e as Error).message}`);
@@ -135,16 +261,12 @@ async function callClaudeLive(opts: ClaudeCallOptions): Promise<ClaudeResult> {
     }
 
     if (res.ok) {
-      const data = await res.json();
-      const text: string =
-        data.content?.find((b: { type: string }) => b.type === "text")?.text || "";
-      const inputTokens = data.usage?.input_tokens ?? 0;
-      const outputTokens = data.usage?.output_tokens ?? 0;
+      const { text, inputTokens, outputTokens } = req.parse(await res.json());
       return {
         text,
         inputTokens,
         outputTokens,
-        costUsd: estimateCost(inputTokens, outputTokens),
+        costUsd: estimateCost(inputTokens, outputTokens, model),
         model,
         fromMock: false,
       };
@@ -152,7 +274,7 @@ async function callClaudeLive(opts: ClaudeCallOptions): Promise<ClaudeResult> {
 
     const errText = await res.text();
     lastError = new ClaudeApiError(
-      `Claude API error ${res.status} — ${errText.slice(0, 200)}`,
+      `${PROVIDER_LABELS[provider]} API error ${res.status} — ${errText.slice(0, 200)}`,
       res.status
     );
     if (!RETRYABLE_STATUS.has(res.status)) throw lastError;
@@ -164,7 +286,7 @@ async function callClaudeLive(opts: ClaudeCallOptions): Promise<ClaudeResult> {
     await sleep(backoff);
   }
 
-  throw lastError ?? new ClaudeApiError("Claude API call failed");
+  throw lastError ?? new ClaudeApiError(`${PROVIDER_LABELS[provider]} API call failed`);
 }
 
 async function fakeDelay(ms = 500 + Math.random() * 500): Promise<void> {
@@ -185,22 +307,23 @@ async function callClaudeMock(opts: ClaudeCallOptions, sceneCtx?: Scene): Promis
   }
   const inputTokens = estimateTokens(opts.system + opts.user);
   const outputTokens = estimateTokens(text);
+  const model = activeModel();
   return {
     text,
     inputTokens,
     outputTokens,
-    costUsd: estimateCost(inputTokens, outputTokens),
-    model: activeModel() + " · demo",
+    costUsd: estimateCost(inputTokens, outputTokens, model),
+    model: model + " · demo",
     fromMock: true,
   };
 }
 
 /**
- * With a key: live call (throws on failure — no silent demo fallback).
- * Without a key: demo mode.
+ * With a key for the active model's provider: live call (throws on failure —
+ * no silent demo fallback). Without a key: demo mode.
  */
 export async function callClaude(opts: ClaudeCallOptions, sceneCtx?: Scene): Promise<ClaudeResult> {
-  if (hasApiKey()) return callClaudeLive(opts);
+  if (hasApiKey()) return callLive(opts);
   return callClaudeMock(opts, sceneCtx);
 }
 

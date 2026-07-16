@@ -6,7 +6,7 @@ Built by OverExposure Productions.
 
 ## Stack
 
-Vite · React 18 · TypeScript · Tailwind · Zustand (persisted) · pdfjs-dist · Anthropic Claude (browser-direct) · Supabase (optional cloud sync)
+Vite · React 18 · TypeScript · Tailwind · Zustand (persisted) · pdfjs-dist · Anthropic Claude or Google Gemini (browser-direct) · Supabase (optional cloud sync)
 
 ## Run locally
 
@@ -17,7 +17,17 @@ npm run dev
 
 First login: **Admin / 1234** (change it in Admin → Users; passwords are stored hashed).
 
-Add an Anthropic API key in **AI Settings** for live scene analysis — without one the app runs in demo mode.
+Add an API key in **AI Settings** for live scene analysis — without one the app runs in demo mode.
+
+Two providers are supported, and picking a model picks its provider:
+
+| Model | Provider | Key from | Notes |
+| --- | --- | --- | --- |
+| Opus 4.8 / Sonnet 5 / Haiku 4.5 | Anthropic | [console.anthropic.com](https://console.anthropic.com) | Paid; highest breakdown quality |
+| Gemini 2.5 Flash / Flash Lite | Google | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) | **Free tier** — good for dev & demos |
+| Gemini 2.5 Pro | Google | same | Paid tier |
+
+⚠️ Google's **free tier trains on your prompts**. Screenplays sent with a free-tier Gemini key are not confidential — use it for development and demos, and switch to a paid key (either provider) before running a client's script.
 
 ## Go live (free tier) — 5-minute checklist
 
@@ -41,7 +51,8 @@ Cloud Sync then appears live under the admin sidebar: sign up, **Push** to uploa
 
 ### Security notes
 
-- The Anthropic API key lives in the admin's browser localStorage and calls the API directly from the browser. Don't share an admin browser session. For a hardened production setup, move AI calls behind a Supabase Edge Function later.
+- The AI API key lives in the admin's browser localStorage and calls the provider directly from the browser. Don't share an admin browser session. For a hardened production setup, move AI calls behind a Supabase Edge Function later.
+- Free-tier Gemini keys let Google train on submitted screenplays. Don't use one for confidential material.
 - In-app user passwords are SHA-256 hashed at rest. Cloud sync data is protected by Supabase row-level security (each account can only read/write its own workspace).
 
 ## Backups

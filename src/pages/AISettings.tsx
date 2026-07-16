@@ -26,7 +26,15 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { formatCompact, formatDate, cn } from "@/lib/utils";
-import { setApiKey, hasApiKey } from "@/lib/claude";
+import {
+  setApiKey,
+  hasApiKey,
+  providerForModel,
+  MODELS,
+  PROVIDER_LABELS,
+  PROVIDER_KEY_HINTS,
+  type AIProvider,
+} from "@/lib/claude";
 import type { AIFeature } from "@/types";
 
 const FEATURE_LABELS: Record<AIFeature, string> = {
@@ -52,6 +60,12 @@ export function AISettings() {
 
   const [keyInput, setKeyInput] = useState("");
   const [showKey, setShowKey] = useState(false);
+
+  // The provider follows the selected model, so the key card always edits the
+  // key that the next breakdown will actually use.
+  const provider: AIProvider = providerForModel(aiConfig.model);
+  const keyHint = PROVIDER_KEY_HINTS[provider];
+  const keySet = hasApiKey(provider);
 
   const totalIn = aiUsage.reduce((s, e) => s + e.inputTokens, 0);
   const totalOut = aiUsage.reduce((s, e) => s + e.outputTokens, 0);
@@ -90,14 +104,14 @@ export function AISettings() {
   }, [aiUsage]);
 
   const saveKey = () => {
-    setApiKey(keyInput.trim() || null);
+    setApiKey(keyInput.trim() || null, provider);
     setKeyInput("");
   };
 
   return (
     <div className="max-w-[1400px] mx-auto space-y-6">
       <div>
-        <div className="section-header">AI / Claude Integration</div>
+        <div className="section-header">AI Integration</div>
         <div className="page-title mt-1">Token Usage & Settings</div>
       </div>
 
@@ -107,10 +121,10 @@ export function AISettings() {
           title={
             <div className="flex items-center gap-2">
               <Key size={14} className="text-[var(--color-ai)]" />
-              API Key
+              {PROVIDER_LABELS[provider]} API Key
             </div>
           }
-          subtitle="Your key is stored locally in localStorage — never sent to our servers."
+          subtitle={`Keys are stored locally in localStorage — never sent to our servers. Each provider has its own key; this one applies because the model selected below is from ${PROVIDER_LABELS[provider]}.`}
         />
         <div className="flex items-center gap-3">
           <div className="flex-1 relative">
@@ -118,7 +132,7 @@ export function AISettings() {
               type={showKey ? "text" : "password"}
               value={keyInput}
               onChange={(e) => setKeyInput(e.target.value)}
-              placeholder={hasApiKey() ? "sk-ant-…  (key set)" : "sk-ant-api03-…"}
+              placeholder={keySet ? `${keyHint.placeholder}  (key set)` : keyHint.placeholder}
               className="w-full pr-10"
             />
             <button
@@ -131,46 +145,66 @@ export function AISettings() {
           <Button variant="ai" onClick={saveKey}>
             Save
           </Button>
-          {hasApiKey() && (
+          {keySet && (
             <Button
               variant="destructive"
               size="sm"
-              onClick={() => { setApiKey(null); setKeyInput(""); }}
+              onClick={() => { setApiKey(null, provider); setKeyInput(""); }}
             >
               Remove
             </Button>
           )}
         </div>
-        {!hasApiKey() && (
+        {!keySet && (
           <div className="mt-3 text-xs text-[var(--text-secondary)]">
-            Without a key, SceneTrackable runs an intelligent <span className="text-[var(--color-ai)]">demo breakdown</span> so the
-            app works out of the box. Add a key for live analysis by Claude.
+            Get a key at <span className="text-[var(--color-ai)]">{keyHint.console}</span>. Without one,
+            SceneTrackable runs an intelligent <span className="text-[var(--color-ai)]">demo breakdown</span> so the
+            app works out of the box.
+          </div>
+        )}
+        {provider === "google" && (
+          <div className="mt-3 flex items-start gap-2 text-xs text-[var(--text-secondary)]">
+            <AlertCircle size={14} className="mt-0.5 shrink-0 text-[var(--color-warning)]" />
+            <span>
+              Google's <strong>free tier uses your prompts to improve their models</strong> — screenplays sent on a
+              free-tier key are not confidential. Use it for testing and demos; move to a paid Gemini key or Claude
+              before running a client's script.
+            </span>
           </div>
         )}
       </Card>
 
       {/* Model */}
       <Card>
-        <CardHeader title="Model" subtitle="Which Claude model performs the breakdown." />
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {[
-            { id: "claude-opus-4-8", label: "Opus 4.8", desc: "Most capable · highest quality" },
-            { id: "claude-sonnet-5", label: "Sonnet 5", desc: "Balanced · fast & cost-effective" },
-            { id: "claude-haiku-4-5", label: "Haiku 4.5", desc: "Fastest · lowest cost" },
-          ].map((m) => (
-            <button
-              key={m.id}
-              onClick={() => setConfig({ model: m.id })}
-              className={cn(
-                "text-left p-3 rounded-card border transition-colors",
-                aiConfig.model === m.id
-                  ? "border-[var(--accent-blue)] bg-[var(--active-tint)]"
-                  : "border-[var(--border-default)] hover:border-[var(--border-hover)]"
-              )}
-            >
-              <div className="text-sm font-medium text-[var(--text-primary)]">{m.label}</div>
-              <div className="text-[11px] text-[var(--text-muted)] mt-0.5">{m.desc}</div>
-            </button>
+        <CardHeader
+          title="Model"
+          subtitle="Which model performs the breakdown. Selecting a model also selects its provider."
+        />
+        <div className="space-y-4">
+          {(["anthropic", "google"] as AIProvider[]).map((p) => (
+            <div key={p}>
+              <div className="section-header mb-1.5">{PROVIDER_LABELS[p]}</div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {MODELS.filter((m) => m.provider === p).map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => setConfig({ model: m.id })}
+                    className={cn(
+                      "text-left p-3 rounded-card border transition-colors",
+                      aiConfig.model === m.id
+                        ? "border-[var(--accent-blue)] bg-[var(--active-tint)]"
+                        : "border-[var(--border-default)] hover:border-[var(--border-hover)]"
+                    )}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-[var(--text-primary)]">{m.label}</span>
+                      {m.freeTier && <Badge tone="success">Free tier</Badge>}
+                    </div>
+                    <div className="text-[11px] text-[var(--text-muted)] mt-0.5">{m.desc}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       </Card>
