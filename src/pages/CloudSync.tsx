@@ -167,7 +167,9 @@ export function CloudSync() {
               </div>
               <div>
                 <dt className="section-header mb-1">Checks for changes</dt>
-                <dd className="text-[var(--text-primary)]">Every 3 min</dd>
+                <dd className="text-[var(--text-primary)]">
+                  {status.live ? "Instant (live connection)" : "Every 3 min"}
+                </dd>
               </div>
             </dl>
 
@@ -211,17 +213,51 @@ export function CloudSync() {
             )}
           </Card>
 
+          {status.phase === "connected" && (
+            <Card>
+              <CardHeader
+                title="Online now"
+                subtitle={
+                  status.live
+                    ? `${status.onlineUsers.length || 1} ${
+                        (status.onlineUsers.length || 1) === 1 ? "person" : "people"
+                      } connected to this workspace.`
+                    : "Live connection is down — presence unavailable. Sync continues on the 3-minute check."
+                }
+              />
+              {status.live && (
+                <div className="flex flex-wrap gap-2">
+                  {(status.onlineUsers.length ? status.onlineUsers : [status.username ?? "you"]).map(
+                    (name) => (
+                      <span
+                        key={name}
+                        className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border border-[var(--border-default)] text-[var(--text-primary)]"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-success)]" />
+                        {name}
+                        {name === status.username && (
+                          <span className="text-[var(--text-muted)]">(you)</span>
+                        )}
+                      </span>
+                    )
+                  )}
+                </div>
+              )}
+            </Card>
+          )}
+
           <Card>
             <div className="flex items-start gap-2">
               <Users size={15} className="text-[var(--text-muted)] mt-0.5 shrink-0" />
               <div className="text-xs text-[var(--text-secondary)] leading-relaxed">
                 <div className="font-medium text-[var(--text-primary)] mb-1">How sync works</div>
-                Your edits upload about 8 seconds after you stop typing, and SceneTrackable checks
-                for other people's changes every 3 minutes. If someone else has saved and you
-                haven't touched anything, their changes load automatically. If you were both
-                editing, you'll be asked which version to keep rather than having one silently
-                overwrite the other. To add someone, invite them in Admin → Users — they sign in
-                from anywhere with their username and land in this same workspace.
+                Your edits upload about 8 seconds after you stop typing, and teammates' changes
+                arrive within moments over a live connection (with a 3-minute fallback check if
+                that connection drops). If someone else has saved and you haven't touched
+                anything, their changes load automatically. If you were both editing, you'll be
+                asked which version to keep rather than having one silently overwrite the other.
+                To add someone, invite them in Admin → Users — they sign in from anywhere with
+                their username and land in this same workspace.
               </div>
             </div>
           </Card>

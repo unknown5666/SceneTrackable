@@ -23,7 +23,7 @@
 // directly and calls back through registerRehydrate().
 // ============================================================
 
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createClient, type RealtimeChannel, type SupabaseClient } from "@supabase/supabase-js";
 import { sha256Hex } from "@/lib/utils";
 
 const STORE_KEY = "scenetrackable-v1";
@@ -41,7 +41,11 @@ const USER_KEY = "scenetrackable-cloud-user";
 const CRED_SALT = "scenetrackable-cloud-v1";
 const CRED_DOMAIN = "device.scenetrackable.app";
 
-/** How often to check whether someone else has pushed. */
+/**
+ * How often to check whether someone else has pushed. This is the FALLBACK:
+ * the realtime channel announces pushes within a second, so the poll only
+ * matters when the websocket is down or a peer crashed before broadcasting.
+ */
 const POLL_MS = 3 * 60 * 1000;
 /** How long after the last local edit to push. */
 const PUSH_DEBOUNCE_MS = 8000;
@@ -201,6 +205,10 @@ export interface CloudStatus {
   error: string | null;
   /** Set when the server moved on and we can't safely auto-apply. */
   conflict: CloudConflict | null;
+  /** True while the realtime channel is up — pushes arrive in ~1s, not 3 min. */
+  live: boolean;
+  /** Usernames currently online in this workspace (includes this device). */
+  onlineUsers: string[];
 }
 
 let status: CloudStatus = {
@@ -212,6 +220,8 @@ let status: CloudStatus = {
   pushing: false,
   error: null,
   conflict: null,
+  live: false,
+  onlineUsers: [],
 };
 
 const listeners = new Set<(s: CloudStatus) => void>();
@@ -494,6 +504,7 @@ export async function pushWorkspace(force = false): Promise<string | null> {
       conflict: null,
       error: null,
     });
+    announcePush(res.rev ?? null);
     return null;
   } finally {
     setStatus({ pushing: false });
@@ -522,6 +533,92 @@ export async function resolveConflictKeepLocal(): Promise<string | null> {
   const err = await pushWorkspace(true);
   if (!err) setStatus({ conflict: null });
   return err;
+}
+
+// ------------------------------------------------------------
+// Realtime — instant sync + team presence
+//
+// One channel does two jobs: a device that pushes broadcasts "pushed" so
+// every peer pulls within a second instead of waiting for the poll, and
+// presence tracking shows who is online right now. Broadcasts carry only a
+// rev number and a username — never workspace data — so there is no payload
+// size limit to hit and nothing sensitive crosses the channel. The actual
+// pull still goes through workspace_head()/RLS like any other read.
+// ------------------------------------------------------------
+
+let channel: RealtimeChannel | null = null;
+let remoteCheckTimer: number | null = null;
+
+/**
+ * A realtime nudge can land while our own push is still in flight, when
+ * status.rev is stale and dirty is true — poll() would read that as a
+ * conflict with ourselves. Delay the check, and re-delay while pushing.
+ */
+function scheduleRemoteCheck(delayMs = 800): void {
+  if (remoteCheckTimer) window.clearTimeout(remoteCheckTimer);
+  remoteCheckTimer = window.setTimeout(() => {
+    remoteCheckTimer = null;
+    if (status.pushing) {
+      scheduleRemoteCheck(2000);
+      return;
+    }
+    void poll();
+  }, delayMs);
+}
+
+function startRealtime(): void {
+  if (!supabase || channel) return;
+  const username =
+    status.username ?? localStorage.getItem(USER_KEY) ?? `device-${Math.random().toString(36).slice(2, 8)}`;
+
+  const ch = supabase.channel("st-workspace-live", {
+    config: { presence: { key: username } },
+  });
+
+  ch.on("broadcast", { event: "pushed" }, ({ payload }) => {
+    const rev = Number((payload as { rev?: number })?.rev);
+    // Only wake up for a rev we don't have; anything else is noise.
+    if (!Number.isFinite(rev) || status.rev == null || rev > status.rev) scheduleRemoteCheck();
+  });
+
+  ch.on("presence", { event: "sync" }, () => {
+    setStatus({ onlineUsers: Object.keys(ch.presenceState()).sort() });
+  });
+
+  ch.subscribe((state) => {
+    if (state === "SUBSCRIBED") {
+      setStatus({ live: true });
+      void ch.track({ at: new Date().toISOString() });
+    } else if (state === "CHANNEL_ERROR" || state === "TIMED_OUT" || state === "CLOSED") {
+      // The poll keeps sync correct while the socket is down; just stop
+      // claiming to be live.
+      setStatus({ live: false });
+    }
+  });
+
+  channel = ch;
+}
+
+function stopRealtime(): void {
+  if (remoteCheckTimer) {
+    window.clearTimeout(remoteCheckTimer);
+    remoteCheckTimer = null;
+  }
+  if (channel) {
+    void supabase?.removeChannel(channel);
+    channel = null;
+  }
+  setStatus({ live: false, onlineUsers: [] });
+}
+
+/** Tell every peer a new rev landed. Fire-and-forget; the poll is the net. */
+function announcePush(rev: number | null): void {
+  if (!channel || rev == null) return;
+  void channel.send({
+    type: "broadcast",
+    event: "pushed",
+    payload: { rev, by: status.username },
+  });
 }
 
 // ------------------------------------------------------------
@@ -626,6 +723,7 @@ export function startCloudSync(): void {
   });
   watchTimer = window.setInterval(watch, WATCH_MS);
   pollTimer = window.setInterval(() => void poll(), POLL_MS);
+  startRealtime();
 }
 
 export function stopCloudSync(): void {
@@ -634,6 +732,7 @@ export function stopCloudSync(): void {
   if (pollTimer) window.clearInterval(pollTimer);
   if (pushTimer) window.clearTimeout(pushTimer);
   watchTimer = pollTimer = pushTimer = null;
+  stopRealtime();
 }
 
 /**

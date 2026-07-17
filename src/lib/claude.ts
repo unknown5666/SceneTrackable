@@ -83,6 +83,12 @@ export interface ClaudeCallOptions {
   /** When set, the API is forced to return JSON matching this schema. */
   jsonSchema?: Record<string, unknown>;
   /**
+   * Earlier turns of a conversation, oldest first, inserted between the
+   * system prompt and the current user turn. Lets Q&A features resolve
+   * follow-ups ("what about her?", "and the day after?") without re-stating.
+   */
+  history?: { role: "user" | "assistant"; content: string }[];
+  /**
    * "light" routes to the configured light model when one is usable — small,
    * frequent features (digest, narration, Q&A) don't need the heavy model and
    * can ride a free tier while breakdowns keep the good one.
@@ -253,6 +259,7 @@ function glmBody(opts: ClaudeCallOptions): string {
     max_tokens: tokenBudget(opts),
     messages: [
       { role: "system", content: opts.system + languageDirective(language) },
+      ...(opts.history ?? []),
       {
         role: "user",
         content: opts.user + (opts.jsonSchema ? jsonInstruction(opts.jsonSchema) : ""),
@@ -1044,7 +1051,7 @@ export function demoNarration(title: string, columns: string[], rows: string[][]
     );
   }
   bits.push(
-    "This is demo mode — no summary was generated. Add a Claude or Gemini API key in AI Settings for a written narration."
+    "This is the offline fallback — no AI summary was generated because the AI service couldn't be reached."
   );
   return bits.join(" ");
 }
@@ -1175,7 +1182,7 @@ export function demoDigest(stateText: string): string {
     .map((l) => `- ${l}`);
   return [
     ...keep,
-    "- Demo mode: these are the raw figures, not an AI analysis. Add a Claude or Gemini API key in AI Settings for a written digest.",
+    "- Offline fallback: these are the raw figures, not an AI analysis. The AI service couldn't be reached for a written digest.",
   ].join("\n");
 }
 
@@ -1186,21 +1193,33 @@ export function demoDigest(stateText: string): string {
 const NL_QUERY_SYSTEM = `You are answering questions about a film production from its live data. You are talking to the crew who own this production.
 
 - Answer only from the JSON you are given. It is the whole of what you know.
+- Earlier questions and answers from this session may precede the current one. Use them to resolve follow-up references ("her", "that day", "the second one") — but the JSON snapshot stays the only source of facts, and it is current where an earlier answer may be stale.
 - Cite the specifics: scene numbers, day numbers, dates, character names, account codes. A producer needs to go check.
 - If the data cannot answer the question, say "That isn't tracked in the production data" and name what would need to be filled in. Never guess, never estimate, never fill a gap from what a typical production would look like.
 - If a section was omitted from the snapshot (see "_omitted"), say the data exists but wasn't loaded rather than treating it as empty.
 - Be brief: a couple of sentences, or a short list when the answer is genuinely a list. No preamble.`;
 
-/** One request per question, plain text out. Throws on live-API failure. */
+/** How many previous Q&A exchanges ride along with a follow-up question. */
+export const NL_QUERY_HISTORY_CAP = 6;
+
+/**
+ * One request per question, plain text out. Throws on live-API failure.
+ *
+ * `history` carries the session's earlier exchanges (oldest first) so
+ * follow-ups work; the data snapshot travels only in the current turn, so a
+ * long conversation doesn't multiply it.
+ */
 export async function aiAskProduction(
   question: string,
   snapshotJson: string,
-  projectName?: string
+  projectName?: string,
+  history?: { role: "user" | "assistant"; content: string }[]
 ): Promise<{ answer: string; result: ClaudeResult }> {
   const result = await callClaude({
     feature: "nl_query",
     weight: "light",
     system: NL_QUERY_SYSTEM,
+    history: history?.slice(-NL_QUERY_HISTORY_CAP * 2),
     user: `${projectName ? `PRODUCTION: ${projectName}\n\n` : ""}PRODUCTION DATA:\n${snapshotJson}\n\nQUESTION: ${question}`,
     // The snapshot dwarfs the question and its keys are always English, so
     // detecting over the whole turn would answer an Arabic question in

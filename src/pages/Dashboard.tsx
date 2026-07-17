@@ -870,7 +870,17 @@ function AskProduction({ data }: { data: ProductionData }) {
     setError("");
     try {
       const snapshot = buildSnapshot(data);
-      const { answer, result } = await aiAskProduction(text, snapshot.json, project?.name);
+      // `history` renders newest-first; the model wants the conversation
+      // oldest-first, questions and answers as their own turns.
+      const turns = history
+        .slice()
+        .reverse()
+        .filter((qa) => !qa.fromMock)
+        .flatMap((qa) => [
+          { role: "user" as const, content: qa.question },
+          { role: "assistant" as const, content: qa.answer },
+        ]);
+      const { answer, result } = await aiAskProduction(text, snapshot.json, project?.name, turns);
       recordAIUsage({
         feature: "nl_query",
         inputTokens: result.inputTokens,
@@ -913,7 +923,7 @@ function AskProduction({ data }: { data: ProductionData }) {
             <span>Ask the production</span>
           </div>
         }
-        subtitle="Questions answered from this project's schedule, cast, budget, tasks and locations. One request per question."
+        subtitle="Questions answered from this project's schedule, cast, budget, tasks and locations. Follow-ups work — it remembers the conversation."
       />
       <div className="flex items-center gap-2">
         <input

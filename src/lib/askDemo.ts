@@ -11,7 +11,7 @@ import type { ProductionData } from "@/types";
 import { scenesAtLocation } from "@/lib/locations";
 
 const DEMO_NOTE =
-  "(Demo mode — this is a keyword lookup, not an AI answer. Add a Claude or Gemini API key in AI Settings to ask real questions.)";
+  "(Offline fallback — this is a keyword lookup over your data, not an AI answer. It appears only when the AI service couldn't be reached.)";
 
 /** Words too common to identify a record. */
 const STOP = new Set([
