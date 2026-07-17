@@ -22,7 +22,8 @@ import { Modal } from "@/components/ui/Modal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { formatDate } from "@/lib/utils";
-import { extractPdfText, parseScreenplay, runBreakdown, type BreakdownProgress } from "@/lib/script";
+import { parseScreenplay, runBreakdown, type BreakdownProgress } from "@/lib/script";
+import { extractPdfText } from "@/lib/pdf";
 import type { ProposedLocation, ScriptCharacter } from "@/lib/claude";
 import {
   ProposalPicker,

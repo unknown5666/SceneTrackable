@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { Clock, Lock, Unlock, AlertCircle, Check, ChevronLeft, ChevronRight, Plus } from "lucide-react";
-import { useStore, isCurrentAdmin } from "@/state/store";
+import { useStore, isCurrentAdmin, canWrite } from "@/state/store";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -33,6 +33,7 @@ function weekOfISO(base: string): string[] {
 export function Timesheet() {
   const currentUserId = useStore((s) => s.currentUserId);
   const isAdmin = useStore(isCurrentAdmin);
+  const writable = useStore((s) => canWrite(s, "timesheet"));
   const crew = useStore((s) => s.crew);
   const timesheet = useStore((s) => s.timesheet);
   const editHours = useStore((s) => s.editTimesheetHours);
@@ -108,9 +109,11 @@ export function Timesheet() {
           <Button variant="ghost" size="sm" onClick={() => setAnchorDate(todayISO())}>
             Today
           </Button>
-          <Button onClick={() => setAddOpen(true)}>
-            <Plus size={14} /> Add day
-          </Button>
+          {writable && (
+            <Button onClick={() => setAddOpen(true)}>
+              <Plus size={14} /> Add day
+            </Button>
+          )}
         </div>
       </div>
 
@@ -190,7 +193,7 @@ export function Timesheet() {
                     );
                     const allSubmitted =
                       memberEntries.length > 0 && memberEntries.every((e) => e.submitted);
-                    const canEdit = isAdmin || member.id === currentUserId;
+                    const canEdit = writable && (isAdmin || member.id === currentUserId);
 
                     return (
                       <tr key={member.id}>

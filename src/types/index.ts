@@ -32,18 +32,51 @@ export type DepartmentId =
   | "rf"
   | "cast";
 
+/** What a role may do on one page. */
+export type PermissionLevel = "none" | "read" | "write";
+
+export type RolePermissions = Record<string, PermissionLevel>;
+
 export interface Role {
   id: RoleId;
   label: string;
   description: string;
   department?: DepartmentId;
-  access: string[]; // page keys, or ["all"] for full admin access
+  /**
+   * Page keys the role can open, or ["all"] for full admin access. Derived from
+   * `permissions` (every key that isn't "none") and kept in sync by the store —
+   * it stays the single check for "is this page visible at all".
+   */
+  access: string[];
+  /**
+   * Per-page read/write level. Absent on roles written before levels existed;
+   * `permissionFor` falls back to treating their `access` entries as "write",
+   * which is what those roles actually granted.
+   */
+  permissions?: RolePermissions;
   builtIn?: boolean; // seed roles that cannot be deleted
 }
 
 /** A role has full admin powers (user/role management + AI settings). */
 export function isAdminRole(role: Role | undefined | null): boolean {
   return !!role && role.access.includes("all");
+}
+
+/** The level a role holds on one page key. Admins are "write" everywhere. */
+export function permissionFor(role: Role | undefined | null, key: string): PermissionLevel {
+  if (!role) return "none";
+  if (isAdminRole(role)) return "write";
+  const level = role.permissions?.[key];
+  if (level) return level;
+  // Pre-levels role: having the page listed meant full edit rights.
+  return role.access.includes(key) ? "write" : "none";
+}
+
+/** The `access` list implied by a permission map — every page that isn't "none". */
+export function accessFromPermissions(permissions: RolePermissions): string[] {
+  return Object.entries(permissions)
+    .filter(([, level]) => level !== "none")
+    .map(([key]) => key);
 }
 
 export interface CrewMember {
@@ -557,15 +590,11 @@ export interface AIUsageEntry {
   costUsd: number;
 }
 
+/**
+ * Provider, model and key are compiled into `lib/claude.ts` and are not user
+ * config, so what's left here is the usage budget.
+ */
 export interface AIConfig {
-  apiKey?: string;
-  model: string;
-  /**
-   * Model used for cheap, high-frequency features (digest, narration, NL
-   * query). Lets an admin run a heavyweight model for breakdowns while the
-   * light work rides a free tier. Unset = use `model` for everything.
-   */
-  lightModel?: string;
   dailyBudgetTokens?: number;
   weeklyBudgetTokens?: number;
   monthlyBudgetTokens?: number;

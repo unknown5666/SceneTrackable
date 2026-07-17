@@ -1,6 +1,6 @@
 import React, { useCallback, useId, useMemo, useState } from "react";
 import { Plus, Pencil, Trash2 } from "lucide-react";
-import { useStore } from "@/state/store";
+import { useStore, canWrite } from "@/state/store";
 import { useLocationNames } from "@/lib/locations";
 import {
   SCHEMAS,
@@ -341,7 +341,30 @@ export function RecordFormModal({
   );
 }
 
+/**
+ * Which page's permission level governs each collection. Every record-driven
+ * page goes through this hook, so gating here is what makes a "read" role
+ * genuinely read-only rather than merely politely asked not to edit.
+ */
+const COLLECTION_PAGE: Record<RecordCollection, string> = {
+  locations: "locations",
+  shootDays: "schedule",
+  budgetLines: "budget",
+  pettyCash: "budget",
+  vfxShots: "vfx",
+  vfxVendors: "vfx",
+  frequencyPlan: "rf",
+  rfEquipment: "rf",
+  cameraKits: "camera",
+  equipmentCheckouts: "camera",
+  checklists: "camera",
+  artElements: "art",
+  continuityPhotos: "art",
+};
+
 export interface RecordEditor {
+  /** Whether the current role may change this collection at all. */
+  canWrite: boolean;
   /** Open the modal to create a new record. */
   openNew: () => void;
   /** Open the modal to edit an existing record. */
@@ -368,25 +391,32 @@ export function useRecordEditor(collection: RecordCollection): RecordEditor {
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const deleteRecord = useStore((s) => s.deleteRecord);
+  const writable = useStore((s) => canWrite(s, COLLECTION_PAGE[collection]));
   const schema = SCHEMAS[collection];
 
   const openNew = useCallback(() => {
+    if (!writable) return;
     setEditingId(null);
     setOpen(true);
-  }, []);
+  }, [writable]);
 
-  const openEdit = useCallback((id: string) => {
-    setEditingId(id);
-    setOpen(true);
-  }, []);
+  const openEdit = useCallback(
+    (id: string) => {
+      if (!writable) return;
+      setEditingId(id);
+      setOpen(true);
+    },
+    [writable]
+  );
 
   const remove = useCallback(
     (id: string) => {
+      if (!writable) return;
       if (confirm(`Delete this ${schema.singular.toLowerCase()}? This cannot be undone.`)) {
         deleteRecord(collection, id);
       }
     },
-    [collection, deleteRecord, schema.singular]
+    [collection, deleteRecord, schema.singular, writable]
   );
 
   // Memoised so they keep a stable component identity across renders —
@@ -394,18 +424,20 @@ export function useRecordEditor(collection: RecordCollection): RecordEditor {
   const AddButton = useMemo(
     () =>
       function AddButton({ size = "sm", label }: { size?: "sm" | "md"; label?: string }) {
+        if (!writable) return <></>;
         return (
           <Button size={size} variant="primary" leftIcon={<Plus size={14} />} onClick={openNew}>
             {label ?? `Add ${schema.singular}`}
           </Button>
         );
       },
-    [openNew, schema.singular]
+    [openNew, schema.singular, writable]
   );
 
   const RowActions = useMemo(
     () =>
       function RowActions({ id }: { id: string }) {
+        if (!writable) return <></>;
         return (
           <div className="flex items-center gap-1">
             <Button size="sm" variant="ghost" onClick={() => openEdit(id)} aria-label="Edit">
@@ -417,12 +449,13 @@ export function useRecordEditor(collection: RecordCollection): RecordEditor {
           </div>
         );
       },
-    [openEdit, remove]
+    [openEdit, remove, writable]
   );
 
   const onClose = useCallback(() => setOpen(false), []);
 
   return {
+    canWrite: writable,
     openNew,
     openEdit,
     remove,

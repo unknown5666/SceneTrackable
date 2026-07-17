@@ -76,7 +76,7 @@ export function Locations() {
           <div className="page-title mt-1">Location Bible</div>
         </div>
         <div className="flex items-center gap-2">
-          {project?.script && (
+          {project?.script && ed.canWrite && (
             <Button variant="ai" size="sm" onClick={() => setRebuildOpen(true)}>
               <Sparkles size={14} /> Rebuild from script (AI)
             </Button>
@@ -96,7 +96,7 @@ export function Locations() {
                 : "Add the places this production shoots. A location can exist before any scene mentions it, and its lock date drives every location_lock task deadline."
             }
             cta={
-              project?.script ? (
+              project?.script && ed.canWrite ? (
                 <Button variant="ai" onClick={() => setRebuildOpen(true)}>
                   <Sparkles size={14} /> Rebuild from script (AI)
                 </Button>

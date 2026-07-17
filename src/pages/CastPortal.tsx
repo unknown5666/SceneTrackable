@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Plus, Pencil, Trash2 } from "lucide-react";
-import { useStore, isCurrentAdmin } from "@/state/store";
+import { useStore, canWrite } from "@/state/store";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -33,10 +33,7 @@ export function CastPortal() {
   const addCast = useStore((s) => s.addCastMember);
   const updateCast = useStore((s) => s.updateCastMember);
   const removeCast = useStore((s) => s.removeCastMember);
-  const isAdmin = useStore(isCurrentAdmin);
-  const activeRole = useStore((s) => s.activeRole);
-  // Cast Coordinator role also gets edit rights.
-  const canManage = isAdmin || activeRole === "cast" || activeRole === "scheduler";
+  const canManage = useStore((s) => canWrite(s, "cast"));
 
   const [modal, setModal] = useState<null | { editingId?: string }>(null);
   const [form, setForm] = useState<CastForm>(BLANK_FORM);

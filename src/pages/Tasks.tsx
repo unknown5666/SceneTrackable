@@ -9,7 +9,7 @@ import {
   Trash2,
   Loader2,
 } from "lucide-react";
-import { useStore, currentUser, isCurrentAdmin, activeProject } from "@/state/store";
+import { useStore, currentUser, isCurrentAdmin, activeProject, canWrite } from "@/state/store";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge, StatusBadge } from "@/components/ui/Badge";
@@ -74,6 +74,7 @@ export function Tasks() {
   const tasks = useStore((s) => s.tasks);
   const currentUserId = useStore((s) => s.currentUserId);
   const isAdmin = useStore(isCurrentAdmin);
+  const tasksWritable = useStore((s) => canWrite(s, "tasks"));
   const me = useStore(currentUser);
   const users = useStore((s) => s.users);
   const updateTaskStatus = useStore((s) => s.updateTaskStatus);
@@ -96,7 +97,10 @@ export function Tasks() {
     [tasks, filter, currentUserId]
   );
 
-  const canModify = (task: Task) => isAdmin || task.owner === currentUserId;
+  // Ownership decides *which* tasks you may touch; the role's Tasks level
+  // decides whether you may touch any at all.
+  const canModify = (task: Task) =>
+    tasksWritable && (isAdmin || task.owner === currentUserId);
 
   const onDelete = (task: Task) => {
     if (!canModify(task)) return;
@@ -110,9 +114,11 @@ export function Tasks() {
           <div className="section-header">Tasks</div>
           <div className="page-title mt-1">Task Engine</div>
           <div className="text-xs text-[var(--text-muted)] mt-1">
-            {isAdmin
-              ? "Admin — you can edit any task."
-              : "You can create tasks and edit tasks assigned to you."}
+            {!tasksWritable
+              ? "Read-only — your role can view tasks but not change them."
+              : isAdmin
+                ? "Admin — you can edit any task."
+                : "You can create tasks and edit tasks assigned to you."}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -152,26 +158,34 @@ export function Tasks() {
             <option value="mine">My tasks</option>
           </select>
 
-          {hasBreakdown && (
+          {hasBreakdown && tasksWritable && (
             <Button variant="ai" onClick={() => setProposeOpen(true)} disabled={!me}>
               <Sparkles size={14} /> Propose tasks (AI)
             </Button>
           )}
 
-          <Button onClick={() => setNewTaskOpen(true)} disabled={!me}>
-            <Plus size={14} /> New task
-          </Button>
+          {tasksWritable && (
+            <Button onClick={() => setNewTaskOpen(true)} disabled={!me}>
+              <Plus size={14} /> New task
+            </Button>
+          )}
         </div>
       </div>
 
       {tasks.length === 0 && (
         <EmptyState
           title="No tasks yet"
-          subtitle="Create your first task. Every task needs an owner and a deadline."
+          subtitle={
+            tasksWritable
+              ? "Create your first task. Every task needs an owner and a deadline."
+              : "Nothing has been assigned yet. Your role can view tasks but not create them."
+          }
           cta={
-            <Button onClick={() => setNewTaskOpen(true)}>
-              <Plus size={14} /> New task
-            </Button>
+            tasksWritable ? (
+              <Button onClick={() => setNewTaskOpen(true)}>
+                <Plus size={14} /> New task
+              </Button>
+            ) : undefined
           }
         />
       )}

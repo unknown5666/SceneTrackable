@@ -1,13 +1,5 @@
-import React, { useState, useMemo } from "react";
-import {
-  Sparkles,
-  Key,
-  BarChart3,
-  Settings,
-  AlertCircle,
-  Eye,
-  EyeOff,
-} from "lucide-react";
+import { useMemo } from "react";
+import { Sparkles } from "lucide-react";
 import {
   LineChart,
   Line,
@@ -22,19 +14,9 @@ import {
 } from "recharts";
 import { useStore } from "@/state/store";
 import { Card, CardHeader } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { ProgressBar } from "@/components/ui/ProgressBar";
-import { formatCompact, formatDate, cn } from "@/lib/utils";
-import {
-  setApiKey,
-  hasApiKey,
-  providerForModel,
-  MODELS,
-  PROVIDER_LABELS,
-  PROVIDER_KEY_HINTS,
-  type AIProvider,
-} from "@/lib/claude";
+import { formatCompact, formatDate } from "@/lib/utils";
+import { MODEL, PROVIDER_LABEL } from "@/lib/claude";
 import type { AIFeature } from "@/types";
 
 const FEATURE_LABELS: Record<AIFeature, string> = {
@@ -61,27 +43,10 @@ const FEATURE_EST: Record<AIFeature, { avgIn: number; avgOut: number; perUnit: s
   report_narration: { avgIn: 2500, avgOut: 250, perUnit: "per report" },
 };
 
-/** Features that route to the light model when one is configured (WO-9). */
-const LIGHT_FEATURES: AIFeature[] = ["daily_digest", "report_narration", "nl_query"];
-
 export function AISettings() {
   const aiUsage = useStore((s) => s.aiUsage);
   const aiConfig = useStore((s) => s.aiConfig);
   const setConfig = useStore((s) => s.setAIConfig);
-
-  const [keyInput, setKeyInput] = useState("");
-  const [showKey, setShowKey] = useState(false);
-  // Which provider's key the card is editing. Defaults to the main model's —
-  // that's the one the next breakdown needs — but both are reachable, because
-  // a light model can sit on the other provider.
-  const [keyProvider, setKeyProvider] = useState<AIProvider | null>(null);
-
-  const provider: AIProvider = keyProvider ?? providerForModel(aiConfig.model);
-  const keyHint = PROVIDER_KEY_HINTS[provider];
-  const keySet = hasApiKey(provider);
-  const lightProvider = aiConfig.lightModel ? providerForModel(aiConfig.lightModel) : null;
-  // Re-render the key card when a key is saved/removed for the shown provider.
-  const [, bumpKeys] = useState(0);
 
   const totalIn = aiUsage.reduce((s, e) => s + e.inputTokens, 0);
   const totalOut = aiUsage.reduce((s, e) => s + e.outputTokens, 0);
@@ -119,18 +84,6 @@ export function AISettings() {
     });
   }, [aiUsage]);
 
-  const saveKey = () => {
-    setApiKey(keyInput.trim() || null, provider);
-    setKeyInput("");
-    bumpKeys((n) => n + 1);
-  };
-
-  const removeKey = () => {
-    setApiKey(null, provider);
-    setKeyInput("");
-    bumpKeys((n) => n + 1);
-  };
-
   return (
     <div className="max-w-[1400px] mx-auto space-y-6">
       <div>
@@ -138,178 +91,25 @@ export function AISettings() {
         <div className="page-title mt-1">Token Usage & Settings</div>
       </div>
 
-      {/* Key management */}
+      {/* Provider — fixed, nothing to configure */}
       <Card variant="ai">
         <CardHeader
           title={
             <div className="flex items-center gap-2">
-              <Key size={14} className="text-[var(--color-ai)]" />
-              {PROVIDER_LABELS[provider]} API Key
+              <Sparkles size={14} className="text-[var(--color-ai)]" />
+              AI Provider
             </div>
           }
-          subtitle="Keys are stored locally in localStorage — never sent to our servers. Each provider has its own key."
+          subtitle="Built in and ready — there is no key to enter and no model to pick."
         />
-        <div className="flex items-center gap-2 mb-3">
-          {(["anthropic", "google"] as AIProvider[]).map((p) => (
-            <button
-              key={p}
-              onClick={() => {
-                setKeyProvider(p);
-                setKeyInput("");
-              }}
-              className={cn(
-                "text-xs px-3 py-1.5 rounded-lg border transition-colors flex items-center gap-2",
-                provider === p
-                  ? "border-[var(--accent-blue)] bg-[var(--active-tint)] text-[var(--text-primary)]"
-                  : "border-[var(--border-default)] text-[var(--text-secondary)] hover:border-[var(--border-hover)]"
-              )}
-            >
-              {PROVIDER_LABELS[p]}
-              {hasApiKey(p) && <Badge tone="success">Key set</Badge>}
-            </button>
-          ))}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-medium text-[var(--text-primary)]">{PROVIDER_LABEL}</span>
+          <code className="text-xs text-[var(--text-secondary)]">{MODEL}</code>
+          <Badge tone="success">Free tier</Badge>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex-1 relative">
-            <input
-              type={showKey ? "text" : "password"}
-              value={keyInput}
-              onChange={(e) => setKeyInput(e.target.value)}
-              placeholder={keySet ? `${keyHint.placeholder}  (key set)` : keyHint.placeholder}
-              className="w-full pr-10"
-            />
-            <button
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"
-              onClick={() => setShowKey(!showKey)}
-            >
-              {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
-            </button>
-          </div>
-          <Button variant="ai" onClick={saveKey}>
-            Save
-          </Button>
-          {keySet && (
-            <Button variant="destructive" size="sm" onClick={removeKey}>
-              Remove
-            </Button>
-          )}
-        </div>
-        {!keySet && (
-          <div className="mt-3 text-xs text-[var(--text-secondary)]">
-            Get a key at <span className="text-[var(--color-ai)]">{keyHint.console}</span>. Without one,
-            SceneTrackable runs an intelligent <span className="text-[var(--color-ai)]">demo breakdown</span> so the
-            app works out of the box.
-          </div>
-        )}
-        {provider === "google" && (
-          <div className="mt-3 flex items-start gap-2 text-xs text-[var(--text-secondary)]">
-            <AlertCircle size={14} className="mt-0.5 shrink-0 text-[var(--color-warning)]" />
-            <span>
-              Google's <strong>free tier uses your prompts to improve their models</strong> — screenplays sent on a
-              free-tier key are not confidential. Use it for testing and demos; move to a paid Gemini key or Claude
-              before running a client's script.
-            </span>
-          </div>
-        )}
-      </Card>
-
-      {/* Model */}
-      <Card>
-        <CardHeader
-          title="Model"
-          subtitle="Which model performs the breakdown. Selecting a model also selects its provider."
-        />
-        <div className="space-y-4">
-          {(["anthropic", "google"] as AIProvider[]).map((p) => (
-            <div key={p}>
-              <div className="section-header mb-1.5">{PROVIDER_LABELS[p]}</div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {MODELS.filter((m) => m.provider === p).map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={() => setConfig({ model: m.id })}
-                    className={cn(
-                      "text-left p-3 rounded-card border transition-colors",
-                      aiConfig.model === m.id
-                        ? "border-[var(--accent-blue)] bg-[var(--active-tint)]"
-                        : "border-[var(--border-default)] hover:border-[var(--border-hover)]"
-                    )}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-[var(--text-primary)]">{m.label}</span>
-                      {m.freeTier && <Badge tone="success">Free tier</Badge>}
-                    </div>
-                    <div className="text-[11px] text-[var(--text-muted)] mt-0.5">{m.desc}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      {/* Light-task model */}
-      <Card>
-        <CardHeader
-          title="Light Tasks Model"
-          subtitle={`Small, frequent work — ${LIGHT_FEATURES.map((f) => FEATURE_LABELS[f]).join(
-            ", "
-          )} — can run on a cheaper model than the breakdown. Set one to keep those free while the main model stays heavyweight. Needs a key for its provider; without one, light work falls back to the main model.`}
-        />
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <button
-              onClick={() => setConfig({ lightModel: undefined })}
-              className={cn(
-                "text-left p-3 rounded-card border transition-colors",
-                !aiConfig.lightModel
-                  ? "border-[var(--accent-blue)] bg-[var(--active-tint)]"
-                  : "border-[var(--border-default)] hover:border-[var(--border-hover)]"
-              )}
-            >
-              <div className="text-sm font-medium text-[var(--text-primary)]">
-                Use the main model
-              </div>
-              <div className="text-[11px] text-[var(--text-muted)] mt-0.5">
-                Everything runs on {MODELS.find((m) => m.id === aiConfig.model)?.label ?? aiConfig.model}
-              </div>
-            </button>
-            {MODELS.map((m) => {
-              const selected = aiConfig.lightModel === m.id;
-              const usable = hasApiKey(m.provider);
-              return (
-                <button
-                  key={m.id}
-                  onClick={() => setConfig({ lightModel: m.id })}
-                  className={cn(
-                    "text-left p-3 rounded-card border transition-colors",
-                    selected
-                      ? "border-[var(--accent-blue)] bg-[var(--active-tint)]"
-                      : "border-[var(--border-default)] hover:border-[var(--border-hover)]"
-                  )}
-                >
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-medium text-[var(--text-primary)]">{m.label}</span>
-                    {m.freeTier && <Badge tone="success">Free tier</Badge>}
-                    {selected && !usable && <Badge tone="warning">No key</Badge>}
-                  </div>
-                  <div className="text-[11px] text-[var(--text-muted)] mt-0.5">
-                    {PROVIDER_LABELS[m.provider]}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-          {lightProvider === "google" && (
-            <div className="flex items-start gap-2 text-xs text-[var(--text-secondary)]">
-              <AlertCircle size={14} className="mt-0.5 shrink-0 text-[var(--color-warning)]" />
-              <span>
-                Digests and answers include production data — scene headings, cast names, budget
-                figures. On Google's <strong>free tier those prompts train their models</strong>. Fine
-                for a demo; use a paid key for a real production.
-              </span>
-            </div>
-          )}
+        <div className="mt-3 text-xs text-[var(--text-secondary)]">
+          Screenplays and production data are sent to Z.ai on a free tier. Treat it as
+          non-confidential — use it for testing and demos, not a client's unreleased script.
         </div>
       </Card>
 

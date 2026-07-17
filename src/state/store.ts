@@ -41,8 +41,10 @@ import type {
   BreakdownElement,
   ActivityLogEntry,
   ActivityEntity,
+  PermissionLevel,
+  RolePermissions,
 } from "@/types";
-import { isAdminRole } from "@/types";
+import { isAdminRole, permissionFor, accessFromPermissions } from "@/types";
 import { DEFAULT_ROLES } from "@/data/roles";
 import { evaluateDeadline } from "@/lib/deadlines";
 import { resolveLockDates, locKey } from "@/lib/locations";
@@ -57,6 +59,22 @@ import {
   reconcile,
   registerRehydrate,
 } from "@/lib/cloud";
+
+/**
+ * `access` is what every page guard reads, so it is never authored directly —
+ * it is recomputed from `permissions` on every write. An admin role short-
+ * circuits to ["all"] and drops its map: "all" already means write everywhere.
+ */
+function withDerivedAccess<T extends { access: string[]; permissions?: RolePermissions }>(
+  role: T
+): T {
+  if (role.access.includes("all")) {
+    const { permissions: _drop, ...rest } = role;
+    return { ...rest, access: ["all"] } as T;
+  }
+  if (!role.permissions) return role;
+  return { ...role, access: accessFromPermissions(role.permissions) };
+}
 
 // ============================================================
 // CLOUD SESSION
@@ -285,7 +303,7 @@ interface State extends ProductionData {
 
   // Roles
   addRole: (r: Omit<Role, "id">) => void;
-  updateRole: (id: string, patch: Partial<Role>) => void;
+  updateRole: (id: string, patch: Partial<Role>) => string | null; // error message or null
   removeRole: (id: string) => string | null; // returns error message or null
 
   setActiveRole: (role: RoleId | null) => void;
@@ -416,7 +434,7 @@ export const useStore = create<State>()(
 
       // ---- AI ----
       aiUsage: [],
-      aiConfig: { model: "claude-opus-4-8", alertThresholdPct: 80 },
+      aiConfig: { alertThresholdPct: 80 },
 
       // ========================================================
       // AUTH
@@ -571,15 +589,45 @@ export const useStore = create<State>()(
       },
 
       // ---- Roles ----
-      addRole: (r) =>
-        set((s) => ({ roles: [...s.roles, { ...r, id: id("role") }] })),
+      addRole: (r) => {
+        const role = { ...withDerivedAccess(r), id: id("role") };
+        set((s) => ({ roles: [...s.roles, role] }));
+        get().logActivity({
+          action: "created",
+          entity: "role",
+          entityId: role.id,
+          description: `Created role “${role.label}”`,
+        });
+      },
 
-      updateRole: (rid, patch) =>
-        set((s) => ({
-          roles: s.roles.map((r) =>
-            r.id === rid ? { ...r, ...patch, id: r.id } : r
-          ),
-        })),
+      updateRole: (rid, patch) => {
+        const state = get();
+        const before = state.roles.find((r) => r.id === rid);
+        if (!before) return "Role not found.";
+        const next = withDerivedAccess({ ...before, ...patch, id: before.id });
+
+        // Dropping the last admin role would leave nobody able to hand it
+        // back — there is no way to reach this console without one.
+        if (isAdminRole(before) && !isAdminRole(next)) {
+          const otherAdminRoles = state.roles.filter(
+            (r) => r.id !== rid && isAdminRole(r)
+          );
+          const covered = otherAdminRoles.some((r) =>
+            state.users.some((u) => u.roleId === r.id && u.active)
+          );
+          if (!covered)
+            return "This is the only role with administrator access. Give another role admin access first.";
+        }
+
+        set((s) => ({ roles: s.roles.map((r) => (r.id === rid ? next : r)) }));
+        get().logActivity({
+          action: "updated",
+          entity: "role",
+          entityId: rid,
+          description: `Updated permissions for role “${next.label}”`,
+        });
+        return null;
+      },
 
       removeRole: (rid) => {
         const state = get();
@@ -589,6 +637,12 @@ export const useStore = create<State>()(
         if (state.users.some((u) => u.roleId === rid))
           return "Reassign users on this role before deleting it.";
         set({ roles: state.roles.filter((r) => r.id !== rid) });
+        get().logActivity({
+          action: "deleted",
+          entity: "role",
+          entityId: rid,
+          description: `Deleted role “${role.label}”`,
+        });
         return null;
       },
 
@@ -1407,12 +1461,11 @@ export const useStore = create<State>()(
     {
       name: "scenetrackable-v1",
       storage: createJSONStorage(() => localStorage),
-      version: 4,
+      version: 5,
       migrate: (persisted, from) => {
         const s = persisted as Record<string, any>;
-        // Ascending, and it has to stay that way: v3 rewrites a model id that v4
-        // then rewrites again, so a v2 store only lands on a working model if
-        // each step runs in the order it was written.
+        // Ascending, and it has to stay that way: each step assumes the ones
+        // before it have already run.
         if (from < 2) {
           // v2 gave locations their own collection. Lock dates were the only
           // location data the app held, so they become the first records —
@@ -1422,30 +1475,15 @@ export const useStore = create<State>()(
             adoptLegacyLocations(s.projectData[pid]);
           }
         }
-        if (from < 3) {
-          // Google closed the Gemini 2.5 ids to new keys, so a saved pick from
-          // that era 404s on every call. Hard-coded rather than read from
-          // MODELS: a migration has to keep meaning what it meant when written.
-          const retired: Record<string, string> = {
-            "gemini-2.5-pro": "gemini-3.1-pro-preview",
-            "gemini-2.5-flash": "gemini-3.5-flash",
-            "gemini-2.5-flash-lite": "gemini-3.1-flash-lite",
-          };
-          const ai = s.aiConfig;
+        if (from < 5) {
+          // v1-v4 migrations rewrote a saved Claude/Gemini model pick as those
+          // ids were retired. The app now calls one compiled-in model, so the
+          // saved pick means nothing — drop it rather than carry it forward.
+          const ai = s.aiConfig as (AIConfig & { model?: string; lightModel?: string; apiKey?: string }) | undefined;
           if (ai) {
-            if (retired[ai.model]) ai.model = retired[ai.model];
-            if (retired[ai.lightModel]) ai.lightModel = retired[ai.lightModel];
-          }
-        }
-        if (from < 4) {
-          // v3 sent the free-tier flash pick to gemini-3.5-flash, which Google
-          // has never actually served on the free tier — it answers every call
-          // with a 503 "high demand". gemini-3-flash-preview is the flash tier
-          // a free key can really reach.
-          const ai = s.aiConfig;
-          if (ai) {
-            if (ai.model === "gemini-3.5-flash") ai.model = "gemini-3-flash-preview";
-            if (ai.lightModel === "gemini-3.5-flash") ai.lightModel = "gemini-3-flash-preview";
+            delete ai.model;
+            delete ai.lightModel;
+            delete ai.apiKey;
           }
         }
         return s;
@@ -1479,9 +1517,17 @@ export const activeProject = (state: State): Project | undefined =>
 export const unreadCount = (state: State): number =>
   state.notifications.filter((n) => !n.read).length;
 
+/** The current role's level on a page: "none" | "read" | "write". */
+export function permissionLevel(state: State, key: string): PermissionLevel {
+  return permissionFor(currentRole(state), key);
+}
+
 /** Can the current role open a given page access key? */
 export function canAccess(state: State, key: string): boolean {
-  const role = currentRole(state);
-  if (!role) return false;
-  return role.access.includes("all") || role.access.includes(key);
+  return permissionLevel(state, key) !== "none";
+}
+
+/** Can the current role change anything on a given page? */
+export function canWrite(state: State, key: string): boolean {
+  return permissionLevel(state, key) === "write";
 }

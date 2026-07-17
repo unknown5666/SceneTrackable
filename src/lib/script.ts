@@ -1,9 +1,12 @@
 // ============================================================
-// SCRIPT INGEST — PDF extraction, screenplay parsing, breakdown run
+// SCRIPT INGEST — screenplay parsing and the breakdown run
+//
+// PDF extraction lives in `lib/pdf.ts`. It is deliberately not re-exported
+// from here: a static re-export would drag the Vite-only worker import back
+// into this module's graph, and the parser would stop loading outside the
+// bundler. Import `extractPdfText` from `@/lib/pdf` directly.
 // ============================================================
 
-import * as pdfjsLib from "pdfjs-dist";
-import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import type { Scene, BreakdownElement, ElementCategory, AIUsageEntry } from "@/types";
 import { id } from "@/lib/utils";
 import {
@@ -17,36 +20,6 @@ import {
   type ProposedLocation,
   type ScriptCharacter,
 } from "@/lib/claude";
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
-
-// ------------------------------------------------------------
-// PDF → text
-// ------------------------------------------------------------
-export async function extractPdfText(file: File): Promise<{ text: string; pageCount: number }> {
-  const buf = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
-  let text = "";
-  for (let p = 1; p <= pdf.numPages; p++) {
-    const page = await pdf.getPage(p);
-    const content = await page.getTextContent();
-    // Reconstruct lines from positioned text items.
-    let lastY: number | null = null;
-    let line = "";
-    for (const item of content.items as { str: string; transform: number[] }[]) {
-      const y = item.transform[5];
-      if (lastY !== null && Math.abs(y - lastY) > 4) {
-        text += line.trimEnd() + "\n";
-        line = "";
-      }
-      line += item.str;
-      lastY = y;
-    }
-    if (line.trim()) text += line.trimEnd() + "\n";
-    text += "\n";
-  }
-  return { text, pageCount: pdf.numPages };
-}
 
 // ------------------------------------------------------------
 // Screenplay → scenes

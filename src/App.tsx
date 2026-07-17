@@ -22,11 +22,31 @@ import { CloudSync } from "@/pages/CloudSync";
 import { Admin } from "@/pages/Admin";
 import { ActivityLog } from "@/pages/ActivityLog";
 import { Tutorial } from "@/pages/Tutorial";
-import { useStore, canAccess, isCurrentAdmin } from "@/state/store";
+import { useStore, permissionLevel, isCurrentAdmin } from "@/state/store";
+import { Eye } from "lucide-react";
 
+/**
+ * Routes a page by the current role's level on it: "none" bounces to the
+ * dashboard, "read" renders it under a banner (the pages themselves drop
+ * their write controls), "write" renders it as-is.
+ */
 function AccessGuard({ page, children }: { page: string; children: React.ReactNode }) {
-  const ok = useStore((s) => canAccess(s, page));
-  return ok ? <>{children}</> : <Navigate to="/dashboard" replace />;
+  const level = useStore((s) => permissionLevel(s, page));
+  if (level === "none") return <Navigate to="/dashboard" replace />;
+  if (level === "read")
+    return (
+      <>
+        <div className="max-w-[1400px] mx-auto mb-4 flex items-center gap-2 rounded border border-[var(--border-default)] bg-[var(--bg-surface-hover)] px-3 py-2 text-xs text-[var(--text-secondary)]">
+          <Eye size={13} className="text-[var(--text-muted)] shrink-0" />
+          <span>
+            Read-only — your role can view this page but not change it. Ask an
+            administrator if you need edit access.
+          </span>
+        </div>
+        {children}
+      </>
+    );
+  return <>{children}</>;
 }
 
 function AdminGuard({ children }: { children: React.ReactNode }) {

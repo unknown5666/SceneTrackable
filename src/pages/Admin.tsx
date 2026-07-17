@@ -1,15 +1,33 @@
 import React, { useState, useRef } from "react";
 import { Shield, Plus, Trash2, UserPlus, KeyRound, Users as UsersIcon, Lock, Database, Download, Upload, Mail, Copy, RefreshCw } from "lucide-react";
 import { useStore } from "@/state/store";
-import { ACCESS_KEYS } from "@/data/roles";
-import { isAdminRole } from "@/types";
+import { ACCESS_KEYS, PERMISSION_LEVELS, ROLE_PRESETS, permissionMap } from "@/data/roles";
+import { isAdminRole, permissionFor, accessFromPermissions } from "@/types";
 import { hashPassword } from "@/lib/utils";
 import { exportBackup, importBackup } from "@/lib/export";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
-import type { Role } from "@/types";
+import type { Role, PermissionLevel, RolePermissions } from "@/types";
+
+/**
+ * The levels to show in the editor for an existing role. Admin roles carry no
+ * map (their "all" already means write everywhere), so unchecking admin starts
+ * them from a clean slate rather than silently granting the lot.
+ */
+function levelsOf(role: Role): RolePermissions {
+  const map = permissionMap();
+  if (isAdminRole(role)) return map;
+  for (const { key } of ACCESS_KEYS) map[key] = permissionFor(role, key);
+  return map;
+}
+
+const LEVEL_TONE: Record<PermissionLevel, string> = {
+  none: "text-[var(--text-muted)]",
+  read: "text-[var(--text-secondary)]",
+  write: "text-[var(--accent-blue)]",
+};
 
 export function Admin() {
   const users = useStore((s) => s.users);
@@ -116,29 +134,40 @@ export function Admin() {
   const [rLabel, setRLabel] = useState("");
   const [rDesc, setRDesc] = useState("");
   const [rAdmin, setRAdmin] = useState(false);
-  const [rAccess, setRAccess] = useState<string[]>([]);
+  const [rPerms, setRPerms] = useState<RolePermissions>(permissionMap());
+  const [rPreset, setRPreset] = useState<string>("");
 
   const openAddRole = () => {
     setRoleModal({});
     setRLabel("");
     setRDesc("");
     setRAdmin(false);
-    setRAccess([]);
+    setRPerms(permissionMap());
+    setRPreset("");
   };
   const openEditRole = (role: Role) => {
     setRoleModal({ id: role.id });
     setRLabel(role.label);
     setRDesc(role.description);
-    setRAdmin(role.access.includes("all"));
-    setRAccess(role.access.filter((a) => a !== "all"));
+    setRAdmin(isAdminRole(role));
+    setRPerms(levelsOf(role));
+    setRPreset("");
   };
   const saveRole = () => {
     if (!rLabel.trim()) return;
-    const access = rAdmin ? ["all"] : rAccess;
+    const patch = rAdmin
+      ? { label: rLabel.trim(), description: rDesc.trim(), access: ["all"] }
+      : {
+          label: rLabel.trim(),
+          description: rDesc.trim(),
+          access: accessFromPermissions(rPerms),
+          permissions: rPerms,
+        };
     if (roleModal?.id) {
-      updateRole(roleModal.id, { label: rLabel.trim(), description: rDesc.trim(), access });
+      const err = updateRole(roleModal.id, patch);
+      if (err) return alert(err);
     } else {
-      addRole({ label: rLabel.trim(), description: rDesc.trim(), access });
+      addRole(patch);
     }
     setRoleModal(null);
   };
@@ -147,8 +176,30 @@ export function Admin() {
     if (err) alert(err);
   };
 
-  const toggleAccess = (key: string) =>
-    setRAccess((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+  const setLevel = (key: string, level: PermissionLevel) => {
+    setRPerms((prev) => ({ ...prev, [key]: level }));
+    setRPreset(""); // hand-edited — no longer the preset as shipped
+  };
+  const setAllLevels = (level: PermissionLevel) => {
+    setRPerms(
+      level === "none"
+        ? permissionMap()
+        : permissionMap(
+            level === "read" ? ACCESS_KEYS.map((k) => k.key) : [],
+            level === "write" ? ACCESS_KEYS.map((k) => k.key) : []
+          )
+    );
+    setRPreset("");
+  };
+  const applyPreset = (presetId: string) => {
+    const preset = ROLE_PRESETS.find((p) => p.id === presetId);
+    if (!preset) return;
+    setRPreset(preset.id);
+    setRAdmin(!!preset.admin);
+    setRPerms({ ...preset.permissions });
+    if (!rLabel.trim()) setRLabel(preset.label);
+    if (!rDesc.trim()) setRDesc(preset.description);
+  };
 
   // ---- Backup / restore ----
   const restoreInput = useRef<HTMLInputElement>(null);
@@ -296,14 +347,26 @@ export function Admin() {
                 </div>
                 <div className="text-xs text-[var(--text-secondary)] mt-0.5">{r.description}</div>
                 <div className="flex flex-wrap gap-1 mt-2">
-                  {r.access.includes("all") ? (
+                  {isAdminRole(r) ? (
                     <span className="text-[11px] text-[var(--text-muted)]">All pages + user/role management + AI settings</span>
                   ) : r.access.length ? (
-                    r.access.map((a) => (
-                      <span key={a} className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-surface-hover)] text-[var(--text-secondary)]">
-                        {ACCESS_KEYS.find((k) => k.key === a)?.label ?? a}
-                      </span>
-                    ))
+                    r.access.map((a) => {
+                      const level = permissionFor(r, a);
+                      return (
+                        <span
+                          key={a}
+                          title={level === "write" ? "Read & write" : "Read only"}
+                          className={`text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-surface-hover)] ${
+                            level === "write"
+                              ? "text-[var(--accent-blue)]"
+                              : "text-[var(--text-secondary)]"
+                          }`}
+                        >
+                          {ACCESS_KEYS.find((k) => k.key === a)?.label ?? a}
+                          <span className="opacity-60"> · {level === "write" ? "RW" : "R"}</span>
+                        </span>
+                      );
+                    })
                   ) : (
                     <span className="text-[11px] text-[var(--text-muted)]">Dashboard only</span>
                   )}
@@ -509,27 +572,88 @@ export function Admin() {
             <label className="section-header block mb-1.5">Description</label>
             <input value={rDesc} onChange={(e) => setRDesc(e.target.value)} className="w-full" placeholder="What this role does" />
           </div>
+
+          {/* Presets — a starting point; every page stays editable below. */}
+          <div>
+            <label className="section-header block mb-1.5">Start from a preset</label>
+            <div className="flex flex-wrap gap-1.5">
+              {ROLE_PRESETS.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => applyPreset(p.id)}
+                  title={p.description}
+                  className={`text-[11px] px-2 py-1 rounded border transition-colors ${
+                    rPreset === p.id
+                      ? "border-[var(--accent-blue)] text-[var(--accent-blue)] bg-[var(--bg-surface-hover)]"
+                      : "border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <div className="text-[11px] text-[var(--text-muted)] mt-1.5">
+              {rPreset
+                ? ROLE_PRESETS.find((p) => p.id === rPreset)?.description
+                : "Optional. Applying a preset fills the grid below — tune any page afterwards."}
+            </div>
+          </div>
+
           <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input type="checkbox" checked={rAdmin} onChange={(e) => setRAdmin(e.target.checked)} className="accent-[var(--color-ai)]" />
+            <input type="checkbox" checked={rAdmin} onChange={(e) => { setRAdmin(e.target.checked); setRPreset(""); }} className="accent-[var(--color-ai)]" />
             <span className="text-[var(--text-primary)]">Administrator — full access (users, roles, AI settings)</span>
           </label>
+
           {!rAdmin && (
             <div>
-              <label className="section-header block mb-2">Page access</label>
-              <div className="grid grid-cols-2 gap-2">
-                {ACCESS_KEYS.map((k) => (
-                  <label key={k.key} className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={rAccess.includes(k.key)}
-                      onChange={() => toggleAccess(k.key)}
-                      className="accent-[var(--accent-blue)]"
-                    />
-                    <span className="text-[var(--text-secondary)]">{k.label}</span>
-                  </label>
-                ))}
+              <div className="flex items-center justify-between mb-2">
+                <label className="section-header">Page permissions</label>
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-[var(--text-muted)] mr-1">Set all</span>
+                  {PERMISSION_LEVELS.map((l) => (
+                    <button
+                      key={l.level}
+                      type="button"
+                      onClick={() => setAllLevels(l.level)}
+                      className="text-[10px] px-1.5 py-0.5 rounded border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                    >
+                      {l.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="text-[11px] text-[var(--text-muted)] mt-2">Dashboard, Projects, Notifications & Tutorial are available to everyone.</div>
+              <div className="rounded border border-[var(--border-default)] divide-y divide-[var(--border-default)]">
+                {ACCESS_KEYS.map((k) => {
+                  const level = rPerms[k.key] ?? "none";
+                  return (
+                    <div key={k.key} className="flex items-center justify-between gap-3 px-3 py-2">
+                      <span className={`text-sm ${LEVEL_TONE[level]}`}>{k.label}</span>
+                      <div className="flex items-center rounded overflow-hidden border border-[var(--border-default)] shrink-0">
+                        {PERMISSION_LEVELS.map((l) => (
+                          <button
+                            key={l.level}
+                            type="button"
+                            title={l.hint}
+                            onClick={() => setLevel(k.key, l.level)}
+                            className={`text-[11px] px-2 py-1 transition-colors ${
+                              level === l.level
+                                ? "bg-[var(--accent-blue)] text-white"
+                                : "text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)]"
+                            }`}
+                          >
+                            {l.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="text-[11px] text-[var(--text-muted)] mt-2">
+                “Read” opens the page with every control disabled. Dashboard, Projects,
+                Notifications & Tutorial are available to everyone.
+              </div>
             </div>
           )}
         </div>

@@ -1,4 +1,4 @@
-import type { Role } from "@/types";
+import type { Role, PermissionLevel, RolePermissions } from "@/types";
 
 /**
  * Page access keys. A role's `access` array lists the pages it can open.
@@ -20,6 +20,93 @@ export const ACCESS_KEYS: { key: string; label: string }[] = [
   { key: "reports", label: "Reports" },
 ];
 
+export const PERMISSION_LEVELS: { level: PermissionLevel; label: string; hint: string }[] = [
+  { level: "none", label: "No access", hint: "Page is hidden entirely" },
+  { level: "read", label: "Read", hint: "Can open and view, cannot change anything" },
+  { level: "write", label: "Read & write", hint: "Can view and edit" },
+];
+
+/** Build a permission map: everything "none", then the listed keys raised. */
+export function permissionMap(
+  read: string[] = [],
+  write: string[] = []
+): RolePermissions {
+  const map: RolePermissions = {};
+  for (const { key } of ACCESS_KEYS) map[key] = "none";
+  for (const key of read) map[key] = "read";
+  for (const key of write) map[key] = "write";
+  return map;
+}
+
+const everyKey = ACCESS_KEYS.map((k) => k.key);
+
+/**
+ * Starting points an admin can apply in the role editor, then fine-tune.
+ * `admin: true` means the preset grants "all" and ignores `permissions`.
+ */
+export interface RolePreset {
+  id: string;
+  label: string;
+  description: string;
+  admin?: boolean;
+  permissions: RolePermissions;
+}
+
+export const ROLE_PRESETS: RolePreset[] = [
+  {
+    id: "full_admin",
+    label: "Administrator",
+    description: "Everything, plus users, roles and AI settings.",
+    admin: true,
+    permissions: permissionMap([], everyKey),
+  },
+  {
+    id: "producer",
+    label: "Producer",
+    description: "Write access to every page, but no user/role or AI administration.",
+    permissions: permissionMap([], everyKey),
+  },
+  {
+    id: "observer",
+    label: "Read-only observer",
+    description: "Can see every page. Cannot change anything.",
+    permissions: permissionMap(everyKey, []),
+  },
+  {
+    id: "scheduler",
+    label: "1st AD / Scheduler",
+    description: "Owns schedule, strip board and DOOD; reads the breakdown and budget.",
+    permissions: permissionMap(
+      ["breakdown", "budget", "reports"],
+      ["schedule", "locations", "tasks", "cast"]
+    ),
+  },
+  {
+    id: "accountant",
+    label: "Accountant",
+    description: "Owns budget and timesheets; reads schedule to cost it.",
+    permissions: permissionMap(["schedule", "reports"], ["budget", "timesheet", "tasks"]),
+  },
+  {
+    id: "dept_head",
+    label: "Department head",
+    description: "Writes their own tasks; reads the breakdown, schedule and locations.",
+    permissions: permissionMap(["breakdown", "schedule", "locations", "reports"], ["tasks"]),
+  },
+  {
+    id: "crew",
+    label: "Crew member",
+    description: "Reads the schedule and breakdown; logs their own hours.",
+    permissions: permissionMap(["breakdown", "schedule"], ["timesheet"]),
+  },
+  {
+    id: "locked",
+    label: "No access",
+    description: "Dashboard only — every page off. A good base to build from.",
+    permissions: permissionMap([], []),
+  },
+];
+
 export const DEFAULT_ROLES: Role[] = [
   {
     id: "admin",
@@ -33,6 +120,10 @@ export const DEFAULT_ROLES: Role[] = [
     label: "1st AD / Scheduler",
     description: "Owns the shooting schedule, strip board, and DOOD.",
     access: ["breakdown", "schedule", "locations", "tasks", "cast", "reports"],
+    permissions: permissionMap(
+      ["breakdown", "reports"],
+      ["schedule", "locations", "tasks", "cast"]
+    ),
     builtIn: true,
   },
   {
@@ -41,6 +132,7 @@ export const DEFAULT_ROLES: Role[] = [
     description: "Manages the budget, POs, invoices, and petty cash.",
     department: "accounting",
     access: ["budget", "tasks", "reports"],
+    permissions: permissionMap(["reports"], ["budget", "tasks"]),
     builtIn: true,
   },
   {
@@ -49,6 +141,7 @@ export const DEFAULT_ROLES: Role[] = [
     description: "Equipment manifests, kit builds, and prep checklists.",
     department: "camera",
     access: ["camera", "breakdown", "schedule", "tasks"],
+    permissions: permissionMap(["breakdown", "schedule"], ["camera", "tasks"]),
     builtIn: true,
   },
   {
@@ -58,6 +151,7 @@ export const DEFAULT_ROLES: Role[] = [
     department: "rf",
     // Comms plans are built per location, so this role reads the bible too.
     access: ["rf", "schedule", "locations", "tasks"],
+    permissions: permissionMap(["schedule", "locations"], ["rf", "tasks"]),
     builtIn: true,
   },
   {
@@ -66,6 +160,7 @@ export const DEFAULT_ROLES: Role[] = [
     description: "Shot pipeline, vendor management, plate delivery.",
     department: "vfx",
     access: ["vfx", "breakdown", "tasks"],
+    permissions: permissionMap(["breakdown"], ["vfx", "tasks"]),
     builtIn: true,
   },
   {
@@ -74,6 +169,7 @@ export const DEFAULT_ROLES: Role[] = [
     description: "Element tracking, continuity, and set dressing.",
     department: "art",
     access: ["art", "breakdown", "tasks"],
+    permissions: permissionMap(["breakdown"], ["art", "tasks"]),
     builtIn: true,
   },
   {
@@ -82,6 +178,7 @@ export const DEFAULT_ROLES: Role[] = [
     description: "Cast schedules, DOOD, contracts, and call sheets.",
     department: "cast",
     access: ["cast", "schedule", "tasks"],
+    permissions: permissionMap([], ["cast", "schedule", "tasks"]),
     builtIn: true,
   },
 ];

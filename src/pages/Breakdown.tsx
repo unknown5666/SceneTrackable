@@ -16,7 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useStore, activeProject } from "@/state/store";
+import { useStore, activeProject, canWrite } from "@/state/store";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -26,6 +26,7 @@ import { cn, formatDate } from "@/lib/utils";
 import { aiBreakdownScene } from "@/lib/claude";
 import { extractCharacters } from "@/lib/script";
 import { useLocationNames } from "@/lib/locations";
+import { sceneLanguage, intExtLabel, timeOfDayLabel, FILTER_STRINGS } from "@/lib/lang";
 import { exportBreakdownCSV, printBreakdownSheets } from "@/lib/export";
 import type { ElementCategory, BreakdownElement } from "@/types";
 
@@ -62,6 +63,7 @@ export function Breakdown() {
   const updateElement = useStore((s) => s.updateElement);
   const mergeAIProposal = useStore((s) => s.mergeAIProposalIntoScene);
   const recordAIUsage = useStore((s) => s.recordAIUsage);
+  const writable = useStore((s) => canWrite(s, "breakdown"));
   const locationNames = useLocationNames();
 
   const [selectedSceneId, setSelectedSceneId] = useState<string>(scenes[0]?.id ?? "");
@@ -124,20 +126,40 @@ export function Breakdown() {
     setter(next);
   };
 
+  // An Arabic script fills these dropdowns with Arabic locations and cast, so
+  // the labels and the canonical INT/DAY values follow it. Only the display
+  // text changes — the filter predicates below still compare stored English.
+  const lang = useMemo(() => sceneLanguage(scenes), [scenes]);
+  const t = FILTER_STRINGS[lang];
+
   const filterGroups: FilterGroupDef[] = [
-    { key: "intExt", label: "INT/EXT", options: INT_EXT, selected: intExtFilter, setter: setIntExtFilter },
-    { key: "time", label: "Time of day", options: TIMES, selected: timeFilter, setter: setTimeFilter },
+    {
+      key: "intExt",
+      label: t.intExt,
+      options: INT_EXT,
+      selected: intExtFilter,
+      setter: setIntExtFilter,
+      format: (v) => intExtLabel(v, lang),
+    },
+    {
+      key: "time",
+      label: t.timeOfDay,
+      options: TIMES,
+      selected: timeFilter,
+      setter: setTimeFilter,
+      format: (v) => timeOfDayLabel(v, lang),
+    },
     {
       key: "location",
-      label: "Location",
+      label: t.location,
       options: filterOptions.locations,
       selected: locationFilter,
       setter: setLocationFilter,
     },
-    { key: "cast", label: "Cast", options: filterOptions.actors, selected: actorFilter, setter: setActorFilter },
+    { key: "cast", label: t.cast, options: filterOptions.actors, selected: actorFilter, setter: setActorFilter },
     {
       key: "date",
-      label: "Shoot date",
+      label: t.shootDate,
       options: filterOptions.dates,
       selected: dateFilter,
       setter: setDateFilter,
@@ -291,9 +313,11 @@ export function Breakdown() {
           >
             <Printer size={14} /> Breakdown sheets
           </Button>
-          <Button variant="ai" onClick={runAI} disabled={!scene}>
-            <Sparkles size={14} /> Re-analyze scene
-          </Button>
+          {writable && (
+            <Button variant="ai" onClick={runAI} disabled={!scene}>
+              <Sparkles size={14} /> Re-analyze scene
+            </Button>
+          )}
         </div>
       </div>
 
@@ -302,7 +326,7 @@ export function Breakdown() {
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1.5 pr-1 text-xs text-[var(--text-secondary)] shrink-0">
             <SlidersHorizontal size={13} />
-            Filters
+            {t.filters}
           </div>
 
           {filterGroups.map((g) => (
@@ -319,16 +343,14 @@ export function Breakdown() {
 
           <div className="flex items-center gap-3 ml-auto shrink-0">
             <span className="text-xs text-[var(--text-muted)] tabular-nums">
-              {activeFilterCount > 0
-                ? `${filteredScenes.length} of ${scenes.length} scenes`
-                : `${scenes.length} scenes`}
+              {t.scenes(filteredScenes.length, scenes.length, activeFilterCount > 0)}
             </span>
             {activeFilterCount > 0 && (
               <button
                 onClick={clearFilters}
                 className="flex items-center gap-1 h-7 px-2 rounded-md text-xs text-[var(--text-secondary)] hover:text-[var(--color-danger)] hover:bg-[var(--bg-surface-hover)] transition-colors"
               >
-                <X size={12} /> Clear all
+                <X size={12} /> {t.clearAll}
               </button>
             )}
           </div>
@@ -367,12 +389,12 @@ export function Breakdown() {
             <div className="space-y-0.5">
               {filteredScenes.length === 0 && (
                 <div className="text-center py-6 px-2">
-                  <div className="text-xs text-[var(--text-muted)]">No scenes match these filters.</div>
+                  <div className="text-xs text-[var(--text-muted)]">{t.noMatch}</div>
                   <button
                     onClick={clearFilters}
                     className="mt-2 text-xs text-[var(--accent-blue)] hover:underline"
                   >
-                    Clear all filters
+                    {t.clearAll}
                   </button>
                 </div>
               )}
@@ -395,7 +417,7 @@ export function Breakdown() {
                   </div>
                   <div className="flex items-center gap-1 mt-1 pl-7">
                     <span className="text-[9px] text-[var(--text-muted)]">
-                      {s.intExt} · {s.timeOfDay}
+                      {intExtLabel(s.intExt, lang)} · {timeOfDayLabel(s.timeOfDay, lang)}
                     </span>
                     {s.vfxFlags && <span className="w-1.5 h-1.5 rounded-full" style={{ background: CATEGORY_META.vfx.color }} />}
                     {s.sfxFlags && <span className="w-1.5 h-1.5 rounded-full" style={{ background: CATEGORY_META.sfx.color }} />}
@@ -420,6 +442,7 @@ export function Breakdown() {
                     value={scene.intExt}
                     onChange={(e) => updateScene(scene.id, { intExt: e.target.value as typeof scene.intExt })}
                     className="h-8 text-xs"
+                    disabled={!writable}
                   >
                     {INT_EXT.map((v) => (
                       <option key={v} value={v}>{v}</option>
@@ -429,6 +452,7 @@ export function Breakdown() {
                     value={scene.timeOfDay}
                     onChange={(e) => updateScene(scene.id, { timeOfDay: e.target.value as typeof scene.timeOfDay })}
                     className="h-8 text-xs"
+                    disabled={!writable}
                   >
                     {TIMES.map((v) => (
                       <option key={v} value={v}>{v}</option>
@@ -440,6 +464,7 @@ export function Breakdown() {
                     className="h-8 text-sm flex-1 min-w-[200px]"
                     placeholder="Location"
                     list="known-locations"
+                    readOnly={!writable}
                   />
                   <datalist id="known-locations">
                     {locationNames.map((l) => (
@@ -453,8 +478,9 @@ export function Breakdown() {
                 <textarea
                   value={scene.notes ?? ""}
                   onChange={(e) => updateScene(scene.id, { notes: e.target.value })}
-                  placeholder="Scene notes…"
+                  placeholder={writable ? "Scene notes…" : "No scene notes"}
                   className="w-full text-xs h-16 resize-none"
+                  readOnly={!writable}
                 />
               </Card>
 
@@ -490,6 +516,7 @@ export function Breakdown() {
                                   value={el.category}
                                   onChange={(e) => updateElement(scene.id, el.id, { category: e.target.value as ElementCategory })}
                                   className="h-7 text-xs bg-transparent border-transparent hover:border-[var(--border-default)]"
+                                  disabled={!writable}
                                 >
                                   {CATEGORIES.map((c) => (
                                     <option key={c} value={c}>{CATEGORY_META[c].label}</option>
@@ -502,6 +529,7 @@ export function Breakdown() {
                                 value={el.name}
                                 onChange={(e) => updateElement(scene.id, el.id, { name: e.target.value })}
                                 className={cellCls}
+                                readOnly={!writable}
                               />
                             </td>
                             <td className="px-2 py-1.5">
@@ -510,6 +538,7 @@ export function Breakdown() {
                                 onChange={(e) => updateElement(scene.id, el.id, { subCategory: e.target.value })}
                                 className={cellCls}
                                 placeholder="—"
+                                readOnly={!writable}
                               />
                             </td>
                             <td className="px-2 py-1.5">
@@ -518,6 +547,7 @@ export function Breakdown() {
                                 onChange={(e) => updateElement(scene.id, el.id, { description: e.target.value })}
                                 className={cellCls}
                                 placeholder="—"
+                                readOnly={!writable}
                               />
                             </td>
                             <td className="px-2 py-1.5">
@@ -526,15 +556,18 @@ export function Breakdown() {
                                 onChange={(e) => updateElement(scene.id, el.id, { notes: e.target.value })}
                                 className={cellCls}
                                 placeholder="—"
+                                readOnly={!writable}
                               />
                             </td>
                             <td className="px-2 py-1.5 text-center">
-                              <button
-                                onClick={() => removeElement(scene.id, el.id)}
-                                className="text-[var(--text-muted)] hover:text-[var(--color-danger)]"
-                              >
-                                <Trash2 size={13} />
-                              </button>
+                              {writable && (
+                                <button
+                                  onClick={() => removeElement(scene.id, el.id)}
+                                  className="text-[var(--text-muted)] hover:text-[var(--color-danger)]"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              )}
                             </td>
                           </tr>
                         ))
@@ -549,11 +582,13 @@ export function Breakdown() {
                     </tbody>
                   </table>
                 </div>
-                <div className="p-3 border-t border-[var(--border-default)]">
-                  <Button variant="secondary" size="sm" onClick={() => addElement(scene.id, "New element", "props")}>
-                    <Plus size={12} /> Add element
-                  </Button>
-                </div>
+                {writable && (
+                  <div className="p-3 border-t border-[var(--border-default)]">
+                    <Button variant="secondary" size="sm" onClick={() => addElement(scene.id, "New element", "props")}>
+                      <Plus size={12} /> Add element
+                    </Button>
+                  </div>
+                )}
               </Card>
             </>
           )}

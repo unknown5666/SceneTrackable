@@ -1,13 +1,9 @@
 // ============================================================
 // AI API WRAPPER — SceneTrackable
-// Browser-direct calls (admin supplies key in AI Settings) with a
-// high-quality built-in demo fallback so the app works with no key.
-// Live calls retry on transient errors and never silently degrade
-// to demo output — API failures surface to the caller.
-//
-// Two providers are supported: Anthropic (Claude) and Google (Gemini).
-// The provider is derived from the selected model id rather than stored
-// separately, so the two can never drift out of sync.
+// Browser-direct calls to one provider: Z.ai's GLM. The key and model
+// are fixed here, so there is nothing to configure and every feature
+// works out of the box. Live calls retry on transient errors and never
+// silently degrade to demo output — failures surface to the caller.
 // ============================================================
 
 import type {
@@ -21,7 +17,7 @@ import type {
   TaskPriority,
 } from "@/types";
 import { DEPARTMENTS } from "@/data/schemas";
-import { useStore } from "@/state/store";
+import { detectLanguage, languageDirective, type ScriptLanguage } from "@/lib/lang";
 
 /** Departments, as a schema enum. */
 const DEPARTMENT_IDS = DEPARTMENTS as readonly string[];
@@ -29,121 +25,42 @@ const DEPARTMENT_IDS = DEPARTMENTS as readonly string[];
 // Re-exported so call sites can keep importing the AI vocabulary from here.
 export type { CharacterImportance, ScriptCharacter };
 
-const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
-const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
-const DEFAULT_MODEL = "claude-opus-4-8";
+const GLM_URL = "https://api.z.ai/api/paas/v4/chat/completions";
 
-export type AIProvider = "anthropic" | "google";
-
-const KEY_STORAGE: Record<AIProvider, string> = {
-  anthropic: "scenetrackable-claude-key",
-  google: "scenetrackable-gemini-key",
-};
-
-export interface ModelInfo {
-  id: string;
-  label: string;
-  desc: string;
-  provider: AIProvider;
-  /** Usable on the provider's no-cost tier. */
-  freeTier?: boolean;
-}
-
-export const MODELS: ModelInfo[] = [
-  { id: "claude-opus-4-8", label: "Opus 4.8", desc: "Most capable · highest quality", provider: "anthropic" },
-  { id: "claude-sonnet-5", label: "Sonnet 5", desc: "Balanced · fast & cost-effective", provider: "anthropic" },
-  { id: "claude-haiku-4-5", label: "Haiku 4.5", desc: "Fastest · lowest cost", provider: "anthropic" },
-  { id: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro", desc: "Most capable Gemini · paid only", provider: "google" },
-  { id: "gemini-3-flash-preview", label: "Gemini 3 Flash", desc: "Free tier · best free-tier quality", provider: "google", freeTier: true },
-  { id: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash Lite", desc: "Free tier · fastest, lighter analysis", provider: "google", freeTier: true },
-];
-
-export const PROVIDER_LABELS: Record<AIProvider, string> = {
-  anthropic: "Anthropic Claude",
-  google: "Google Gemini",
-};
-
-export const PROVIDER_KEY_HINTS: Record<AIProvider, { placeholder: string; console: string }> = {
-  anthropic: { placeholder: "sk-ant-api03-…", console: "console.anthropic.com" },
-  google: { placeholder: "AIza…", console: "aistudio.google.com/apikey" },
-};
-
-export function providerForModel(model: string): AIProvider {
-  return model.startsWith("gemini") ? "google" : "anthropic";
-}
-
-// Approximate list pricing per 1M tokens, by model.
-const PRICING: Record<string, { in: number; out: number }> = {
-  "claude-opus-4-8": { in: 5.0, out: 25.0 },
-  "claude-sonnet-5": { in: 3.0, out: 15.0 },
-  "claude-haiku-4-5": { in: 1.0, out: 5.0 },
-  "gemini-3.1-pro-preview": { in: 2.0, out: 12.0 },
-  "gemini-3-flash-preview": { in: 1.5, out: 9.0 },
-  "gemini-3.1-flash-lite": { in: 0.25, out: 1.5 },
-};
-
-export function estimateCost(inputTokens: number, outputTokens: number, model?: string): number {
-  const price = PRICING[model ?? activeModel()] ?? PRICING[DEFAULT_MODEL];
-  return (inputTokens / 1_000_000) * price.in + (outputTokens / 1_000_000) * price.out;
-}
-
-// ------------------------------------------------------------
-// Key management (admin-only surface enforces access in the UI)
-// ------------------------------------------------------------
-export function getApiKey(provider: AIProvider = activeProvider()): string | null {
-  try {
-    return localStorage.getItem(KEY_STORAGE[provider]);
-  } catch {
-    return null;
-  }
-}
-
-export function setApiKey(key: string | null, provider: AIProvider = activeProvider()): void {
-  try {
-    if (!key) localStorage.removeItem(KEY_STORAGE[provider]);
-    else localStorage.setItem(KEY_STORAGE[provider], key);
-  } catch {
-    /* noop */
-  }
-}
-
-export function hasApiKey(provider: AIProvider = activeProvider()): boolean {
-  return Boolean(getApiKey(provider));
-}
-
-function activeModel(): string {
-  try {
-    return useStore.getState().aiConfig.model || DEFAULT_MODEL;
-  } catch {
-    return DEFAULT_MODEL;
-  }
-}
-
-export function activeProvider(): AIProvider {
-  return providerForModel(activeModel());
-}
-
-/** The default light model, offered when a Google key is present. */
-export const DEFAULT_LIGHT_MODEL = "gemini-3.1-flash-lite";
+export const PROVIDER_LABEL = "Z.ai GLM";
 
 /**
- * The model a call actually runs on.
+ * The only model the app calls.
  *
- * Light features fall back to the main model unless a light model is
- * configured *and* its provider has a key — a light model whose key is missing
- * would otherwise turn a working feature into an error.
+ * Not a free choice: this account has no balance, and every billed id
+ * (glm-4.7, glm-5.2, even glm-4.5-air) answers with error 1113 before it ever
+ * routes to a model. glm-4.7-flash is served free and is the one id that
+ * actually returns completions. It is absent from the `/models` listing, so
+ * trust this constant over that endpoint.
  */
-export function modelForCall(weight: ClaudeCallOptions["weight"]): string {
-  const main = activeModel();
-  if (weight !== "light") return main;
-  let light: string | undefined;
-  try {
-    light = useStore.getState().aiConfig.lightModel;
-  } catch {
-    light = undefined;
-  }
-  if (!light || light === main) return main;
-  return getApiKey(providerForModel(light)) ? light : main;
+export const MODEL = "glm-4.7-flash";
+
+/**
+ * Hardcoded so the app works with nothing to configure.
+ *
+ * This ships in the client bundle, which means anyone using the app can read
+ * it — it is a free-tier key and is treated as public.
+ */
+const API_KEY = "bcbdd5739b944792a63556ddf95ac28b.zhXllGiawEcLj9Xm";
+
+/** glm-4.7-flash is free. Tokens are still metered so usage stays visible. */
+export function estimateCost(_inputTokens: number, _outputTokens: number, _model?: string): number {
+  return 0;
+}
+
+/** Retained so call sites that gate on "is AI configured" keep reading true. */
+export function hasApiKey(): boolean {
+  return true;
+}
+
+/** Every call runs on the one model; weight no longer routes anywhere. */
+export function modelForCall(_weight?: ClaudeCallOptions["weight"]): string {
+  return MODEL;
 }
 
 // ------------------------------------------------------------
@@ -173,6 +90,13 @@ export interface ClaudeCallOptions {
   weight?: "heavy" | "light";
   /** Called when a call is parked waiting on the provider's rate limit. */
   onWait?: (seconds: number) => void;
+  /**
+   * The language the answer must be written in. Defaults to the language of
+   * `user`, which is right whenever that text is the script itself. Set it
+   * explicitly when the material and the question can differ (Q&A: an Arabic
+   * question over a snapshot of English data, or the reverse).
+   */
+  language?: ScriptLanguage;
 }
 
 export interface ClaudeResult {
@@ -188,27 +112,31 @@ const MAX_ATTEMPTS = 5;
 const RETRYABLE_STATUS = new Set([429, 500, 503, 529]);
 
 /**
- * A 429 usually means "too fast, try again". But Google returns the same status
- * for "this model is not on your plan at all", spelled `limit: 0` in the quota
- * violation — every Gemini Pro id is paid-only, so a free-tier key gets this on
- * the first call and on all five retries. Retrying spends a minute of backoff to
- * arrive at the same failure, and the raw body it finally reports reads like a
- * transient blip rather than a wrong model choice. Detect it and fail fast.
+ * GLM reports billing and quota faults as error codes in a 200-shaped body or
+ * behind a 4xx, not as a distinct status. Code 1113 ("insufficient balance") is
+ * an account state, not a blip: it fails identically on every retry, so detect
+ * it and stop rather than spending a minute of backoff to arrive at the same
+ * place. 1211 means the model id doesn't exist — equally permanent.
  */
-function permanentQuotaFailure(status: number, body: string): boolean {
-  return status === 429 && /limit:\s*0\b/.test(body);
+function permanentFailure(body: string): boolean {
+  return /"code"\s*:\s*"?(1113|1211|1002|1004)"?/.test(body);
 }
 
-/** Turn a provider error body into something a producer can act on. */
-function quotaMessage(model: string, body: string): string {
-  const info = MODELS.find((m) => m.id === model);
-  if (permanentQuotaFailure(429, body)) {
-    const free = MODELS.filter((m) => m.provider === providerForModel(model) && m.freeTier)
-      .map((m) => m.label)
-      .join(" or ");
-    return `${info?.label ?? model} is not available on your API key's free tier — Google allows it on paid billing only. Pick ${free} in AI Settings, or enable billing on your Google Cloud project.`;
+/** Turn a GLM error body into something a producer can act on. */
+function errorMessage(status: number, body: string): string {
+  if (/"code"\s*:\s*"?1113"?/.test(body)) {
+    return `The GLM account has no balance, so ${MODEL} was refused (1113). ${MODEL} is normally free — if this appears, the free allowance is exhausted or the key was disabled.`;
   }
-  return `${info?.label ?? model} is rate-limited right now (429). The run will retry automatically; if it keeps failing, switch to a lighter model in AI Settings.`;
+  if (/"code"\s*:\s*"?1211"?/.test(body)) {
+    return `GLM does not recognise the model "${MODEL}" (1211).`;
+  }
+  if (/"code"\s*:\s*"?(1002|1004)"?/.test(body)) {
+    return `The GLM API key was rejected (authentication failed).`;
+  }
+  if (status === 429 || /"code"\s*:\s*"?1302"?/.test(body)) {
+    return `${MODEL} is rate-limited right now — the free tier allows a limited number of requests per minute. The run will retry automatically.`;
+  }
+  return `${PROVIDER_LABEL} API error ${status} — ${body.slice(0, 200)}`;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -218,18 +146,21 @@ function sleep(ms: number): Promise<void> {
 // ------------------------------------------------------------
 // Rate limiting
 //
-// Gemini's free tier allows roughly 10-15 requests/minute. A big script runs
-// batches 3-wide and each can retry, which clears that on its own — and the
-// 429s it earns come back as user-visible failures. A token bucket in front of
-// every attempt keeps a long run inside the allowance instead.
+// A big script runs batches 3-wide and each can retry, which can outrun a free
+// tier's allowance on its own — and the 429s it earns come back as
+// user-visible failures. A token bucket in front of every attempt keeps a long
+// run inside the allowance instead.
 // ------------------------------------------------------------
 
-/** Requests per minute, by model. Paid providers get a generous ceiling. */
-function rpmFor(model: string): number {
-  const info = MODELS.find((m) => m.id === model);
-  if (info?.freeTier) return model.includes("lite") ? 12 : 8;
-  return providerForModel(model) === "google" ? 60 : 120;
-}
+/**
+ * Requests per minute.
+ *
+ * Deliberately conservative. GLM does not publish the free tier's rate, and it
+ * answers an overrun with 1302 — which back-to-back breakdown runs hit for
+ * real. A breakdown is only a handful of requests (one per 10-scene batch,
+ * plus the two bibles), so pacing them costs seconds and buys reliability.
+ */
+const RPM = 15;
 
 class TokenBucket {
   private tokens: number;
@@ -267,134 +198,87 @@ class TokenBucket {
   }
 }
 
-const buckets = new Map<string, TokenBucket>();
-
-function rateLimiter(model: string): TokenBucket {
-  // Keyed by model: the quota that bites is the free tier's, which is
-  // per-model, and it's what a mixed heavy/light run needs kept apart.
-  let bucket = buckets.get(model);
-  if (!bucket) {
-    bucket = new TokenBucket(rpmFor(model));
-    buckets.set(model, bucket);
-  }
-  return bucket;
-}
-
-/** One provider-specific HTTP attempt. Returns null-free parsed output or throws. */
-interface LiveRequest {
-  url: string;
-  headers: Record<string, string>;
-  body: string;
-  /** Pull text + token counts out of the provider's response shape. */
-  parse: (data: any) => { text: string; inputTokens: number; outputTokens: number };
-}
-
-function anthropicRequest(opts: ClaudeCallOptions, model: string, apiKey: string): LiveRequest {
-  // NOTE: no temperature / top_p — those are rejected (400) on Opus 4.8 / Sonnet 5.
-  return {
-    url: ANTHROPIC_URL,
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true",
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: opts.maxTokens ?? 1200,
-      system: opts.system,
-      output_config: {
-        effort: "low",
-        ...(opts.jsonSchema
-          ? { format: { type: "json_schema", schema: opts.jsonSchema } }
-          : {}),
-      },
-      messages: [{ role: "user", content: opts.user }],
-    }),
-    parse: (data) => ({
-      text: data.content?.find((b: { type: string }) => b.type === "text")?.text || "",
-      inputTokens: data.usage?.input_tokens ?? 0,
-      outputTokens: data.usage?.output_tokens ?? 0,
-    }),
-  };
-}
+/** One bucket: there is one model, so one allowance to protect. */
+const limiter = new TokenBucket(RPM);
 
 /**
- * Gemini's responseSchema is an OpenAPI subset — it rejects the
- * `additionalProperties` that the Anthropic schema carries.
+ * GLM ignores `response_format: json_schema` — it accepts the field and then
+ * answers with prose or a fenced block anyway. `json_object` is honoured, so
+ * that is what forces JSON; the schema itself has to travel in the prompt for
+ * the model to know the shape. `extractJson` handles a fence either way.
+ *
+ * The wording earns its length. Appended to a long system prompt with a bare
+ * "match this schema", the model echoed the schema back as its answer — valid
+ * JSON, zero data, and no parse error to catch it. It goes last in the user
+ * turn (nearest the text being analysed) and says outright which of the two
+ * objects to return.
  */
-function toGeminiSchema(schema: Record<string, unknown>): Record<string, unknown> {
-  const strip = (node: unknown): unknown => {
-    if (Array.isArray(node)) return node.map(strip);
-    if (!node || typeof node !== "object") return node;
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
-      if (k === "additionalProperties") continue;
-      out[k] = strip(v);
-    }
-    return out;
-  };
-  return strip(schema) as Record<string, unknown>;
+function jsonInstruction(schema: Record<string, unknown>): string {
+  return `\n\nRespond with a single JSON object that conforms to the JSON Schema below.
+Return the DATA — an instance of the schema, populated from the material above.
+Do NOT return, repeat, or echo the schema document itself.
+No prose, no markdown fence, no commentary.
+
+SCHEMA:
+${JSON.stringify(schema)}`;
 }
 
-function geminiRequest(opts: ClaudeCallOptions, model: string, apiKey: string): LiveRequest {
-  // Gemini counts thinking against maxOutputTokens, so left at its default
-  // (medium on Flash, high on Pro) a reply can be truncated before any text
-  // lands. Ask for the least thinking each tier allows, mirroring the "low
-  // effort" setting on the Claude path. Gemini 3 replaced the 2.5-era
-  // thinkingBudget with thinkingLevel; sending both is a 400.
-  const thinkingLevel = model.startsWith("gemini-3.1-pro") ? "low" : "minimal";
-  return {
-    url: `${GEMINI_BASE}/${model}:generateContent`,
-    headers: {
-      "Content-Type": "application/json",
-      "x-goog-api-key": apiKey,
-    },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: opts.system }] },
-      contents: [{ role: "user", parts: [{ text: opts.user }] }],
-      generationConfig: {
-        maxOutputTokens: opts.maxTokens ?? 1200,
-        thinkingConfig: { thinkingLevel },
-        ...(opts.jsonSchema
-          ? {
-              responseMimeType: "application/json",
-              responseSchema: toGeminiSchema(opts.jsonSchema),
-            }
-          : {}),
+/** Highest max_tokens glm-4.7-flash accepts. */
+const MAX_OUTPUT_TOKENS = 65536;
+
+/**
+ * Callers size `maxTokens` for the answer alone. GLM bills reasoning against
+ * the same ceiling, so passing that number straight through spends the budget
+ * on thinking and truncates the JSON — a 2-scene batch came back with 1 scene
+ * and no error. Give reasoning its own allowance on top.
+ */
+function tokenBudget(opts: ClaudeCallOptions): number {
+  const answer = opts.maxTokens ?? 1200;
+  if (opts.weight === "light") return answer;
+  return Math.min(MAX_OUTPUT_TOKENS, answer * 2 + 2000);
+}
+
+function glmBody(opts: ClaudeCallOptions): string {
+  // Every feature reads script-derived text, so the directive is resolved here
+  // rather than baked into each system prompt — a new prompt then can't forget
+  // it, and Arabic support can't regress one feature at a time.
+  const language = opts.language ?? detectLanguage(opts.user);
+
+  return JSON.stringify({
+    model: MODEL,
+    // Light features disable reasoning; the analytical ones keep it — with it
+    // off, the character pass silently drops non-speaking roles it otherwise
+    // catches.
+    thinking: { type: opts.weight === "light" ? "disabled" : "enabled" },
+    max_tokens: tokenBudget(opts),
+    messages: [
+      { role: "system", content: opts.system + languageDirective(language) },
+      {
+        role: "user",
+        content: opts.user + (opts.jsonSchema ? jsonInstruction(opts.jsonSchema) : ""),
       },
-    }),
-    parse: (data) => ({
-      text:
-        data.candidates?.[0]?.content?.parts
-          ?.map((p: { text?: string }) => p.text ?? "")
-          .join("") || "",
-      inputTokens: data.usageMetadata?.promptTokenCount ?? 0,
-      outputTokens: data.usageMetadata?.candidatesTokenCount ?? 0,
-    }),
-  };
+    ],
+    ...(opts.jsonSchema ? { response_format: { type: "json_object" } } : {}),
+  });
 }
 
 async function callLive(opts: ClaudeCallOptions): Promise<ClaudeResult> {
-  const model = modelForCall(opts.weight);
-  const provider = providerForModel(model);
-  const apiKey = getApiKey(provider);
-  if (!apiKey) throw new ClaudeApiError("No API key set");
-  const req =
-    provider === "google"
-      ? geminiRequest(opts, model, apiKey)
-      : anthropicRequest(opts, model, apiKey);
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${API_KEY}`,
+  };
+  const body = glmBody(opts);
 
   let lastError: ClaudeApiError | null = null;
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     // Concurrent batches + retries can outrun a free tier's per-minute
     // allowance on their own, so every attempt takes a token first.
-    await rateLimiter(model).take(opts.onWait);
+    await limiter.take(opts.onWait);
 
     let res: Response;
     try {
-      res = await fetch(req.url, { method: "POST", headers: req.headers, body: req.body });
+      res = await fetch(GLM_URL, { method: "POST", headers, body });
     } catch (e) {
       // Network failure — retryable.
       lastError = new ClaudeApiError(`Network error: ${(e as Error).message}`);
@@ -402,32 +286,39 @@ async function callLive(opts: ClaudeCallOptions): Promise<ClaudeResult> {
       continue;
     }
 
-    if (res.ok) {
-      const { text, inputTokens, outputTokens } = req.parse(await res.json());
+    const raw = await res.text();
+
+    // GLM returns billing/auth faults as an error code inside a 200 body as
+    // readily as behind a 4xx, so the code is checked before the status.
+    if (permanentFailure(raw)) {
+      throw new ClaudeApiError(errorMessage(res.status, raw), res.status);
+    }
+
+    if (res.ok && !/"error"\s*:/.test(raw)) {
+      const data = JSON.parse(raw);
+      const choice = data.choices?.[0];
+
+      // Truncation is the quiet failure: cut JSON can still parse into a
+      // partial answer, so a 10-scene batch returns 4 scenes and reports
+      // success. Never let that reach the caller as a result.
+      if (choice?.finish_reason === "length") {
+        throw new ClaudeApiError(
+          `${MODEL} ran out of output budget and the reply was cut off. The answer would have been incomplete, so it was rejected rather than returned in part.`
+        );
+      }
+
       return {
-        text,
-        inputTokens,
-        outputTokens,
-        costUsd: estimateCost(inputTokens, outputTokens, model),
-        model,
+        text: choice?.message?.content || "",
+        inputTokens: data.usage?.prompt_tokens ?? 0,
+        outputTokens: data.usage?.completion_tokens ?? 0,
+        costUsd: 0,
+        model: MODEL,
         fromMock: false,
       };
     }
 
-    const errText = await res.text();
-
-    // A model the key can never call: report the fix, don't burn the retries.
-    if (permanentQuotaFailure(res.status, errText)) {
-      throw new ClaudeApiError(quotaMessage(model, errText), res.status);
-    }
-
-    lastError = new ClaudeApiError(
-      res.status === 429
-        ? quotaMessage(model, errText)
-        : `${PROVIDER_LABELS[provider]} API error ${res.status} — ${errText.slice(0, 200)}`,
-      res.status
-    );
-    if (!RETRYABLE_STATUS.has(res.status)) throw lastError;
+    lastError = new ClaudeApiError(errorMessage(res.status, raw), res.status);
+    if (res.ok || !RETRYABLE_STATUS.has(res.status)) throw lastError;
 
     const retryAfter = Number(res.headers.get("retry-after"));
     const backoff = Number.isFinite(retryAfter) && retryAfter > 0
@@ -436,45 +327,18 @@ async function callLive(opts: ClaudeCallOptions): Promise<ClaudeResult> {
     await sleep(backoff);
   }
 
-  throw lastError ?? new ClaudeApiError(`${PROVIDER_LABELS[provider]} API call failed`);
-}
-
-async function fakeDelay(ms = 500 + Math.random() * 500): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
-}
-
-async function callClaudeMock(opts: ClaudeCallOptions, sceneCtx?: Scene): Promise<ClaudeResult> {
-  await fakeDelay();
-  let text = "";
-  if (opts.feature === "script_breakdown") {
-    text = JSON.stringify(demoBreakdown(sceneCtx, opts.user));
-  } else {
-    text = "Demo response.";
-  }
-  const inputTokens = estimateTokens(opts.system + opts.user);
-  const outputTokens = estimateTokens(text);
-  const model = modelForCall(opts.weight);
-  return {
-    text,
-    inputTokens,
-    outputTokens,
-    costUsd: estimateCost(inputTokens, outputTokens, model),
-    model: model + " · demo",
-    fromMock: true,
-  };
+  throw lastError ?? new ClaudeApiError(`${PROVIDER_LABEL} API call failed`);
 }
 
 /**
- * With a key for the call's provider: live call (throws on failure — no silent
- * demo fallback). Without a key: demo mode.
+ * Always a live call — the key is compiled in, so there is no keyless demo
+ * mode left to fall back to. Throws on failure rather than degrading silently.
+ *
+ * `_sceneCtx` is what demo mode synthesized a plausible breakdown from. It is
+ * kept so call sites read unchanged, and ignored.
  */
-export async function callClaude(opts: ClaudeCallOptions, sceneCtx?: Scene): Promise<ClaudeResult> {
-  if (getApiKey(providerForModel(modelForCall(opts.weight)))) return callLive(opts);
-  return callClaudeMock(opts, sceneCtx);
+export async function callClaude(opts: ClaudeCallOptions, _sceneCtx?: Scene): Promise<ClaudeResult> {
+  return callLive(opts);
 }
 
 // ------------------------------------------------------------
@@ -599,6 +463,7 @@ Category definitions:
 - locations: the physical place(s) needed. makeup: makeup/hair/prosthetics. stunts: stunt action.
 - production: production requirements (permits, generators, cranes, road closures, catering notes, safety).
 "subCategory" is a short qualifier (e.g. "Lead", "Hero prop", "Digital", "Picture car"). "description" is a concise production note. "notes" may be empty.
+"estimated_duration_minutes" is how long the unit needs to SHOOT the scene on the day — setup, rehearsal, coverage and resets — not how long it runs on screen. A page of dialogue is roughly 45-60 minutes of shooting; stunts, effects, crowds and night exteriors take longer. It is never less than 15.
 Also return "synopsis": one sentence describing what happens in the scene, written for a strip board — who is present, what they do, and what the scene needs from the unit. Never quote dialogue.
 Be specific and thorough — this feeds a real production department. Only include cast members who actually appear in the scene being analyzed.
 Use the character list you are given as the source of truth for cast naming: refer to each character by their canonical name even when the scene text uses a nickname, a description, or a dialogue cue variant.`;
@@ -691,6 +556,12 @@ export async function aiCharacterBible(
   let characters: ScriptCharacter[] = [];
   try {
     const parsed = JSON.parse(extractJson(result.text));
+    // A model that echoes the schema back parses fine and yields nothing. An
+    // empty cast is never a correct answer for a screenplay, so treat a
+    // missing array as the failure it is rather than importing zero characters.
+    if (!Array.isArray(parsed?.characters)) {
+      throw new ClaudeApiError("The character list came back in an unexpected shape.");
+    }
     characters = Array.isArray(parsed.characters)
       ? parsed.characters
           .filter((c: ScriptCharacter) => c && c.name)
@@ -705,7 +576,10 @@ export async function aiCharacterBible(
             firstSceneNumber: c.firstSceneNumber ? String(c.firstSceneNumber) : undefined,
           }))
       : [];
-  } catch {
+  } catch (e) {
+    // A shape error already says what went wrong; don't relabel it as a parse
+    // failure, because the JSON parsed perfectly well.
+    if (e instanceof ClaudeApiError) throw e;
     if (!result.fromMock) throw new ClaudeApiError("Could not parse the character list as JSON.");
   }
   return { characters, result };
@@ -935,6 +809,23 @@ function sceneBlock(scene: Scene): string {
 }
 
 /**
+ * Resolve the model's `scene_number` back to a real scene.
+ *
+ * Asked for "1" the model reliably answers "SCENE 1" — it reads the heading
+ * it was shown rather than the bare number. Match exactly first, then retry
+ * against the decoration it actually adds, so a cosmetic difference doesn't
+ * throw away a scene's whole breakdown.
+ */
+function matchScene(raw: string, scenes: Scene[]): Scene | undefined {
+  const num = raw.trim();
+  if (!num) return undefined;
+  const exact = scenes.find((s) => s.number === num);
+  if (exact) return exact;
+  const bare = num.replace(/^scene\s+/i, "").replace(/[.:]$/, "").trim().toLowerCase();
+  return scenes.find((s) => s.number.trim().toLowerCase() === bare);
+}
+
+/**
  * Break down several scenes in one request.
  *
  * Returns proposals keyed by scene number. A batch that comes back short is
@@ -969,10 +860,11 @@ export async function aiBreakdownBatch(
     const parsed = JSON.parse(extractJson(result.text));
     if (Array.isArray(parsed.scenes)) {
       for (const entry of parsed.scenes) {
-        const num = String(entry?.scene_number ?? "").trim();
-        if (!num) continue;
-        const scene = scenes.find((s) => s.number === num);
-        proposals.set(num, normalizeProposal(entry, scene));
+        const scene = matchScene(String(entry?.scene_number ?? ""), scenes);
+        // Key by the app's own scene number, never the model's spelling of it:
+        // a proposal filed under "SCENE 1" is invisible to a caller looking up
+        // "1", which loses the whole batch while looking like a success.
+        if (scene) proposals.set(scene.number, normalizeProposal(entry, scene));
       }
     }
   } catch {
@@ -1310,6 +1202,10 @@ export async function aiAskProduction(
     weight: "light",
     system: NL_QUERY_SYSTEM,
     user: `${projectName ? `PRODUCTION: ${projectName}\n\n` : ""}PRODUCTION DATA:\n${snapshotJson}\n\nQUESTION: ${question}`,
+    // The snapshot dwarfs the question and its keys are always English, so
+    // detecting over the whole turn would answer an Arabic question in
+    // English. Reply in whatever language the crew member asked in.
+    language: detectLanguage(question),
     maxTokens: 700,
   });
   return { answer: result.text.trim(), result };

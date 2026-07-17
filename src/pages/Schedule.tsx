@@ -30,7 +30,7 @@ import {
   Loader2,
   Check,
 } from "lucide-react";
-import { useStore, activeProject } from "@/state/store";
+import { useStore, activeProject, canWrite } from "@/state/store";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -91,6 +91,7 @@ export function Schedule() {
 function PublishButton() {
   const publishSchedule = useStore((s) => s.publishSchedule);
   const pub = useStore((s) => s.publishedSchedule);
+  const writable = useStore((s) => canWrite(s, "schedule"));
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   return (
@@ -101,9 +102,11 @@ function PublishButton() {
             v{pub.version} · {formatDate(pub.publishedAt)}
           </div>
         )}
-        <Button onClick={() => setConfirmOpen(true)}>
-          <Send size={14} /> Publish Schedule
-        </Button>
+        {writable && (
+          <Button onClick={() => setConfirmOpen(true)}>
+            <Send size={14} /> Publish Schedule
+          </Button>
+        )}
       </div>
       <Modal
         open={confirmOpen}
@@ -167,7 +170,7 @@ function StripBoard() {
   const handleDragEnd = (e: DragEndEvent) => {
     setActiveDrag(null);
     const { active, over } = e;
-    if (!over) return;
+    if (!over || !ed.canWrite) return;
     const sceneId = active.id as string;
     const scene = scenes.find((s) => s.id === sceneId);
     if (!scene) return;
@@ -203,7 +206,7 @@ function StripBoard() {
             }
             cta={
               <div className="flex items-center gap-2">
-                {scenes.length > 0 && (
+                {scenes.length > 0 && ed.canWrite && (
                   <Button variant="ai" onClick={() => setDraftOpen(true)}>
                     <Sparkles size={14} /> Draft schedule (AI)
                   </Button>
@@ -246,7 +249,7 @@ function StripBoard() {
             <ChevronRight size={14} />
           </Button>
           <div className="ml-2 flex items-center gap-2">
-            {scenes.length > 0 && (
+            {scenes.length > 0 && ed.canWrite && (
               <Button variant="ai" size="sm" onClick={() => setDraftOpen(true)}>
                 <Sparkles size={14} /> Draft schedule (AI)
               </Button>
@@ -726,8 +729,7 @@ function DOODChart() {
   const shootDays = useStore((s) => s.shootDays);
   const setDoodStatus = useStore((s) => s.setDoodStatus);
   const seedDood = useStore((s) => s.seedDoodFromSchedule);
-  const activeRole = useStore((s) => s.activeRole);
-  const canEdit = activeRole === "admin" || activeRole === "scheduler" || activeRole === "cast";
+  const canEdit = useStore((s) => canWrite(s, "schedule"));
 
   // Cast carry their scene ids from the breakdown, and shoot days carry
   // theirs — so the first draft of this grid is already implied by the

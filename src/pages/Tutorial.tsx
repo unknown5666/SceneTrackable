@@ -54,8 +54,8 @@ const ADMIN_STEPS = [
   },
   {
     icon: <KeyRound size={18} />,
-    title: "Connect AI (optional)",
-    body: "Paste a Claude or Gemini API key in AI Settings for live analysis — Gemini has a free tier to start on. Without a key, SceneTrackable runs an intelligent demo breakdown so you can explore everything.",
+    title: "AI is already on",
+    body: "Breakdowns, the character and location passes, schedule drafts and the daily digest all run out of the box — there is no key to enter and no model to choose. AI Settings tracks what you've used.",
     to: "/ai",
     cta: "Open AI Settings",
   },

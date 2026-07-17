@@ -20,7 +20,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts";
-import { useStore } from "@/state/store";
+import { useStore, canWrite } from "@/state/store";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -304,12 +304,10 @@ function POList() {
   const purchaseOrders = useStore((s) => s.purchaseOrders);
   const advancePO = useStore((s) => s.advancePO);
   const currentUserId = useStore((s) => s.currentUserId);
-  const activeRole = useStore((s) => s.activeRole);
   const crew = useStore((s) => s.crew);
   const production = useStore((s) => s.production);
 
-  const canReview =
-    activeRole === "admin" || activeRole === "accountant";
+  const canReview = useStore((s) => canWrite(s, "budget"));
 
   const statusTone = (s: string) => {
     switch (s) {
