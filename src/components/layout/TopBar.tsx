@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, Sun, Moon, ChevronDown, LogOut, FolderKanban, Plus } from "lucide-react";
+import { Bell, Sun, Moon, ChevronDown, LogOut, FolderKanban, Plus, Menu, Check } from "lucide-react";
 import { useStore, unreadCount, currentUser, currentRole, activeProject } from "@/state/store";
 import { useTheme } from "@/state/theme";
 import { Button } from "@/components/ui/Button";
@@ -8,29 +8,40 @@ import { Badge } from "@/components/ui/Badge";
 import { CloudIndicator } from "./CloudIndicator";
 import { formatDateTime } from "@/lib/utils";
 
-export function TopBar() {
+interface TopBarProps {
+  /** Opens the sidebar overlay below `lg`, where there is no rail to hover. */
+  onOpenSidebar: () => void;
+}
+
+export function TopBar({ onOpenSidebar }: TopBarProps) {
   const nav = useNavigate();
   const { theme, toggle } = useTheme();
   const user = useStore(currentUser);
   const role = useStore(currentRole);
   const project = useStore(activeProject);
+  const projects = useStore((s) => s.projects);
+  const switchProject = useStore((s) => s.switchProject);
   const unread = useStore(unreadCount);
   const notifications = useStore((s) => s.notifications);
   const logout = useStore((s) => s.logout);
 
   const [notifOpen, setNotifOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
+  const [projectOpen, setProjectOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const userRef = useRef<HTMLDivElement>(null);
+  const projectRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
       if (notifOpen && notifRef.current && !notifRef.current.contains(e.target as Node)) setNotifOpen(false);
       if (userOpen && userRef.current && !userRef.current.contains(e.target as Node)) setUserOpen(false);
+      if (projectOpen && projectRef.current && !projectRef.current.contains(e.target as Node))
+        setProjectOpen(false);
     };
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
-  }, [notifOpen, userOpen]);
+  }, [notifOpen, userOpen, projectOpen]);
 
   const recent = notifications.slice(0, 8);
   const initials = (user?.displayName || "U").split(" ").map((n) => n[0]).slice(0, 2).join("");
@@ -40,28 +51,92 @@ export function TopBar() {
       className="sticky top-0 z-30 h-16 flex items-center justify-between px-6 border-b border-[var(--border-default)]"
       style={{ background: "var(--bg-base)" }}
     >
-      {/* Project context */}
-      <button
-        onClick={() => nav("/projects")}
-        className="flex items-center gap-2 min-w-0 text-left hover:opacity-80 transition-opacity"
-      >
-        <FolderKanban size={16} className="text-[var(--text-muted)] shrink-0" />
-        <div className="min-w-0">
-          <div className="text-sm font-medium text-[var(--text-primary)] truncate">
-            {project ? project.name : "No project selected"}
-          </div>
-          <div className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider">
-            {project ? `${project.sceneCount} scenes · ${project.elementCount} elements` : "Create one to begin"}
-          </div>
+      <div className="flex items-center gap-2 min-w-0">
+        <button
+          onClick={onOpenSidebar}
+          aria-label="Open navigation"
+          className="lg:hidden text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors shrink-0"
+        >
+          <Menu size={18} />
+        </button>
+
+        {/* Project switcher */}
+        <div className="relative min-w-0" ref={projectRef}>
+          <button
+            onClick={() => setProjectOpen((v) => !v)}
+            className="flex items-center gap-2 min-w-0 text-left hover:opacity-80 transition-opacity"
+          >
+            <FolderKanban size={16} className="text-[var(--text-muted)] shrink-0" />
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-[var(--text-primary)] truncate">
+                {project ? project.name : "No project selected"}
+              </div>
+              <div className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider truncate">
+                {project
+                  ? `${project.sceneCount} scenes · ${project.elementCount} elements`
+                  : "Create one to begin"}
+              </div>
+            </div>
+            <ChevronDown size={14} className="text-[var(--text-muted)] shrink-0" />
+          </button>
+          {projectOpen && (
+            <div
+              className="absolute left-0 top-full mt-2 w-72 rounded-card border border-[var(--border-default)] z-50 animate-in overflow-hidden"
+              style={{ background: "var(--bg-elevated)" }}
+            >
+              <div className="p-3 border-b border-[var(--border-default)] section-header">
+                Switch project
+              </div>
+              <div className="max-h-72 overflow-y-auto">
+                {projects.length === 0 ? (
+                  <div className="p-4 text-sm text-[var(--text-muted)]">No projects yet.</div>
+                ) : (
+                  projects.map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => {
+                        switchProject(p.id);
+                        setProjectOpen(false);
+                      }}
+                      className="w-full text-left p-3 hover:bg-[var(--bg-surface-hover)] flex items-center gap-2 border-b border-[var(--border-default)] last:border-b-0"
+                    >
+                      <span className="w-4 shrink-0">
+                        {p.id === project?.id && (
+                          <Check size={14} className="text-[var(--accent-blue)]" />
+                        )}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm text-[var(--text-primary)] truncate">
+                          {p.name}
+                        </span>
+                        <span className="block text-[10px] text-[var(--text-muted)]">
+                          {p.sceneCount} scenes · {p.elementCount} elements
+                        </span>
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
+              <div className="p-2 border-t border-[var(--border-default)]">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => {
+                    nav("/projects");
+                    setProjectOpen(false);
+                  }}
+                >
+                  <Plus size={14} /> New project · manage
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
-      </button>
+      </div>
 
       <div className="flex items-center gap-2">
         <CloudIndicator />
-
-        <Button variant="secondary" size="sm" onClick={() => nav("/projects")}>
-          <Plus size={14} /> New project
-        </Button>
 
         <Button variant="ghost" size="sm" onClick={toggle} aria-label="Toggle theme">
           {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
@@ -74,9 +149,11 @@ export function TopBar() {
               <Bell size={16} />
               {unread > 0 && (
                 <span
-                  className="absolute -top-1 -right-1 w-2 h-2 rounded-full"
-                  style={{ background: "var(--color-danger)" }}
-                />
+                  className="absolute -top-2 -right-2 text-[9px] font-semibold leading-none px-1 py-0.5 rounded-full min-w-[14px] text-center"
+                  style={{ background: "var(--color-danger)", color: "white" }}
+                >
+                  {unread > 99 ? "99+" : unread}
+                </span>
               )}
             </div>
           </Button>

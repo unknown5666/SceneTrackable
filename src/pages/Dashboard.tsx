@@ -16,6 +16,7 @@ import {
   RefreshCw,
   Loader2,
   MessageCircleQuestion,
+  ChevronDown,
 } from "lucide-react";
 import {
   ComposedChart,
@@ -45,7 +46,7 @@ import { Badge, StatusBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ProgressBar } from "@/components/ui/ProgressBar";
-import { formatCurrency, formatCompact, formatDate, isOverdue } from "@/lib/utils";
+import { cn, formatCurrency, formatCompact, formatDate, isOverdue } from "@/lib/utils";
 import {
   aiAskProduction,
   aiDailyDigest,
@@ -63,6 +64,7 @@ import {
   shotSceneIds,
 } from "@/lib/metrics";
 import { FolderKanban, Upload } from "lucide-react";
+import { useIsWide } from "@/lib/useMediaQuery";
 import type { ProductionData, RoleId, DepartmentId } from "@/types";
 
 export function Dashboard() {
@@ -110,26 +112,111 @@ export function Dashboard() {
     );
   }
 
+  return <DashboardBody role={activeRole} />;
+}
+
+/**
+ * The frame every role shares: the same four headline numbers, then that
+ * role's own charts, with the question box parked in one place instead of
+ * riding at the bottom of whatever the role happens to render.
+ */
+function DashboardBody({ role }: { role: RoleId }) {
+  const data = useProductionData();
+
   return (
     <div className="max-w-[1400px] mx-auto space-y-6">
-      <PageHeader role={activeRole} />
-      {activeRole === "admin" ? (
-        <AdminDashboard />
-      ) : activeRole === "accountant" ? (
-        <AccountantDashboard />
-      ) : activeRole === "vfx" ? (
-        <VFXDashboard />
-      ) : activeRole === "camera" ? (
-        <CameraDashboard />
-      ) : activeRole === "rf_comms" ? (
-        <RFDashboard />
-      ) : activeRole === "art" ? (
-        <ArtDashboard />
-      ) : activeRole === "cast" ? (
-        <CastDashboard />
-      ) : (
-        <SchedulerDashboard />
-      )}
+      <PageHeader role={role} />
+      <TopStats data={data} />
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-6 items-start">
+        <div className="min-w-0 space-y-6">
+          {role === "admin" ? (
+            <AdminDashboard />
+          ) : role === "accountant" ? (
+            <AccountantDashboard />
+          ) : role === "vfx" ? (
+            <VFXDashboard />
+          ) : role === "camera" ? (
+            <CameraDashboard />
+          ) : role === "rf_comms" ? (
+            <RFDashboard />
+          ) : role === "art" ? (
+            <ArtDashboard />
+          ) : role === "cast" ? (
+            <CastDashboard />
+          ) : (
+            <SchedulerDashboard />
+          )}
+        </div>
+        <AskProduction data={data} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The four numbers that describe a production regardless of who's looking.
+ * Anything computeMetrics can't measure comes through as "—", never a guess.
+ */
+function TopStats({ data }: { data: ProductionData }) {
+  const m = useMemo(() => computeMetrics(data), [data]);
+  const shotScenes = useMemo(() => shotSceneIds(data).size, [data]);
+  const totalScenes = data.scenes.length;
+  const daysLeft = m.totalDays > 0 ? Math.max(0, m.totalDays - m.daysShot) : undefined;
+
+  const burnTone: "success" | "warning" | "danger" | undefined =
+    m.budgetBurn === undefined || m.scheduleProgress === undefined
+      ? undefined
+      : m.budgetBurn < m.scheduleProgress - 0.05
+      ? "success"
+      : m.budgetBurn > m.scheduleProgress + 0.05
+      ? "danger"
+      : "warning";
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <StatCard
+        icon={<Film size={20} />}
+        label="Scenes Shot"
+        value={`${shotScenes} / ${totalScenes || "—"}`}
+        hint={
+          m.sceneCompletion === undefined
+            ? "Nothing on the board yet"
+            : `${Math.round(m.sceneCompletion * 100)}% of the script`
+        }
+      />
+      <StatCard
+        icon={<Calendar size={20} />}
+        label="Days Remaining"
+        value={daysLeft ?? "—"}
+        hint={
+          daysLeft === undefined
+            ? "No shoot days scheduled"
+            : `Day ${m.daysShot} of ${m.totalDays}`
+        }
+        tone={daysLeft !== undefined && daysLeft === 0 ? "success" : "neutral"}
+      />
+      <StatCard
+        icon={<DollarSign size={20} />}
+        label="Budget Spent"
+        value={
+          m.totalBudgeted > 0
+            ? formatCurrency(m.totalSpent, data.production.currency)
+            : "—"
+        }
+        hint={
+          m.totalBudgeted > 0
+            ? `of ${formatCurrency(m.totalBudgeted, data.production.currency)} planned`
+            : "No budget lines loaded"
+        }
+        tone={burnTone}
+      />
+      <StatCard
+        icon={<AlertCircle size={20} />}
+        label="Overdue Tasks"
+        value={m.overdueTaskCount}
+        hint={m.overdueTaskCount > 0 ? "Attention required" : "All on track"}
+        tone={m.overdueTaskCount > 0 ? "danger" : "success"}
+      />
     </div>
   );
 }
@@ -152,7 +239,6 @@ function PageHeader({ role }: { role: RoleId }) {
 
 function AdminDashboard() {
   const nav = useNavigate();
-  const production = useStore((s) => s.production);
   const tasks = useStore((s) => s.tasks);
   const purchaseOrders = useStore((s) => s.purchaseOrders);
   const budgetLines = useStore((s) => s.budgetLines);
@@ -168,10 +254,6 @@ function AdminDashboard() {
   const scheduleChart = useMemo(() => buildPaceChart(data), [data]);
   const radarData = useMemo(() => radarAxes(m), [m]);
 
-  const overdueTasks = tasks.filter(
-    (t) => t.status !== "completed" && isOverdue(t.computedDeadline)
-  );
-
   const healthTone: "success" | "warning" | "danger" | undefined =
     m.health === undefined
       ? undefined
@@ -180,15 +262,6 @@ function AdminDashboard() {
       : m.health >= 60
       ? "warning"
       : "danger";
-
-  const burnTone: "success" | "warning" | "danger" | undefined =
-    m.budgetBurn === undefined || m.scheduleProgress === undefined
-      ? undefined
-      : m.budgetBurn < m.scheduleProgress - 0.05
-      ? "success"
-      : m.budgetBurn > m.scheduleProgress + 0.05
-      ? "danger"
-      : "warning";
 
   const healthHistory = useStore((s) => s.healthHistory);
   const recordHealth = useStore((s) => s.recordHealth);
@@ -256,87 +329,10 @@ function AdminDashboard() {
 
   return (
     <>
-      {/* Row 1 — KPIs */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard
-          icon={<Activity size={20} />}
-          label="Production Health"
-          value={m.health === undefined ? "—" : `${m.health}`}
-          hint={
-            m.health === undefined
-              ? "Needs a schedule, budget or tasks"
-              : "Composite score / 100"
-          }
-          tone={healthTone}
-          trend={healthTrend}
-          // Only a real series is worth drawing; one point is not a trend.
-          sparklineData={
-            healthHistory.length >= 2
-              ? healthHistory.map((h) => ({ v: h.health }))
-              : undefined
-          }
-        />
-        <StatCard
-          icon={<Calendar size={20} />}
-          label="Days Shot"
-          value={`${m.daysShot} / ${m.totalDays || "—"}`}
-          hint={
-            m.scheduleProgress === undefined
-              ? "No shoot days scheduled"
-              : m.pagesPerDay === undefined
-              ? `${Math.round(m.scheduleProgress * 100)}% of schedule · no scenes on shot days`
-              : `${Math.round(m.scheduleProgress * 100)}% of schedule`
-          }
-          trend={
-            m.pagesPerDayDelta === undefined
-              ? undefined
-              : {
-                  direction:
-                    m.pagesPerDayDelta > 0.05
-                      ? "up"
-                      : m.pagesPerDayDelta < -0.05
-                      ? "down"
-                      : "flat",
-                  label: `${Math.abs(m.pagesPerDayDelta).toFixed(2)} pages/day ${
-                    m.pagesPerDayDelta < 0 ? "behind" : "ahead of"
-                  } target`,
-                  upIsGood: true,
-                }
-          }
-        />
-        <StatCard
-          icon={<DollarSign size={20} />}
-          label="Budget Burn"
-          value={m.budgetBurn === undefined ? "—" : `${Math.round(m.budgetBurn * 100)}%`}
-          hint={
-            m.budgetBurn === undefined
-              ? "No budget lines loaded"
-              : m.scheduleProgress === undefined
-              ? "Spent vs budget"
-              : `Spent vs ${Math.round(m.scheduleProgress * 100)}% schedule`
-          }
-          tone={burnTone}
-          trend={
-            m.totalSpent > 0
-              ? {
-                  direction: "up",
-                  label: `${formatCurrency(m.totalSpent, production.currency)} spent`,
-                  upIsGood: false,
-                }
-              : undefined
-          }
-        />
-        <StatCard
-          icon={<AlertCircle size={20} />}
-          label="Overdue Tasks"
-          value={overdueTasks.length}
-          hint={overdueTasks.length > 0 ? "Attention required" : "All on track"}
-          tone={overdueTasks.length > 0 ? "danger" : "success"}
-        />
-      </div>
-
-      {/* Row 2 — Schedule chart */}
-      <Card>
+      {/* Row 1 — Pace, with the composite score reading alongside it. The
+          headline four live above this, shared with every other role. */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        <Card className="lg:col-span-2">
         <CardHeader
           title="Shooting Pace"
           subtitle="Pages scheduled per shoot day against the daily target, with the cumulative page count"
@@ -446,7 +442,27 @@ function AdminDashboard() {
           </ResponsiveContainer>
         </div>
         )}
-      </Card>
+        </Card>
+
+        <StatCard
+          icon={<Activity size={20} />}
+          label="Production Health"
+          value={m.health === undefined ? "—" : `${m.health}`}
+          hint={
+            m.health === undefined
+              ? "Needs a schedule, budget or tasks"
+              : "Composite score / 100"
+          }
+          tone={healthTone}
+          trend={healthTrend}
+          // Only a real series is worth drawing; one point is not a trend.
+          sparklineData={
+            healthHistory.length >= 2
+              ? healthHistory.map((h) => ({ v: h.health }))
+              : undefined
+          }
+        />
+      </div>
 
       {/* Row 3 — Dept table + Approvals */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
@@ -703,8 +719,6 @@ function AdminDashboard() {
           )}
         </Card>
       </div>
-
-      <AskProduction data={data} />
     </>
   );
 }
@@ -858,6 +872,11 @@ interface QA {
 function AskProduction({ data }: { data: ProductionData }) {
   const project = useStore(activeProject);
   const recordAIUsage = useStore((s) => s.recordAIUsage);
+  // It has a column of its own on a wide screen. Narrower, it would push the
+  // charts down the page, so it starts as a header the reader can open.
+  const wide = useIsWide();
+  const [open, setOpen] = useState(false);
+  const expanded = wide || open;
   const [question, setQuestion] = useState("");
   const [history, setHistory] = useState<QA[]>([]);
   const [busy, setBusy] = useState(false);
@@ -915,16 +934,34 @@ function AskProduction({ data }: { data: ProductionData }) {
   ];
 
   return (
+    <div className="xl:sticky xl:top-20">
     <Card variant="ai">
       <CardHeader
         title={
-          <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            disabled={wide}
+            className="flex items-center gap-2 w-full text-left disabled:cursor-default"
+          >
             <MessageCircleQuestion size={14} className="text-[var(--color-ai)]" />
-            <span>Ask the production</span>
-          </div>
+            <span className="flex-1">Ask the production</span>
+            {!wide && (
+              <ChevronDown
+                size={14}
+                className={cn("transition-transform text-[var(--text-muted)]", open && "rotate-180")}
+              />
+            )}
+          </button>
         }
-        subtitle="Questions answered from this project's schedule, cast, budget, tasks and locations. Follow-ups work — it remembers the conversation."
+        subtitle={
+          expanded
+            ? "Questions answered from this project's schedule, cast, budget, tasks and locations. Follow-ups work — it remembers the conversation."
+            : undefined
+        }
       />
+      {expanded && (
+      <>
       <div className="flex items-center gap-2">
         <input
           value={question}
@@ -983,7 +1020,10 @@ function AskProduction({ data }: { data: ProductionData }) {
           ))}
         </div>
       )}
+      </>
+      )}
     </Card>
+    </div>
   );
 }
 
@@ -995,17 +1035,10 @@ function SchedulerDashboard() {
   const nav = useNavigate();
   const shootDays = useStore((s) => s.shootDays);
   const scenes = useStore((s) => s.scenes);
-  const tasks = useStore((s) => s.tasks);
   const production = useStore((s) => s.production);
   const dood = useStore((s) => s.dood);
   const cast = useStore((s) => s.cast);
   const data = useProductionData();
-
-  const overdue = tasks.filter(
-    (t) => (t.department === "production" || t.department === "cast") &&
-      t.status !== "completed" &&
-      isOverdue(t.computedDeadline)
-  ).length;
 
   const scenesLeft = scenes.length - shotSceneIds(data).size;
   // The DOOD is the record of who's on hold, so read it rather than guess.
@@ -1015,10 +1048,10 @@ function SchedulerDashboard() {
 
   return (
     <>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard icon={<Calendar size={20} />} label="Days Shot" value={`${production.currentShootDay} / ${production.totalShootDays || "—"}`} />
+      {/* Days, scenes and overdue are in the shared row above; these are the
+          two a scheduler has that nobody else does. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <StatCard icon={<Film size={20} />} label="Scenes Left" value={scenesLeft} hint={`of ${scenes.length}`} />
-        <StatCard icon={<AlertCircle size={20} />} label="Overdue" value={overdue} tone={overdue ? "danger" : "success"} />
         <StatCard
           icon={<Users size={20} />}
           label="Cast on Hold Today"
@@ -1066,7 +1099,6 @@ function AccountantDashboard() {
   const pettyCash = useStore((s) => s.pettyCash);
   const production = useStore((s) => s.production);
 
-  const totalBudgeted = budgetLines.reduce((s, l) => s + l.budgeted, 0);
   const totalSpent = budgetLines.reduce((s, l) => s + l.spent, 0);
   const totalCommitted = budgetLines.reduce((s, l) => s + l.committed, 0);
   const pendingReview = purchaseOrders.filter((p) => p.status === "accountant_review" || p.status === "submitted");
@@ -1080,9 +1112,8 @@ function AccountantDashboard() {
 
   return (
     <>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard icon={<DollarSign size={20} />} label="Total Budget" value={formatCurrency(totalBudgeted, production.currency)} />
-        <StatCard icon={<DollarSign size={20} />} label="Spent" value={formatCurrency(totalSpent, production.currency)} hint={`${Math.round((totalSpent / totalBudgeted) * 100)}% of budget`} />
+      {/* Budget spent vs planned is in the shared row above. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <StatCard icon={<DollarSign size={20} />} label="Committed" value={formatCurrency(totalCommitted - totalSpent, production.currency)} hint="Committed, not yet paid" tone="warning" />
         <StatCard icon={<AlertCircle size={20} />} label="POs Pending" value={pendingReview.length} tone={pendingReview.length > 0 ? "warning" : "success"} />
       </div>

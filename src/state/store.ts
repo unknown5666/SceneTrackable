@@ -275,6 +275,10 @@ interface State extends ProductionData {
   activeRole: RoleId | null; // active viewing role (admin can "view as")
   tutorialSeen: boolean;
 
+  // ---- UI preferences ----
+  /** Sidebar stays expanded instead of only widening on hover. */
+  sidebarPinned: boolean;
+
   // ---- Projects ----
   projects: Project[];
   activeProjectId: string | null;
@@ -308,6 +312,7 @@ interface State extends ProductionData {
 
   setActiveRole: (role: RoleId | null) => void;
   markTutorialSeen: () => void;
+  setSidebarPinned: (pinned: boolean) => void;
 
   // ------------------------------------------------------------
   // Project actions
@@ -426,6 +431,9 @@ export const useStore = create<State>()(
       currentUserId: "",
       activeRole: null,
       tutorialSeen: false,
+
+      // ---- UI ----
+      sidebarPinned: false,
 
       // ---- Projects ----
       projects: [],
@@ -648,6 +656,7 @@ export const useStore = create<State>()(
 
       setActiveRole: (role) => set({ activeRole: role }),
       markTutorialSeen: () => set({ tutorialSeen: true }),
+      setSidebarPinned: (pinned) => set({ sidebarPinned: pinned }),
 
       // ========================================================
       // PROJECTS
