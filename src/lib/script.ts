@@ -27,12 +27,53 @@ import {
 const HEADING_RE =
   /^\s*(\d+[A-Z]?[\.\)]?\s+)?(INT\.?\/EXT\.?|INT\.?|EXT\.?|I\/E\.?|EST\.?)\s+(.+)$/i;
 
-// Arabic sluglines carry the same fields in different words: an optional مشهد
-// ("scene") label and number, then داخلي / خارجي for interior / exterior. The
-// number may be Arabic-Indic, and a dash usually stands where an English script
-// puts a period.
-const HEADING_AR_RE =
-  /^\s*(?:مشهد\s*)?([0-9٠-٩۰-۹]+[.)]?\s*[-–—]?\s*)?(داخلي\s*\/\s*خارجي|خارجي\s*\/\s*داخلي|داخلي|خارجي)\s*[.\-–—:]?\s+(.+)$/;
+// Arabic sluglines carry the same fields in different words: an optional scene
+// label and number, then داخلي / خارجي for interior / exterior, then location
+// and time. Beyond that the house styles diverge — the label is spelled مشهد or
+// abbreviated to a bare م, the fields are divided by dashes or by pipes, and a
+// master scene is flagged with «★ ماسرت» between the number and the interior —
+// so the parts below are assembled rather than written as one literal.
+//
+// What must not move is the anchoring. داخلي and خارجي are ordinary words that
+// appear in action too ("شارع خارجي"), so a heading is only a heading when one
+// of them opens the line, after nothing but a label and separators.
+const AR_DIGITS = "0-9٠-٩۰-۹";
+const AR_NUMBER = `[${AR_DIGITS}]+`;
+const AR_INT_EXT = "داخلي\\s*/\\s*خارجي|خارجي\\s*/\\s*داخلي|داخلي|خارجي";
+const AR_MASTER = "(?:[★☆*]\\s*)?ماسرت(?:\\s*[★☆*])?";
+const AR_SEP = "[.\\-–—:|]";
+/**
+ * A labelled slugline: «مشهد ١ - داخلي - مقهى - ليل», «م١ | داخلي — بيت سالم — فجر»,
+ * «★ ماسرت | م٥ — داخلي | مكتب عادل | صباح». The master flag opens the line in
+ * this series but other scripts hang it off the number, so it's taken on either
+ * side. The number is what makes this form safe to read loosely: no line of
+ * action opens "م٥ — داخلي".
+ */
+const HEADING_AR_LABELLED = new RegExp(
+  "^\\s*" +
+    `(?:${AR_MASTER}\\s*\\|?\\s*)?` +
+    `(?:مشهد|م)\\s*(${AR_NUMBER})\\s*[.)]?\\s*` +
+    `(?:\\|\\s*)?(?:${AR_MASTER}\\s*)?(?:\\|\\s*)?` +
+    `(?:[-–—]\\s*)?` +
+    `(${AR_INT_EXT})` +
+    // A separator or a space, so "خارجيون" can't read as a slugline.
+    `(?:\\s*(?:${AR_SEP}\\s*)+|\\s+)(.+)$`
+);
+
+/**
+ * An unlabelled slugline: «داخلي - مقهى شعبي - ليل».
+ *
+ * With no number to anchor it, a separator after داخلي/خارجي is required — and
+ * that requirement is the whole point of keeping this form apart. داخلي and
+ * خارجي are ordinary words, so «خارجي المنزل كان الجو باردا» is a line of
+ * action, and accepting a bare space here turns it into a scene: one that
+ * swallows the real scene's action into its own body and shifts every scene
+ * number after it. The empty first group keeps the match indices lined up with
+ * the labelled form.
+ */
+const HEADING_AR_BARE = new RegExp(
+  `^\\s*()(${AR_INT_EXT})\\s*(?:${AR_SEP}\\s*)+(.+)$`
+);
 
 /** Arabic-Indic and Persian digits → ASCII, so scene numbers stay sortable. */
 function toAsciiDigits(s: string): string {
@@ -53,26 +94,64 @@ function normIntExt(raw: string): Scene["intExt"] {
   return "INT/EXT";
 }
 
-function normTime(tail: string): Scene["timeOfDay"] {
-  const t = tail.toUpperCase();
-  // \b is ASCII-only in JS, so the Arabic words match as plain substrings.
-  if (/ليل/.test(t)) return "NIGHT";
-  if (/فجر|شروق/.test(t)) return "DAWN";
-  if (/غروب|مغرب|مساء/.test(t)) return "DUSK";
-  if (/نهار|صباح|ظهر/.test(t)) return "DAY";
-  if (/\bNIGHT\b/.test(t)) return "NIGHT";
-  if (/\bDAWN\b/.test(t) || /\bSUNRISE\b/.test(t)) return "DAWN";
-  if (/\bDUSK\b/.test(t) || /\bSUNSET\b|\bEVENING\b/.test(t)) return "DUSK";
-  return "DAY";
+/**
+ * The time words, most specific first. Order is load-bearing: "آخر النهار" is
+ * late afternoon and has to be read before the bare نهار, or the end of the day
+ * is filed as the middle of it. Arabic \b doesn't exist — \b is ASCII-only in
+ * JS — so those match as plain substrings, which is also what lets الضحى,
+ * "بعد الظهر" and "صباح باكر" fall out of the stems below without their own
+ * entries.
+ */
+const TIME_WORDS: [RegExp, Scene["timeOfDay"]][] = [
+  [/ليل/, "NIGHT"],
+  [/فجر|شروق/, "DAWN"],
+  [/غروب|مغرب|مساء|[آأا]خر\s*النهار/, "DUSK"],
+  [/نهار|صباح|ظهر|ضحى/, "DAY"],
+  [/\bNIGHT\b/, "NIGHT"],
+  [/\bDAWN\b|\bSUNRISE\b/, "DAWN"],
+  [/\bDUSK\b|\bSUNSET\b|\bEVENING\b/, "DUSK"],
+  [/\bDAY\b|\bMORNING\b|\bNOON\b|\bAFTERNOON\b/, "DAY"],
+];
+
+/** The time a field names, or null if it names none. */
+function matchTime(text: string): Scene["timeOfDay"] | null {
+  const t = text.toUpperCase();
+  for (const [re, time] of TIME_WORDS) if (re.test(t)) return time;
+  return null;
 }
 
+function normTime(tail: string): Scene["timeOfDay"] {
+  return matchTime(tail) ?? "DAY";
+}
+
+/**
+ * The heading tail — everything after INT/EXT — into a location and a time.
+ *
+ * An English slugline ends with the time, but this Arabic series doesn't put
+ * it in a fixed place: «مكتب عادل | صباح — قبيل الاجتماع» names the time in the
+ * middle and ends with a scene title, and «مكتب عادل — القنبلة الثانية | بعد الظهر»
+ * ends with it. So the time is the field that *names* a time, wherever it sits,
+ * and everything else is the location. Taking the last field on faith puts
+ * "قبيل الاجتماع" in the time column and the time in the location.
+ */
 function splitHeading(rest: string): { location: string; time: Scene["timeOfDay"] } {
-  // Location and time are usually separated by " - " or " — ".
-  const parts = rest.split(/\s[-–—]\s/);
+  const parts = rest
+    .split(/\s[-–—]\s|\s*\|\s*/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+
   if (parts.length > 1) {
-    const time = normTime(parts[parts.length - 1]);
-    const location = parts.slice(0, -1).join(" - ").trim();
-    return { location: location || rest.trim(), time };
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const time = matchTime(parts[i]);
+      if (time) {
+        const location = parts.filter((_, j) => j !== i).join(" - ").trim();
+        return { location: location || rest.trim(), time };
+      }
+    }
+    // No field names a time. Keep the old shape — last field is the time slot,
+    // whatever it says — so an English "KITCHEN - CONTINUOUS" still reads as a
+    // location of "KITCHEN".
+    return { location: parts.slice(0, -1).join(" - ").trim(), time: normTime(parts[parts.length - 1]) };
   }
   return { location: rest.trim(), time: normTime(rest) };
 }
@@ -83,21 +162,50 @@ function estimatePages(body: string): number {
   return Math.max(0.125, Math.round(pages * 8) / 8);
 }
 
-/** Parse raw screenplay text into scenes (no elements yet). */
+/**
+ * Parse raw screenplay text into scenes (no elements yet).
+ *
+ * Two things a single-episode English script never forces, and an Arabic series
+ * does:
+ *
+ *   - Each episode opens with a «جدول المشاهد» index whose rows are sluglines.
+ *     They read as headings, so they'd double every scene. What separates an
+ *     index row from a real one is that it has no body — the next heading
+ *     follows immediately — which is what `flush` tests below.
+ *   - Scene numbering restarts at 1 each episode. `runBreakdown` keys the AI's
+ *     answers by `scene.number`, and `sceneHeading` is how the model is told
+ *     which scene it's looking at, so eight scene "1"s would collide and the
+ *     later episodes would take episode one's breakdown. A repeat of a number
+ *     already used is what marks the next episode, and from there the number is
+ *     qualified with it.
+ */
 export function parseScreenplay(raw: string): Scene[] {
   const lines = raw.replace(/\r\n/g, "\n").split("\n");
   const scenes: Scene[] = [];
   let current: { headingRest: string; intExt: string; sceneNo?: string; body: string[] } | null = null;
   let autoNum = 0;
+  let episode = 1;
+  const usedNumbers = new Set<string>();
 
   const flush = () => {
     if (!current) return;
     const { location, time } = splitHeading(current.headingRest);
     const body = current.body.join("\n").trim();
+    // An index row, not a scene. Real scenes always carry action or dialogue.
+    if (body.length === 0 && current.sceneNo) {
+      current = null;
+      return;
+    }
     autoNum += 1;
-    const number = toAsciiDigits(current.sceneNo || String(autoNum))
+    let number = toAsciiDigits(current.sceneNo || String(autoNum))
       .replace(/[.)\-–—]/g, "")
       .trim();
+    if (usedNumbers.has(number)) {
+      episode += 1;
+      usedNumbers.clear();
+    }
+    usedNumbers.add(number);
+    if (episode > 1) number = `${episode}-${number}`;
     scenes.push({
       id: id("sc"),
       number,
@@ -115,7 +223,10 @@ export function parseScreenplay(raw: string): Scene[] {
   };
 
   for (const line of lines) {
-    const m = line.match(HEADING_RE) ?? line.match(HEADING_AR_RE);
+    const m =
+      line.match(HEADING_RE) ??
+      line.match(HEADING_AR_LABELLED) ??
+      line.match(HEADING_AR_BARE);
     if (m) {
       flush();
       current = {

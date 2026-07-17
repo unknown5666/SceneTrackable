@@ -10,6 +10,7 @@
 
 import * as pdfjsLib from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import { reconstructLines, type PdfTextItemLike } from "@/lib/pdf-lines";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -20,20 +21,10 @@ export async function extractPdfText(file: File): Promise<{ text: string; pageCo
   for (let p = 1; p <= pdf.numPages; p++) {
     const page = await pdf.getPage(p);
     const content = await page.getTextContent();
-    // Reconstruct lines from positioned text items.
-    let lastY: number | null = null;
-    let line = "";
-    for (const item of content.items as { str: string; transform: number[] }[]) {
-      const y = item.transform[5];
-      if (lastY !== null && Math.abs(y - lastY) > 4) {
-        text += line.trimEnd() + "\n";
-        line = "";
-      }
-      line += item.str;
-      lastY = y;
-    }
-    if (line.trim()) text += line.trimEnd() + "\n";
-    text += "\n";
+    // Line rebuilding is pure geometry and lives in `lib/pdf-lines` so it can
+    // be exercised without the bundler.
+    const lines = reconstructLines(content.items as PdfTextItemLike[]);
+    text += lines.join("\n") + "\n\n";
   }
   return { text, pageCount: pdf.numPages };
 }
