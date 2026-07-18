@@ -14,6 +14,7 @@ export const ACCESS_KEYS: { key: string; label: string }[] = [
   { key: "vfx", label: "VFX Pipeline" },
   { key: "rf", label: "RF / Comms" },
   { key: "camera", label: "Camera" },
+  { key: "drones", label: "Drones" },
   { key: "art", label: "Art / Wardrobe" },
   { key: "cast", label: "Cast" },
   { key: "timesheet", label: "Timesheet" },
@@ -140,8 +141,8 @@ export const DEFAULT_ROLES: Role[] = [
     label: "Camera / Technical",
     description: "Equipment manifests, kit builds, and prep checklists.",
     department: "camera",
-    access: ["camera", "breakdown", "schedule", "tasks"],
-    permissions: permissionMap(["breakdown", "schedule"], ["camera", "tasks"]),
+    access: ["camera", "drones", "breakdown", "schedule", "tasks"],
+    permissions: permissionMap(["breakdown", "schedule"], ["camera", "drones", "tasks"]),
     builtIn: true,
   },
   {

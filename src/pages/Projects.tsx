@@ -58,6 +58,10 @@ export function Projects() {
   const addRecord = useStore((s) => s.addRecord);
   const cast = useStore((s) => s.cast);
   const storeLocations = useStore((s) => s.locations);
+  const aiJobBegin = useStore((s) => s.aiJobBegin);
+  const aiJobProgress = useStore((s) => s.aiJobProgress);
+  const aiJobDone = useStore((s) => s.aiJobDone);
+  const aiJobFail = useStore((s) => s.aiJobFail);
 
   // Create modal
   const [createOpen, setCreateOpen] = useState(false);
@@ -186,6 +190,12 @@ export function Projects() {
   const run = async () => {
     setStage("running");
     setProgress({ done: 0, total: parsed.length, currentSceneNumber: "", stage: "characters" });
+    // Track in the store so the TopBar pill shows this long run from any page.
+    aiJobBegin("script_breakdown", {
+      label: "Script breakdown",
+      total: parsed.length,
+      route: "/projects",
+    });
     try {
       const projectName = projects.find((p) => p.id === uploadFor)?.name;
       const {
@@ -195,7 +205,15 @@ export function Projects() {
         failedScenes: failed,
         characters,
         locations,
-      } = await runBreakdown(parsed, setProgress, projectName);
+      } = await runBreakdown(
+        parsed,
+        (p) => {
+          setProgress(p);
+          aiJobProgress("script_breakdown", p.done, p.total);
+        },
+        projectName
+      );
+      aiJobDone("script_breakdown");
       replaceScenes(scenes);
       setFailedScenes(failed);
       setFoundCharacters(characters);
@@ -239,6 +257,7 @@ export function Projects() {
     } catch (e) {
       setErrorMsg((e as Error).message || "Breakdown failed.");
       setStage("error");
+      aiJobFail("script_breakdown", (e as Error).message || "Breakdown failed.");
     }
   };
 

@@ -26,6 +26,7 @@ import type {
   AppNotification,
   AIUsageEntry,
   AIConfig,
+  AIJobState,
   ProductionMeta,
   ProductionData,
   ProductionLocation,
@@ -174,6 +175,7 @@ export function blankData(title: string, currency = "AED"): ProductionData {
     frequencyPlan: [],
     rfEquipment: [],
     cameraKits: [],
+    drones: [],
     equipmentCheckouts: [],
     checklists: [],
     artElements: [],
@@ -287,6 +289,12 @@ interface State extends ProductionData {
   // ---- Global AI ----
   aiUsage: AIUsageEntry[];
   aiConfig: AIConfig;
+  /**
+   * Background AI job state, keyed by job id (usually an AIFeature). Transient:
+   * excluded from persistence so an interrupted run reloads as resumable, not
+   * running. See the E1 job actions below.
+   */
+  aiJobs: Record<string, AIJobState>;
 
   // ------------------------------------------------------------
   // Auth actions
@@ -400,6 +408,14 @@ interface State extends ProductionData {
   recordAIUsage: (entry: Omit<AIUsageEntry, "id" | "at">) => void;
   setAIConfig: (patch: Partial<AIConfig>) => void;
 
+  // ---- AI background jobs (E1) ----
+  aiJobBegin: (key: string, opts: { label: string; total: number; route?: string }) => void;
+  aiJobProgress: (key: string, done: number, total?: number) => void;
+  aiJobPauseLimit: (key: string, error: string) => void;
+  aiJobDone: (key: string) => void;
+  aiJobFail: (key: string, error: string) => void;
+  aiJobReset: (key: string) => void;
+
   toggleChecklistItem: (checklistId: string, itemId: string, byUserId: string) => void;
   assignRFEquipmentToDay: (equipmentId: string, day: number | null) => void;
   assignKitToDay: (kitId: string, day: number | null) => void;
@@ -443,6 +459,7 @@ export const useStore = create<State>()(
       // ---- AI ----
       aiUsage: [],
       aiConfig: { alertThresholdPct: 80 },
+      aiJobs: {},
 
       // ========================================================
       // AUTH
@@ -1161,6 +1178,82 @@ export const useStore = create<State>()(
 
       setAIConfig: (patch) => set((s) => ({ aiConfig: { ...s.aiConfig, ...patch } })),
 
+      // ---- AI background jobs (E1) ----
+      // These only track status; the async work lives in the feature that
+      // started the job and reports through here. Because the state lives in
+      // the store, navigating away from the tab that kicked it off never
+      // cancels the run and the TopBar pill can render it from anywhere.
+      aiJobBegin: (key, opts) =>
+        set((s) => ({
+          aiJobs: {
+            ...s.aiJobs,
+            [key]: {
+              status: "running",
+              progress: { done: 0, total: Math.max(0, opts.total) },
+              label: opts.label,
+              route: opts.route,
+              startedAt: new Date().toISOString(),
+            },
+          },
+        })),
+      aiJobProgress: (key, done, total) =>
+        set((s) => {
+          const job = s.aiJobs[key];
+          if (!job) return {};
+          return {
+            aiJobs: {
+              ...s.aiJobs,
+              [key]: {
+                ...job,
+                status: "running",
+                progress: { done, total: total ?? job.progress.total },
+              },
+            },
+          };
+        }),
+      aiJobPauseLimit: (key, error) =>
+        set((s) => {
+          const job = s.aiJobs[key];
+          if (!job) return {};
+          return {
+            aiJobs: {
+              ...s.aiJobs,
+              [key]: { ...job, status: "paused_limit", error, limitHit: true },
+            },
+          };
+        }),
+      aiJobDone: (key) =>
+        set((s) => {
+          const job = s.aiJobs[key];
+          if (!job) return {};
+          return {
+            aiJobs: {
+              ...s.aiJobs,
+              [key]: {
+                ...job,
+                status: "done",
+                finishedAt: new Date().toISOString(),
+                progress: { ...job.progress, done: job.progress.total || job.progress.done },
+              },
+            },
+          };
+        }),
+      aiJobFail: (key, error) =>
+        set((s) => {
+          const job = s.aiJobs[key];
+          if (!job) return {};
+          return {
+            aiJobs: { ...s.aiJobs, [key]: { ...job, status: "error", error } },
+          };
+        }),
+      aiJobReset: (key) =>
+        set((s) => {
+          if (!s.aiJobs[key]) return {};
+          const next = { ...s.aiJobs };
+          delete next[key];
+          return { aiJobs: next };
+        }),
+
       // ---- Checklists ----
       toggleChecklistItem: (checklistId, itemId, byUserId) =>
         set((s) => ({
@@ -1471,6 +1564,13 @@ export const useStore = create<State>()(
       name: "scenetrackable-v1",
       storage: createJSONStorage(() => localStorage),
       version: 5,
+      // aiJobs is deliberately transient: on reload an interrupted run must
+      // present as resumable (its results were saved incrementally), never as
+      // still-running against a promise that no longer exists.
+      partialize: (state) => {
+        const { aiJobs: _aiJobs, ...rest } = state;
+        return rest as State;
+      },
       migrate: (persisted, from) => {
         const s = persisted as Record<string, any>;
         // Ascending, and it has to stay that way: each step assumes the ones
@@ -1525,6 +1625,22 @@ export const activeProject = (state: State): Project | undefined =>
 
 export const unreadCount = (state: State): number =>
   state.notifications.filter((n) => !n.read).length;
+
+/**
+ * The AI job worth surfacing in the TopBar pill: a running job first, else one
+ * paused on the allowance limit. Everything else (idle/done/error) is shown on
+ * its own tab, not globally.
+ */
+export const activeAIJob = (
+  state: State
+): { key: string; job: AIJobState } | null => {
+  const entries = Object.entries(state.aiJobs);
+  const running = entries.find(([, j]) => j.status === "running");
+  if (running) return { key: running[0], job: running[1] };
+  const paused = entries.find(([, j]) => j.status === "paused_limit");
+  if (paused) return { key: paused[0], job: paused[1] };
+  return null;
+};
 
 /** The current role's level on a page: "none" | "read" | "write". */
 export function permissionLevel(state: State, key: string): PermissionLevel {

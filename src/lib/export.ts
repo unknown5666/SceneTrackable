@@ -4,8 +4,21 @@
 // ============================================================
 
 import type { Scene } from "@/types";
+import type { ProposedCallSheet } from "@/lib/claude";
 
 const STORE_KEY = "scenetrackable-v1";
+
+function openPrintWindow(html: string, what: string): void {
+  const w = window.open("", "_blank");
+  if (!w) {
+    alert(`Pop-up blocked. Allow pop-ups for this site to print ${what}.`);
+    return;
+  }
+  w.document.write(html);
+  w.document.close();
+  w.focus();
+  setTimeout(() => w.print(), 300);
+}
 
 // ------------------------------------------------------------
 // Generic helpers
@@ -142,6 +155,92 @@ export function printBreakdownSheets(projectName: string, scenes: Scene[]): void
   w.focus();
   // Give the new window a beat to layout before the print dialog.
   setTimeout(() => w.print(), 300);
+}
+
+// ------------------------------------------------------------
+// Printable AI call sheet (one day)
+// ------------------------------------------------------------
+export interface CallSheetDayMeta {
+  dayNumber: number;
+  date: string;
+  locations: string[];
+  callTime?: string;
+  wrapTime?: string;
+  weather?: string;
+}
+
+export function printCallSheet(
+  projectName: string,
+  day: CallSheetDayMeta,
+  sheet: ProposedCallSheet
+): void {
+  const sceneRows = sheet.scenes
+    .map(
+      (s) => `<tr><td class="num">${esc(s.number)}</td><td>${esc(s.description)}</td></tr>`
+    )
+    .join("");
+  const castRows = sheet.cast
+    .map(
+      (c) =>
+        `<tr><td>${esc(c.character)}</td><td>${esc(c.pickupOrCall ?? "")}</td></tr>`
+    )
+    .join("");
+  const deptRows = sheet.departmentNotes
+    .map(
+      (d) =>
+        `<li><strong>${esc(d.department)}:</strong> ${esc(d.note)}</li>`
+    )
+    .join("");
+
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(projectName)} — Call Sheet Day ${day.dayNumber}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; }
+    body { font-family: Georgia, 'Times New Roman', serif; color: #111; padding: 28px 32px; }
+    header { border-bottom: 3px double #111; padding-bottom: 10px; margin-bottom: 16px; }
+    .prod { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: #555; }
+    h1 { font-size: 22px; margin-top: 4px; }
+    .meta { font-size: 12px; color: #444; margin-top: 6px; display: flex; gap: 16px; flex-wrap: wrap; }
+    .meta b { color: #111; }
+    h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin: 18px 0 6px; border-bottom: 1px solid #ccc; padding-bottom: 3px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    td, th { text-align: left; padding: 4px 6px; border-bottom: 1px solid #ddd; vertical-align: top; }
+    .num { font-family: monospace; width: 60px; }
+    ul { font-size: 12px; line-height: 1.6; margin-left: 18px; }
+    .advance { font-size: 12px; color: #333; margin-top: 8px; }
+    .ai-note { margin-top: 22px; font-size: 10px; color: #888; border-top: 1px solid #eee; padding-top: 8px; }
+  </style></head><body>
+    <header>
+      <div class="prod">${esc(projectName)} — Call Sheet</div>
+      <h1>Day ${day.dayNumber} · ${esc(formatSheetDate(day.date))}</h1>
+      <div class="meta">
+        <span><b>Location:</b> ${esc(day.locations.join(" → ") || "TBD")}</span>
+        ${sheet.generalCall ? `<span><b>General call:</b> ${esc(sheet.generalCall)}</span>` : day.callTime ? `<span><b>Call:</b> ${esc(day.callTime)}</span>` : ""}
+        ${day.wrapTime ? `<span><b>Est. wrap:</b> ${esc(day.wrapTime)}</span>` : ""}
+        ${day.weather ? `<span><b>Weather:</b> ${esc(day.weather)}</span>` : ""}
+      </div>
+    </header>
+
+    <h2>Shooting Order</h2>
+    <table><tbody>${sceneRows || `<tr><td colspan="2">No scenes listed.</td></tr>`}</tbody></table>
+
+    <h2>Cast — Pickup / On Set</h2>
+    <table><tbody>${castRows || `<tr><td colspan="2">No cast listed.</td></tr>`}</tbody></table>
+
+    <h2>Department Notes</h2>
+    <ul>${deptRows || "<li>None.</li>"}</ul>
+
+    ${sheet.advanceSchedule ? `<h2>Advance Schedule</h2><div class="advance">${esc(sheet.advanceSchedule)}</div>` : ""}
+
+    <div class="ai-note">AI-drafted call sheet — review every time, cast and department detail against the DOOD and contacts before distribution.</div>
+  </body></html>`;
+
+  openPrintWindow(html, "the call sheet");
+}
+
+function formatSheetDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "short", day: "numeric" });
 }
 
 // ------------------------------------------------------------

@@ -1,12 +1,49 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, Sun, Moon, ChevronDown, LogOut, FolderKanban, Plus, Menu, Check } from "lucide-react";
-import { useStore, unreadCount, currentUser, currentRole, activeProject } from "@/state/store";
+import { Bell, Sun, Moon, ChevronDown, LogOut, FolderKanban, Plus, Menu, Check, Loader2, AlertTriangle } from "lucide-react";
+import { useStore, unreadCount, currentUser, currentRole, activeProject, activeAIJob } from "@/state/store";
 import { useTheme } from "@/state/theme";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { CloudIndicator } from "./CloudIndicator";
 import { formatDateTime } from "@/lib/utils";
+
+/**
+ * A slim global pill for the running (or allowance-paused) AI job. It lives
+ * here so a long run shows from every page — the job state is in the store, so
+ * navigating away never hides it — and a click lands on the tab that owns it.
+ */
+function AIStatusPill() {
+  const nav = useNavigate();
+  const active = useStore(activeAIJob);
+  if (!active) return null;
+  const { job } = active;
+  const paused = job.status === "paused_limit";
+  const { done, total } = job.progress;
+
+  return (
+    <button
+      onClick={() => job.route && nav(job.route)}
+      title={paused ? job.error : `${job.label} — ${done}/${total}`}
+      className="hidden sm:flex items-center gap-1.5 h-8 px-2.5 rounded-full border text-xs max-w-[240px] transition-colors"
+      style={{
+        borderColor: paused ? "var(--color-warning)" : "rgba(139,92,246,0.4)",
+        background: paused ? "rgba(245,158,11,0.10)" : "rgba(139,92,246,0.12)",
+        color: paused ? "var(--color-warning)" : "var(--color-ai)",
+      }}
+    >
+      {paused ? (
+        <AlertTriangle size={13} className="shrink-0" />
+      ) : (
+        <Loader2 size={13} className="animate-spin shrink-0" />
+      )}
+      <span className="truncate font-medium">{job.label}</span>
+      <span className="tabular-nums opacity-80 shrink-0">
+        {paused ? "paused" : total > 0 ? `${done}/${total}` : ""}
+      </span>
+    </button>
+  );
+}
 
 interface TopBarProps {
   /** Opens the sidebar overlay below `lg`, where there is no rail to hover. */
@@ -136,6 +173,7 @@ export function TopBar({ onOpenSidebar }: TopBarProps) {
       </div>
 
       <div className="flex items-center gap-2">
+        <AIStatusPill />
         <CloudIndicator />
 
         <Button variant="ghost" size="sm" onClick={toggle} aria-label="Toggle theme">

@@ -13,6 +13,7 @@ import { Reports } from "@/pages/Reports";
 import { VFXPipeline } from "@/pages/VFXPipeline";
 import { RFComms } from "@/pages/RFComms";
 import { CameraPortal } from "@/pages/CameraPortal";
+import { Drones } from "@/pages/Drones";
 import { ArtPortal } from "@/pages/ArtPortal";
 import { CastPortal } from "@/pages/CastPortal";
 import { Timesheet } from "@/pages/Timesheet";
@@ -72,6 +73,7 @@ export default function App() {
         <Route path="/vfx" element={<AccessGuard page="vfx"><VFXPipeline /></AccessGuard>} />
         <Route path="/rf" element={<AccessGuard page="rf"><RFComms /></AccessGuard>} />
         <Route path="/camera" element={<AccessGuard page="camera"><CameraPortal /></AccessGuard>} />
+        <Route path="/drones" element={<AccessGuard page="drones"><Drones /></AccessGuard>} />
         <Route path="/art" element={<AccessGuard page="art"><ArtPortal /></AccessGuard>} />
         <Route path="/cast" element={<AccessGuard page="cast"><CastPortal /></AccessGuard>} />
         <Route path="/timesheet" element={<AccessGuard page="timesheet"><Timesheet /></AccessGuard>} />

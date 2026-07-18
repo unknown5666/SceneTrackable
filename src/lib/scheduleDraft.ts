@@ -229,10 +229,13 @@ export function demoScheduleDraft(
 
 /** A validated day as a shoot-day record. */
 export function shootDayFromProposal(v: ValidatedDay): ProposedDayRecord {
+  const locations = v.day.locations?.length ? v.day.locations : [v.day.location].filter(Boolean);
   return {
     dayNumber: v.day.dayNumber,
     date: v.day.date,
-    location: v.day.location,
+    // `location` stays the first for old consumers; `locations` carries the move.
+    location: locations[0] ?? v.day.location,
+    locations: locations.length > 1 ? locations : undefined,
     estimatedHours: v.day.estimatedHours,
     scenes: v.scenes.map((s) => s.id),
     banners: [],

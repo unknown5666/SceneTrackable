@@ -24,11 +24,13 @@ import {
   Sun,
   Moon,
   MapPin,
+  ArrowRightLeft,
   Users,
   Wand2,
   Sparkles,
   Loader2,
   Check,
+  FileText,
 } from "lucide-react";
 import { useStore, activeProject, canWrite } from "@/state/store";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -39,7 +41,16 @@ import { Tabs } from "@/components/ui/Tabs";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useRecordEditor } from "@/components/ui/RecordEditor";
 import { formatDate, cn } from "@/lib/utils";
-import { aiScheduleDraft } from "@/lib/claude";
+import { dayLocations, sceneMatchesDay, locKey } from "@/lib/locations";
+import {
+  aiScheduleDraft,
+  aiDoodDraft,
+  aiCallSheet,
+  isAllowanceExhausted,
+  type ProposedDoodEntry,
+} from "@/lib/claude";
+import { printCallSheet } from "@/lib/export";
+import { ProposalPicker, type ProposalItem } from "@/components/ui/ProposalPicker";
 import {
   buildScheduleDigest,
   defaultStartDate,
@@ -54,11 +65,28 @@ import type { ProductionData, Scene, ShootDay, DoodStatus } from "@/types";
 // STRIP BOARD
 // ============================================================
 
-const normLoc = (v?: string) => (v ?? "").trim().toLowerCase();
-
-// A day with no location set holds any scene.
-const sceneFitsDay = (scene: Scene, day: ShootDay) =>
-  !normLoc(day.location) || normLoc(scene.location) === normLoc(day.location);
+/**
+ * A day's assigned scenes, split into per-location groups for the strip board.
+ * Off-location scenes (assigned here but at a place not in the day's list) are
+ * never dropped — they surface in their own group so nothing is ever hidden.
+ */
+function groupDayScenes(
+  assigned: Scene[],
+  day: ShootDay
+): { groups: { location: string; scenes: Scene[]; off: boolean }[]; multi: boolean } {
+  const locs = dayLocations(day);
+  if (locs.length <= 1) {
+    return { groups: [{ location: locs[0] ?? "", scenes: assigned, off: false }], multi: false };
+  }
+  const groups = locs.map((loc) => ({
+    location: loc,
+    scenes: assigned.filter((s) => locKey(s.location) === locKey(loc)),
+    off: false,
+  }));
+  const off = assigned.filter((s) => !locs.some((l) => locKey(l) === locKey(s.location)));
+  if (off.length) groups.push({ location: "Off-location", scenes: off, off: true });
+  return { groups, multi: true };
+}
 
 export function Schedule() {
   const [tab, setTab] = useState("board");
@@ -147,6 +175,7 @@ function StripBoard() {
 
   const [activeDrag, setActiveDrag] = useState<string | null>(null);
   const [draftOpen, setDraftOpen] = useState(false);
+  const [callSheetOpen, setCallSheetOpen] = useState(false);
   const ed = useRecordEditor("shootDays");
 
   // Page range for horizontal scroll
@@ -179,12 +208,14 @@ function StripBoard() {
     const dayMatch = overIdStr.match(/^day_(\d+)$/);
     if (dayMatch) {
       const targetDay = shootDays.find((d) => d.dayNumber === parseInt(dayMatch[1], 10));
-      if (!targetDay || !sceneFitsDay(scene, targetDay)) return;
+      // A scene may be dropped on any day: if it's at a location the day
+      // doesn't cover it becomes off-location (badged), never rejected.
+      if (!targetDay) return;
       moveScene(sceneId, targetDay.dayNumber);
     } else {
       // Dropped on another scene strip — find that scene's day
       const targetDay = shootDays.find((d) => d.scenes.includes(overIdStr));
-      if (!targetDay || !sceneFitsDay(scene, targetDay)) return;
+      if (!targetDay) return;
       const idx = targetDay.scenes.indexOf(overIdStr);
       moveScene(sceneId, targetDay.dayNumber, idx);
     }
@@ -249,6 +280,11 @@ function StripBoard() {
             <ChevronRight size={14} />
           </Button>
           <div className="ml-2 flex items-center gap-2">
+            {ed.canWrite && (
+              <Button variant="ai" size="sm" onClick={() => setCallSheetOpen(true)}>
+                <FileText size={14} /> Call sheet (AI)
+              </Button>
+            )}
             {scenes.length > 0 && ed.canWrite && (
               <Button variant="ai" size="sm" onClick={() => setDraftOpen(true)}>
                 <Sparkles size={14} /> Draft schedule (AI)
@@ -268,9 +304,11 @@ function StripBoard() {
         <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${visibleDays}, minmax(160px, 1fr))` }}>
           {visibleShootDays.map((day) => {
             const assigned = day.scenes.map((sid) => scenes.find((s) => s.id === sid)!).filter(Boolean);
-            const dayScenes = assigned.filter((sc) => sceneFitsDay(sc, day));
-            const offLocationCount = assigned.length - dayScenes.length;
-            const totalPages = dayScenes.reduce((s, sc) => s + sc.pages, 0);
+            // Every assigned scene stays on the board — page totals cover the
+            // lot, off-location included, since they still shoot this day.
+            const totalPages = assigned.reduce((s, sc) => s + sc.pages, 0);
+            const locs = dayLocations(day);
+            const { groups, multi } = groupDayScenes(assigned, day);
             const isToday = day.dayNumber === production.currentShootDay;
 
             return (
@@ -303,8 +341,14 @@ function StripBoard() {
                   <div className="text-[10px] text-[var(--text-muted)] mt-0.5">
                     {formatDate(day.date)} · {day.callTime}–{day.wrapTime}
                   </div>
-                  <div className="text-[10px] text-[var(--text-secondary)] mt-1 truncate flex items-center gap-1">
-                    <MapPin size={8} /> {day.location}
+                  <div className="text-[10px] text-[var(--text-secondary)] mt-1 flex items-start gap-1">
+                    <MapPin size={8} className="mt-0.5 shrink-0" />
+                    <span className="min-w-0">
+                      {locs.length ? locs.join(" → ") : "No location set"}
+                      {multi && (
+                        <span className="ml-1 text-[var(--color-warning)]">· company move</span>
+                      )}
+                    </span>
                   </div>
                   <div className="text-[10px] text-[var(--text-muted)] mt-0.5">
                     {totalPages.toFixed(1)} pages · ~{day.estimatedHours}h
@@ -335,22 +379,10 @@ function StripBoard() {
                   </div>
                 ))}
 
-                {/* Scene strips droppable zone */}
-                {offLocationCount > 0 && (
-                  <div
-                    className="px-3 py-1.5 text-[10px] font-medium border-b border-[var(--border-default)]"
-                    style={{ background: "rgba(245,158,11,0.08)", color: "var(--color-warning)" }}
-                    title={assigned
-                      .filter((sc) => !sceneFitsDay(sc, day))
-                      .map((sc) => `${sc.number} — ${sc.location}`)
-                      .join("\n")}
-                  >
-                    {offLocationCount} scene{offLocationCount > 1 ? "s" : ""} hidden (other location)
-                  </div>
-                )}
-
+                {/* Scene strips droppable zone. One SortableContext over the
+                    whole day (in grouped order); the groups are visual. */}
                 <SortableContext
-                  items={dayScenes.map((sc) => sc.id)}
+                  items={groups.flatMap((g) => g.scenes.map((sc) => sc.id))}
                   strategy={verticalListSortingStrategy}
                   id={`day_${day.dayNumber}`}
                 >
@@ -358,14 +390,45 @@ function StripBoard() {
                     className="flex-1 p-1.5 space-y-1 min-h-[80px]"
                     data-droppable-id={`day_${day.dayNumber}`}
                   >
-                    {dayScenes.map((sc) => (
-                      <SceneStrip key={sc.id} scene={sc} />
-                    ))}
-                    {dayScenes.length === 0 && (
+                    {assigned.length === 0 && (
                       <div className="text-center text-[10px] text-[var(--text-muted)] py-6">
                         Drop scenes here
                       </div>
                     )}
+                    {groups.map((g, gi) => (
+                      <React.Fragment key={g.location || gi}>
+                        {/* Sub-header + company-move banner only when a day
+                            genuinely spans locations. */}
+                        {multi && (
+                          <>
+                            {gi > 0 && (
+                              <div
+                                className="my-1 px-2 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wide flex items-center gap-1"
+                                style={{ background: "rgba(245,158,11,0.10)", color: "var(--color-warning)" }}
+                              >
+                                <ArrowRightLeft size={9} /> Company move
+                              </div>
+                            )}
+                            <div
+                              className={cn(
+                                "px-1 pt-0.5 text-[9px] font-semibold uppercase tracking-wide truncate",
+                                g.off ? "text-[var(--color-warning)]" : "text-[var(--text-muted)]"
+                              )}
+                              title={g.location}
+                            >
+                              {g.location}
+                            </div>
+                          </>
+                        )}
+                        {g.scenes.map((sc) => (
+                          <SceneStrip
+                            key={sc.id}
+                            scene={sc}
+                            offLocation={!sceneMatchesDay(sc, day)}
+                          />
+                        ))}
+                      </React.Fragment>
+                    ))}
                   </div>
                 </SortableContext>
               </div>
@@ -396,7 +459,145 @@ function StripBoard() {
       </DndContext>
       {ed.modal}
       <DraftScheduleModal open={draftOpen} onClose={() => setDraftOpen(false)} />
+      <CallSheetModal open={callSheetOpen} onClose={() => setCallSheetOpen(false)} />
     </>
+  );
+}
+
+// ============================================================
+// AI CALL SHEET (E4)
+//
+// Pick a day → one small call → a printable call sheet in the export.ts style.
+// One call per day is naturally chunked; the sheet is reviewed as a print
+// preview before it goes anywhere.
+// ============================================================
+function CallSheetModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const scenes = useStore((s) => s.scenes);
+  const shootDays = useStore((s) => s.shootDays);
+  const cast = useStore((s) => s.cast);
+  const project = useStore(activeProject);
+  const recordAIUsage = useStore((s) => s.recordAIUsage);
+
+  const sorted = useMemo(() => [...shootDays].sort((a, b) => a.dayNumber - b.dayNumber), [shootDays]);
+  const [dayId, setDayId] = useState<string>(sorted[0]?.id ?? "");
+  const [busy, setBusy] = useState(false);
+  const [limit, setLimit] = useState(false);
+  const [error, setError] = useState("");
+  const [done, setDone] = useState(false);
+
+  const selected = sorted.find((d) => d.id === dayId) ?? sorted[0];
+
+  const run = async () => {
+    if (!selected) return;
+    setBusy(true);
+    setError("");
+    setLimit(false);
+    setDone(false);
+    try {
+      const dayScenes = selected.scenes
+        .map((id) => scenes.find((s) => s.id === id))
+        .filter(Boolean) as Scene[];
+      const castByScene = new Set<string>();
+      for (const sc of dayScenes) {
+        for (const el of sc.elements) if (el.category === "cast") castByScene.add(el.name);
+      }
+      // Next day, for the advance line.
+      const idx = sorted.findIndex((d) => d.id === selected.id);
+      const next = sorted[idx + 1];
+      const locs = dayLocations(selected);
+      const digest = [
+        `DAY ${selected.dayNumber} — ${selected.date}`,
+        `LOCATION(S): ${locs.join(" → ") || "TBD"}`,
+        selected.callTime ? `Existing call: ${selected.callTime}` : "",
+        selected.weather ? `Weather: ${selected.weather}` : "",
+        "",
+        "SCENES:",
+        ...dayScenes.map(
+          (s) => `- ${s.number} ${s.intExt}. ${s.location} — ${s.timeOfDay} · ${s.pages}pg · ${s.synopsis}`
+        ),
+        "",
+        `CAST IN THESE SCENES: ${[...castByScene].join(", ") || "none tagged"}`,
+        cast.length ? `CAST ROSTER: ${cast.map((c) => c.role || c.name).join(", ")}` : "",
+        next
+          ? `NEXT DAY: Day ${next.dayNumber} at ${dayLocations(next).join(" → ") || "TBD"}`
+          : "NEXT DAY: none (this is the last day)",
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      const { sheet, result } = await aiCallSheet(digest, project?.name);
+      recordAIUsage({
+        feature: "call_sheet",
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        model: result.model,
+        costUsd: result.costUsd,
+      });
+      if (!sheet) throw new Error("The AI returned an empty call sheet.");
+      printCallSheet(project?.name ?? "Production", {
+        dayNumber: selected.dayNumber,
+        date: selected.date,
+        locations: locs,
+        callTime: selected.callTime,
+        wrapTime: selected.wrapTime,
+        weather: selected.weather,
+      }, sheet);
+      setDone(true);
+    } catch (err) {
+      if (isAllowanceExhausted(err)) setLimit(true);
+      else setError((err as Error).message || "The call sheet draft failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      open={open}
+      onClose={busy ? () => undefined : onClose}
+      size="md"
+      title="Draft a call sheet"
+      subtitle="Picks the day's scenes and cast, drafts a shooting order and department notes, and opens a printable sheet."
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>
+            Close
+          </Button>
+          <Button variant="ai" onClick={run} disabled={busy || !selected}>
+            {busy ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
+            {busy ? "Drafting…" : "Draft & print"}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        {sorted.length === 0 ? (
+          <div className="text-sm text-[var(--text-muted)]">Add shoot days first.</div>
+        ) : (
+          <div>
+            <label className="section-header block mb-1.5">Shoot day</label>
+            <select value={dayId} onChange={(e) => setDayId(e.target.value)} className="w-full">
+              {sorted.map((d) => (
+                <option key={d.id} value={d.id}>
+                  Day {d.dayNumber} — {dayLocations(d).join(" → ") || "no location"} ({d.scenes.length} scenes)
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        {limit && (
+          <div className="text-xs text-[var(--color-warning)]">
+            GLM free allowance exhausted — try again once it resets.
+          </div>
+        )}
+        {error && <div className="text-xs text-[var(--color-danger)]">{error}</div>}
+        {done && (
+          <div className="text-xs text-[var(--color-success)]">
+            Call sheet opened in a new tab for printing. Review it before distribution.
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }
 
@@ -567,7 +768,8 @@ function DraftScheduleModal({ open, onClose }: { open: boolean; onClose: () => v
                     {formatDate(v.day.date, { year: "numeric" })}
                   </span>
                   <Badge tone="muted">
-                    <MapPin size={9} /> {v.day.location}
+                    <MapPin size={9} />{" "}
+                    {(v.day.locations?.length ? v.day.locations : [v.day.location]).join(" → ")}
                   </Badge>
                   <Badge tone="neutral">
                     {v.pages} pg · ~{v.day.estimatedHours}h
@@ -647,7 +849,7 @@ function useScheduleData(): ProductionData {
   );
 }
 
-function SceneStrip({ scene }: { scene: Scene }) {
+function SceneStrip({ scene, offLocation = false }: { scene: Scene; offLocation?: boolean }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: scene.id });
 
@@ -657,18 +859,22 @@ function SceneStrip({ scene }: { scene: Scene }) {
     opacity: isDragging ? 0.4 : 1,
   };
 
-  const bgColor =
-    scene.intExt === "EXT"
-      ? "rgba(245,158,11,0.08)"
-      : scene.intExt === "INT/EXT"
-      ? "rgba(139,92,246,0.08)"
-      : "rgba(79,123,247,0.06)";
+  const bgColor = offLocation
+    ? "rgba(245,158,11,0.14)"
+    : scene.intExt === "EXT"
+    ? "rgba(245,158,11,0.08)"
+    : scene.intExt === "INT/EXT"
+    ? "rgba(139,92,246,0.08)"
+    : "rgba(79,123,247,0.06)";
 
   return (
     <div
       ref={setNodeRef}
       style={{ ...style, background: bgColor }}
-      className="rounded-lg p-2 border border-[var(--border-default)] cursor-grab active:cursor-grabbing group"
+      className={cn(
+        "rounded-lg p-2 border cursor-grab active:cursor-grabbing group",
+        offLocation ? "border-[var(--color-warning)]" : "border-[var(--border-default)]"
+      )}
       {...attributes}
       {...listeners}
     >
@@ -681,6 +887,15 @@ function SceneStrip({ scene }: { scene: Scene }) {
         {scene.timeOfDay === "NIGHT" && <Moon size={8} className="text-[var(--color-ai)]" />}
         {scene.timeOfDay === "DAY" && <Sun size={8} className="text-[var(--color-warning)]" />}
       </div>
+      {offLocation && (
+        <div
+          className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-badge text-[8px] font-semibold uppercase tracking-wide"
+          style={{ background: "var(--color-warning)", color: "white" }}
+          title={`This scene is at ${scene.location}, not one of this day's locations.`}
+        >
+          Off-location
+        </div>
+      )}
       <div className="text-[10px] text-[var(--text-secondary)] truncate mt-0.5">
         {scene.location}
       </div>
@@ -730,6 +945,7 @@ function DOODChart() {
   const setDoodStatus = useStore((s) => s.setDoodStatus);
   const seedDood = useStore((s) => s.seedDoodFromSchedule);
   const canEdit = useStore((s) => canWrite(s, "schedule"));
+  const [draftOpen, setDraftOpen] = useState(false);
 
   // Cast carry their scene ids from the breakdown, and shoot days carry
   // theirs — so the first draft of this grid is already implied by the
@@ -768,6 +984,7 @@ function DOODChart() {
   }
 
   return (
+    <>
     <Card padding="none">
       <div className="p-4">
         <CardHeader
@@ -779,9 +996,14 @@ function DOODChart() {
           }
           right={
             canEdit && seedable ? (
-              <Button variant="secondary" size="sm" onClick={runSeed}>
-                <Wand2 size={14} /> Seed from schedule
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="secondary" size="sm" onClick={runSeed}>
+                  <Wand2 size={14} /> Seed from schedule
+                </Button>
+                <Button variant="ai" size="sm" onClick={() => setDraftOpen(true)}>
+                  <Sparkles size={14} /> Draft with AI
+                </Button>
+              </div>
             ) : undefined
           }
         />
@@ -870,5 +1092,171 @@ function DOODChart() {
           ))}
       </div>
     </Card>
+    <DoodDraftModal open={draftOpen} onClose={() => setDraftOpen(false)} />
+    </>
+  );
+}
+
+// ============================================================
+// AI DOOD DRAFT (E4)
+//
+// One small call over the cast × shoot-day grid. The model proposes a status
+// for each cell; the user reviews the changes and accepts them into the DOOD.
+// ============================================================
+function DoodDraftModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const cast = useStore((s) => s.cast);
+  const dood = useStore((s) => s.dood);
+  const scenes = useStore((s) => s.scenes);
+  const shootDays = useStore((s) => s.shootDays);
+  const setDoodStatus = useStore((s) => s.setDoodStatus);
+  const recordAIUsage = useStore((s) => s.recordAIUsage);
+  const project = useStore(activeProject);
+
+  const [busy, setBusy] = useState(false);
+  const [limit, setLimit] = useState(false);
+  const [error, setError] = useState("");
+  const [proposals, setProposals] = useState<
+    { key: string; castId: string; castLabel: string; day: number; status: DoodStatus }[] | null
+  >(null);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+
+  const run = async () => {
+    setBusy(true);
+    setError("");
+    setLimit(false);
+    try {
+      // Which days each cast member works, from their scenes landing on days.
+      const days = [...shootDays].sort((a, b) => a.dayNumber - b.dayNumber);
+      const lines: string[] = [`SHOOT DAYS: ${days.map((d) => d.dayNumber).join(", ")}`, "", "CAST — working days:"];
+      for (const c of cast) {
+        const sceneSet = new Set(c.scenes);
+        const working = days.filter((d) => d.scenes.some((id) => sceneSet.has(id))).map((d) => d.dayNumber);
+        lines.push(`- ${c.role || c.name}: ${working.length ? working.join(", ") : "none"}`);
+      }
+      const { entries, result } = await aiDoodDraft(lines.join("\n"), project?.name);
+      recordAIUsage({
+        feature: "dood_draft",
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        model: result.model,
+        costUsd: result.costUsd,
+      });
+      const byRole = new Map<string, string>();
+      for (const c of cast) {
+        byRole.set((c.role || c.name).trim().toLowerCase(), c.id);
+        byRole.set(c.name.trim().toLowerCase(), c.id);
+      }
+      const validDays = new Set(days.map((d) => d.dayNumber));
+      const mapped = (entries as ProposedDoodEntry[])
+        .map((e) => {
+          const castId = byRole.get(e.castRole.trim().toLowerCase());
+          if (!castId || !validDays.has(e.day)) return null;
+          // Only propose real changes.
+          const current = dood[castId]?.[e.day] ?? "OFF";
+          if (current === e.status) return null;
+          const c = cast.find((x) => x.id === castId)!;
+          return {
+            key: `${castId}:${e.day}`,
+            castId,
+            castLabel: c.role || c.name,
+            day: e.day,
+            status: e.status as DoodStatus,
+          };
+        })
+        .filter(Boolean) as {
+        key: string;
+        castId: string;
+        castLabel: string;
+        day: number;
+        status: DoodStatus;
+      }[];
+      setProposals(mapped);
+      setPicked(new Set(mapped.map((m) => m.key)));
+    } catch (err) {
+      if (isAllowanceExhausted(err)) setLimit(true);
+      else setError((err as Error).message || "The DOOD draft failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const accept = () => {
+    if (!proposals) return;
+    for (const p of proposals) {
+      if (picked.has(p.key)) setDoodStatus(p.castId, p.day, p.status);
+    }
+    close();
+  };
+
+  const close = () => {
+    setProposals(null);
+    setPicked(new Set());
+    setError("");
+    setLimit(false);
+    onClose();
+  };
+
+  const items: ProposalItem[] = (proposals ?? []).map((p) => ({
+    key: p.key,
+    label: `${p.castLabel} · Day ${p.day}`,
+    badge: <Badge tone="info">{p.status}</Badge>,
+  }));
+
+  return (
+    <Modal
+      open={open}
+      onClose={busy ? () => undefined : close}
+      size="lg"
+      title="Draft the DOOD with AI"
+      subtitle="One pass over who works which day. SW/W/WF/H are proposed; you accept the changes."
+      footer={
+        proposals ? (
+          <>
+            <Button variant="secondary" onClick={close}>
+              Cancel
+            </Button>
+            <Button onClick={accept} disabled={picked.size === 0}>
+              <Check size={14} /> Apply {picked.size} change{picked.size === 1 ? "" : "s"}
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button variant="secondary" onClick={close} disabled={busy}>
+              Cancel
+            </Button>
+            <Button variant="ai" onClick={run} disabled={busy}>
+              {busy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+              {busy ? "Reading the grid…" : "Draft DOOD"}
+            </Button>
+          </>
+        )
+      }
+    >
+      {limit ? (
+        <div className="text-sm text-[var(--color-warning)]">
+          GLM free allowance exhausted — try again once it resets. Nothing was changed.
+        </div>
+      ) : error ? (
+        <div className="text-sm text-[var(--color-danger)]">{error}</div>
+      ) : proposals ? (
+        proposals.length === 0 ? (
+          <div className="text-sm text-[var(--text-muted)] py-6 text-center">
+            The AI proposed no changes — the grid already matches the schedule.
+          </div>
+        ) : (
+          <ProposalPicker
+            items={items}
+            selected={picked}
+            onChange={setPicked}
+            groupLabel={`${proposals.length} proposed change${proposals.length === 1 ? "" : "s"}`}
+          />
+        )
+      ) : (
+        <div className="text-sm text-[var(--text-secondary)] py-4">
+          Reads which days each cast member works and proposes their start/work/finish/hold
+          statuses in one request. You review every change before it lands.
+        </div>
+      )}
+    </Modal>
   );
 }

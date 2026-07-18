@@ -1,11 +1,15 @@
 import React, { useState } from "react";
-import { Radio, Wifi } from "lucide-react";
+import { Radio, Wifi, LayoutGrid } from "lucide-react";
 import { useStore } from "@/state/store";
 import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Tabs } from "@/components/ui/Tabs";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useRecordEditor } from "@/components/ui/RecordEditor";
+import { CatalogPicker } from "@/components/ui/CatalogPicker";
+import { EquipmentImage } from "@/components/ui/EquipmentImage";
+import { RF_PRESETS, type EquipmentPreset } from "@/data/equipment-presets";
 
 export function RFComms() {
   const [tab, setTab] = useState("freq");
@@ -124,6 +128,25 @@ function EquipmentList() {
   const shootDays = useStore((s) => s.shootDays);
   const assignToDay = useStore((s) => s.assignRFEquipmentToDay);
   const ed = useRecordEditor("rfEquipment");
+  const [catalogOpen, setCatalogOpen] = useState(false);
+
+  const addFromPreset = (p: EquipmentPreset) => {
+    setCatalogOpen(false);
+    ed.openWith({
+      type: p.rfType ?? "Wireless Mic",
+      manufacturer: p.manufacturer,
+      model: p.model,
+      serial: "",
+      status: "available",
+      presetId: p.id,
+    });
+  };
+
+  const catalogButton = ed.canWrite ? (
+    <Button variant="secondary" size="sm" onClick={() => setCatalogOpen(true)}>
+      <LayoutGrid size={14} /> Add from catalog
+    </Button>
+  ) : null;
 
   const statusTone = (s: string) => {
     switch (s) {
@@ -146,10 +169,22 @@ function EquipmentList() {
             icon={<Radio size={48} />}
             title="No RF equipment logged"
             subtitle="Add your transmitters, IFBs and video links to track what's out, what's free, and what's in the shop."
-            cta={<ed.AddButton size="md" label="Add First Device" />}
+            cta={
+              <div className="flex items-center gap-2">
+                {catalogButton}
+                <ed.AddButton size="md" label="Add First Device" />
+              </div>
+            }
           />
         </Card>
         {ed.modal}
+        <CatalogPicker
+          open={catalogOpen}
+          onClose={() => setCatalogOpen(false)}
+          presets={RF_PRESETS}
+          title="RF / comms catalog"
+          onPick={addFromPreset}
+        />
       </>
     );
   }
@@ -160,7 +195,10 @@ function EquipmentList() {
         <div className="text-sm text-[var(--text-secondary)]">
           {rfEquipment.length} {rfEquipment.length === 1 ? "device" : "devices"}
         </div>
-        <ed.AddButton label="Add Device" />
+        <div className="flex items-center gap-2">
+          {catalogButton}
+          <ed.AddButton label="Add Device" />
+        </div>
       </div>
 
       <Card padding="none">
@@ -168,6 +206,7 @@ function EquipmentList() {
           <table className="pos-table">
             <thead>
               <tr>
+                <th className="w-[48px]"></th>
                 <th>Type</th>
                 <th>Model</th>
                 <th>Serial</th>
@@ -179,8 +218,24 @@ function EquipmentList() {
             <tbody>
               {rfEquipment.map((e) => (
                 <tr key={e.id}>
-                  <td className="font-medium">{e.type}</td>
-                  <td>{e.model}</td>
+                  <td>
+                    <EquipmentImage
+                      imageUrl={e.imageUrl}
+                      presetId={e.presetId}
+                      manufacturer={e.manufacturer}
+                      size={36}
+                    />
+                  </td>
+                  <td className="font-medium">
+                    <div className="flex items-center gap-1.5">
+                      {e.type}
+                      {e.presetId && <Badge tone="ai">Catalog</Badge>}
+                    </div>
+                  </td>
+                  <td>
+                    {e.manufacturer ? `${e.manufacturer} ` : ""}
+                    {e.model}
+                  </td>
                   <td className="font-mono text-xs text-[var(--text-secondary)]">{e.serial}</td>
                   <td>
                     <Badge tone={statusTone(e.status)}>{e.status}</Badge>
@@ -216,6 +271,13 @@ function EquipmentList() {
       </Card>
 
       {ed.modal}
+      <CatalogPicker
+        open={catalogOpen}
+        onClose={() => setCatalogOpen(false)}
+        presets={RF_PRESETS}
+        title="RF / comms catalog"
+        onPick={addFromPreset}
+      />
     </div>
   );
 }

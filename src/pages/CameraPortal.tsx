@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Camera, Check, Package, ClipboardList } from "lucide-react";
+import { Camera, Check, Package, ClipboardList, LayoutGrid } from "lucide-react";
 import { useStore } from "@/state/store";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -8,6 +8,9 @@ import { Tabs } from "@/components/ui/Tabs";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useRecordEditor } from "@/components/ui/RecordEditor";
+import { CatalogPicker } from "@/components/ui/CatalogPicker";
+import { EquipmentImage } from "@/components/ui/EquipmentImage";
+import { CAMERA_PRESETS, type EquipmentPreset } from "@/data/equipment-presets";
 import { formatDateTime, cn } from "@/lib/utils";
 
 export function CameraPortal() {
@@ -41,6 +44,34 @@ function KitBuilder() {
   const shootDays = useStore((s) => s.shootDays);
   const assignKit = useStore((s) => s.assignKitToDay);
   const ed = useRecordEditor("cameraKits");
+  const [catalogOpen, setCatalogOpen] = useState(false);
+
+  const addFromPreset = (p: EquipmentPreset) => {
+    setCatalogOpen(false);
+    ed.openWith({
+      name: `${p.manufacturer} ${p.model}`,
+      manufacturer: p.manufacturer,
+      items: [`${p.model} — ${p.specs}`],
+      presetId: p.id,
+    });
+  };
+
+  const catalogButton = ed.canWrite ? (
+    <Button variant="secondary" size="sm" onClick={() => setCatalogOpen(true)}>
+      <LayoutGrid size={14} /> Add from catalog
+    </Button>
+  ) : null;
+
+  const catalog = (
+    <CatalogPicker
+      open={catalogOpen}
+      onClose={() => setCatalogOpen(false)}
+      presets={CAMERA_PRESETS}
+      title="Camera catalog"
+      subtitle="Pick a body, lens set or support — it becomes a kit you can add to."
+      onPick={addFromPreset}
+    />
+  );
 
   if (cameraKits.length === 0) {
     return (
@@ -49,11 +80,17 @@ function KitBuilder() {
           <EmptyState
             icon={<Package size={48} />}
             title="No camera kits yet"
-            subtitle="Build a kit list once, then assign it to the days it's needed."
-            cta={<ed.AddButton size="md" label="Add First Kit" />}
+            subtitle="Build a kit list once, then assign it to the days it's needed. Start from the catalog for industry-standard bodies and glass."
+            cta={
+              <div className="flex items-center gap-2">
+                {catalogButton}
+                <ed.AddButton size="md" label="Add First Kit" />
+              </div>
+            }
           />
         </Card>
         {ed.modal}
+        {catalog}
       </>
     );
   }
@@ -64,19 +101,31 @@ function KitBuilder() {
         <div className="text-sm text-[var(--text-secondary)]">
           {cameraKits.length} {cameraKits.length === 1 ? "kit" : "kits"}
         </div>
-        <ed.AddButton label="Add Kit" />
+        <div className="flex items-center gap-2">
+          {catalogButton}
+          <ed.AddButton label="Add Kit" />
+        </div>
       </div>
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       {cameraKits.map((kit) => (
         <Card key={kit.id}>
           <div className="flex items-start justify-between mb-3">
-            <div>
-              <div className="text-sm font-semibold text-[var(--text-primary)]">{kit.name}</div>
-              {kit.assignedShootDay && (
-                <Badge tone="info" className="mt-1">Day {kit.assignedShootDay}</Badge>
-              )}
+            <div className="flex items-start gap-3 min-w-0">
+              <EquipmentImage
+                imageUrl={kit.imageUrl}
+                presetId={kit.presetId}
+                manufacturer={kit.manufacturer}
+                size={44}
+              />
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-[var(--text-primary)] truncate">{kit.name}</div>
+                <div className="flex items-center gap-1 mt-1 flex-wrap">
+                  {kit.presetId && <Badge tone="ai">Catalog</Badge>}
+                  {kit.assignedShootDay && <Badge tone="info">Day {kit.assignedShootDay}</Badge>}
+                </div>
+              </div>
             </div>
-            <Camera size={16} className="text-[var(--text-muted)]" />
+            <Camera size={16} className="text-[var(--text-muted)] shrink-0" />
           </div>
           <div className="space-y-1.5">
             {kit.items.map((item, i) => (
@@ -107,6 +156,7 @@ function KitBuilder() {
       ))}
     </div>
       {ed.modal}
+      {catalog}
     </div>
   );
 }

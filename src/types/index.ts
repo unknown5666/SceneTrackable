@@ -171,6 +171,10 @@ export interface ProductionLocation {
   powerNotes?: string;
   costPerDay?: number;
   notes?: string;
+  /** Reference/scout photo — external URL or a small data-URI (see media fields). */
+  imageUrl?: string;
+  /** Google Maps URL or a plain address; falls back to `address` for the map button. */
+  mapUrl?: string;
   createdByAI?: boolean;
 }
 
@@ -182,7 +186,16 @@ export interface ShootDay {
   id: string;
   dayNumber: number;
   date: string; // ISO
+  /**
+   * Primary location. Kept as `locations[0]` for old consumers; `dayLocations()`
+   * in `lib/locations.ts` is the resolver everything new should use.
+   */
   location: string;
+  /**
+   * A day can span more than one location (a company move). Optional for
+   * backward compatibility — absent means the single `location` above.
+   */
+  locations?: string[];
   estimatedHours: number;
   scenes: string[]; // scene IDs
   banners?: { type: "meal" | "company_move" | "day_off"; label: string }[];
@@ -223,6 +236,10 @@ export interface CastMember {
   ratePerDay: number;
   agent?: string;
   contact?: string;
+  /** Headshot — external URL or a small data-URI. */
+  imageUrl?: string;
+  /** Tints the initials avatar when set. */
+  gender?: "M" | "F" | "NB" | "Other";
 }
 
 export type DoodMatrix = Record<string, Record<number, DoodStatus>>;
@@ -391,6 +408,10 @@ export interface RFEquipment {
   serial: string;
   status: "available" | "assigned" | "maintenance";
   assignedShootDay?: number;
+  /** Set when the record was created from the equipment catalog. */
+  presetId?: string;
+  manufacturer?: string;
+  imageUrl?: string;
 }
 
 // ============================================================
@@ -402,6 +423,33 @@ export interface CameraKit {
   name: string; // e.g. "A-Cam Alexa + Zooms"
   items: string[]; // free text lines
   assignedShootDay?: number;
+  /** Set when the kit was built from a catalog preset — carries its image. */
+  presetId?: string;
+  manufacturer?: string;
+  imageUrl?: string;
+}
+
+// ============================================================
+// DRONES / AERIAL
+// ============================================================
+
+export interface Drone {
+  id: string;
+  model: string;
+  manufacturer: string;
+  /** Set when created from a DJI/aerial catalog preset. */
+  presetId?: string;
+  imageUrl?: string;
+  serial?: string;
+  weightGrams?: number;
+  regStatus?: "not_required" | "registered" | "pending";
+  operatorName?: string;
+  operatorLicense?: string;
+  operatorRatePerDay?: number;
+  droneRatePerDay?: number;
+  assignedShootDay?: number;
+  status: "available" | "assigned" | "maintenance";
+  notes?: string;
 }
 
 export interface EquipmentCheckoutEntry {
@@ -448,7 +496,11 @@ export interface ArtElement {
   status: ArtElementStatus;
   cost?: number;
   notes?: string;
+  /** Reference photo — external URL or a small data-URI. */
+  imageUrl?: string;
   referenceImageIds?: string[];
+  /** True when suggested by the AI prop/wardrobe pass and accepted. */
+  createdByAI?: boolean;
 }
 
 export interface ContinuityPhoto {
@@ -552,7 +604,8 @@ export type ActivityEntity =
   | "location"
   | "vfx_shot"
   | "frequency"
-  | "rf_equipment";
+  | "rf_equipment"
+  | "drone";
 
 export interface ActivityLogEntry {
   id: string;
@@ -578,7 +631,12 @@ export type AIFeature =
   | "nl_query"
   | "task_proposals"
   | "location_bible"
-  | "schedule_draft";
+  | "schedule_draft"
+  // E4 — new GLM-flash-sized features, each via the proposal pattern.
+  | "call_sheet"
+  | "dood_draft"
+  | "art_suggestions"
+  | "location_scout";
 
 export interface AIUsageEntry {
   id: string;
@@ -599,6 +657,40 @@ export interface AIConfig {
   weeklyBudgetTokens?: number;
   monthlyBudgetTokens?: number;
   alertThresholdPct: number;
+}
+
+// ============================================================
+// AI BACKGROUND JOBS (E1) — non-blocking, resumable runs
+// ============================================================
+//
+// A long AI run (breakdown, schedule draft, the new chunked features) is
+// tracked here rather than in a component so navigating away never cancels it
+// and the TopBar pill can show it from anywhere. This state is transient: it
+// is deliberately not persisted, so an interrupted run reloads as *resumable*
+// (its results were saved incrementally), never as still-running.
+
+export type AIJobStatus =
+  | "idle"
+  | "running"
+  /** Stopped because the GLM allowance ran out (1113) — progress is kept. */
+  | "paused_limit"
+  | "done"
+  | "error";
+
+export interface AIJobState {
+  status: AIJobStatus;
+  /** Items finished / total for this run. */
+  progress: { done: number; total: number };
+  /** Human label for the pill, e.g. "Script breakdown". */
+  label: string;
+  /** Route the pill links to, so a click lands on the tab that owns the job. */
+  route?: string;
+  startedAt?: string;
+  finishedAt?: string;
+  /** Set on error/paused_limit. */
+  error?: string;
+  /** True when `error` is the permanent 1113 allowance-exhausted state. */
+  limitHit?: boolean;
 }
 
 // ============================================================
@@ -707,6 +799,7 @@ export interface ProductionData {
   frequencyPlan: FrequencyPlanEntry[];
   rfEquipment: RFEquipment[];
   cameraKits: CameraKit[];
+  drones: Drone[];
   equipmentCheckouts: EquipmentCheckoutEntry[];
   checklists: Checklist[];
   artElements: ArtElement[];

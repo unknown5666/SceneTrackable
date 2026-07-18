@@ -13,6 +13,7 @@ import {
 } from "@/data/schemas";
 import { Modal } from "./Modal";
 import { Button } from "./Button";
+import { ImageInput } from "./Media";
 
 interface Opt {
   value: string;
@@ -98,6 +99,26 @@ function Field({
             value={value ?? ""}
             placeholder={spec.placeholder}
             onChange={(e) => onChange(e.target.value)}
+          />
+        );
+
+      case "url":
+        return (
+          <input
+            type="url"
+            className="w-full"
+            value={value ?? ""}
+            placeholder={spec.placeholder ?? "https://…"}
+            onChange={(e) => onChange(e.target.value)}
+          />
+        );
+
+      case "image":
+        return (
+          <ImageInput
+            value={typeof value === "string" ? value : ""}
+            placeholder={spec.placeholder}
+            onChange={onChange}
           />
         );
 
@@ -247,11 +268,16 @@ export function RecordFormModal({
   editingId,
   open,
   onClose,
+  seed,
+  seedNonce = 0,
 }: {
   collection: RecordCollection;
   editingId: string | null;
   open: boolean;
   onClose: () => void;
+  /** Values to prefill a *new* record with (e.g. from the equipment catalog). */
+  seed?: Record<string, unknown> | null;
+  seedNonce?: number;
 }) {
   const schema = SCHEMAS[collection];
   const rows = useStore((s) => s[collection] as { id: string }[]);
@@ -261,17 +287,17 @@ export function RecordFormModal({
   const existing = editingId ? rows.find((r) => r.id === editingId) : undefined;
 
   const initial = useMemo(() => {
-    if (!existing) return defaultValues(collection);
+    if (!existing) return { ...defaultValues(collection), ...(seed ?? {}) };
     const rec = schema.toForm ? schema.toForm(existing) : existing;
     return { ...defaultValues(collection), ...rec };
-  }, [existing, collection, schema]);
+  }, [existing, collection, schema, seed]);
 
   const [values, setValues] = useState<Record<string, any>>(initial);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formKey, setFormKey] = useState("");
 
-  // Reset the form whenever the modal targets a different record.
-  const key = `${collection}:${editingId ?? "new"}:${open}`;
+  // Reset the form whenever the modal targets a different record (or a new seed).
+  const key = `${collection}:${editingId ?? "new"}:${open}:${seedNonce}`;
   if (key !== formKey) {
     setFormKey(key);
     setValues(initial);
@@ -356,6 +382,7 @@ const COLLECTION_PAGE: Record<RecordCollection, string> = {
   frequencyPlan: "rf",
   rfEquipment: "rf",
   cameraKits: "camera",
+  drones: "drones",
   equipmentCheckouts: "camera",
   checklists: "camera",
   artElements: "art",
@@ -367,6 +394,8 @@ export interface RecordEditor {
   canWrite: boolean;
   /** Open the modal to create a new record. */
   openNew: () => void;
+  /** Open the modal to create a new record, prefilled (e.g. from the catalog). */
+  openWith: (values: Record<string, unknown>) => void;
   /** Open the modal to edit an existing record. */
   openEdit: (id: string) => void;
   /** Delete a record after confirming. */
@@ -390,6 +419,8 @@ export interface RecordEditor {
 export function useRecordEditor(collection: RecordCollection): RecordEditor {
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [seed, setSeed] = useState<Record<string, unknown> | null>(null);
+  const [seedNonce, setSeedNonce] = useState(0);
   const deleteRecord = useStore((s) => s.deleteRecord);
   const writable = useStore((s) => canWrite(s, COLLECTION_PAGE[collection]));
   const schema = SCHEMAS[collection];
@@ -397,8 +428,21 @@ export function useRecordEditor(collection: RecordCollection): RecordEditor {
   const openNew = useCallback(() => {
     if (!writable) return;
     setEditingId(null);
+    setSeed(null);
+    setSeedNonce((n) => n + 1);
     setOpen(true);
   }, [writable]);
+
+  const openWith = useCallback(
+    (values: Record<string, unknown>) => {
+      if (!writable) return;
+      setEditingId(null);
+      setSeed(values);
+      setSeedNonce((n) => n + 1);
+      setOpen(true);
+    },
+    [writable]
+  );
 
   const openEdit = useCallback(
     (id: string) => {
@@ -457,6 +501,7 @@ export function useRecordEditor(collection: RecordCollection): RecordEditor {
   return {
     canWrite: writable,
     openNew,
+    openWith,
     openEdit,
     remove,
     AddButton,
@@ -467,6 +512,8 @@ export function useRecordEditor(collection: RecordCollection): RecordEditor {
         editingId={editingId}
         open={open}
         onClose={onClose}
+        seed={seed}
+        seedNonce={seedNonce}
       />
     ),
   };

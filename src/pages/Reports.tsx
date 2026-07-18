@@ -36,6 +36,7 @@ export function Reports() {
   const tasks = useStore((s) => s.tasks);
   const budgetLines = useStore((s) => s.budgetLines);
   const locations = useStore((s) => s.locations);
+  const drones = useStore((s) => s.drones);
   const activeProjectId = useStore((s) => s.activeProjectId);
   const project = useStore(activeProject);
   const recordAIUsage = useStore((s) => s.recordAIUsage);
@@ -54,8 +55,9 @@ export function Reports() {
         tasks,
         budgetLines,
         locations,
+        drones,
       } as unknown as ProductionData),
-    [production, crew, cast, scenes, shootDays, dood, tasks, budgetLines, locations]
+    [production, crew, cast, scenes, shootDays, dood, tasks, budgetLines, locations, drones]
   );
 
   const [preview, setPreview] = useState<ReportId | null>(null);

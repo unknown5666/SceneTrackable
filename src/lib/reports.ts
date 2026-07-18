@@ -1,6 +1,6 @@
 import type { ProductionData } from "@/types";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { scenesAtLocation } from "@/lib/locations";
+import { scenesAtLocation, dayLocations } from "@/lib/locations";
 
 // ============================================================
 // REPORTS — build tabular exports from a production dataset
@@ -19,7 +19,8 @@ export type ReportId =
   | "schedule"
   | "locations"
   | "budget"
-  | "tasks";
+  | "tasks"
+  | "drones";
 
 export interface ReportDef {
   id: ReportId;
@@ -195,7 +196,7 @@ export const REPORTS: ReportDef[] = [
           .map((day) => [
             cleanCell(day.dayNumber),
             day.date ? formatDate(day.date, { year: "numeric" }) : "",
-            cleanCell(day.location),
+            cleanCell(dayLocations(day).join(" → ")),
             cleanCell(day.estimatedHours),
             cleanCell(day.callTime),
             cleanCell(day.wrapTime),
@@ -318,6 +319,44 @@ export const REPORTS: ReportDef[] = [
         ]),
       };
     },
+  },
+  {
+    id: "drones",
+    title: "Aerial / Drones",
+    description: "Every drone with operator, licence, day rates, registration, and booked day.",
+    isEmpty: (d) => d.drones.length === 0,
+    build: (d) => ({
+      columns: [
+        "Manufacturer",
+        "Model",
+        "Serial",
+        "Weight (g)",
+        "Registration",
+        "Operator",
+        "Licence",
+        "Operator Rate/Day",
+        "Drone Rate/Day",
+        "Status",
+        "Booked Day",
+      ],
+      rows: d.drones.map((dr) => [
+        cleanCell(dr.manufacturer),
+        cleanCell(dr.model),
+        cleanCell(dr.serial),
+        cleanCell(dr.weightGrams),
+        cleanCell((dr.regStatus ?? "").replace(/_/g, " ")),
+        cleanCell(dr.operatorName),
+        cleanCell(dr.operatorLicense),
+        dr.operatorRatePerDay === undefined
+          ? ""
+          : formatCurrency(dr.operatorRatePerDay, d.production.currency),
+        dr.droneRatePerDay === undefined
+          ? ""
+          : formatCurrency(dr.droneRatePerDay, d.production.currency),
+        cleanCell(dr.status),
+        dr.assignedShootDay ? `Day ${dr.assignedShootDay}` : "",
+      ]),
+    }),
   },
 ];
 

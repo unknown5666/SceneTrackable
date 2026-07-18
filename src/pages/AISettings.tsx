@@ -28,6 +28,10 @@ const FEATURE_LABELS: Record<AIFeature, string> = {
   schedule_draft: "Schedule Draft",
   nl_query: "Ask the Production",
   report_narration: "Report Narration",
+  call_sheet: "Call Sheet Draft",
+  dood_draft: "DOOD Draft",
+  art_suggestions: "Prop / Wardrobe Ideas",
+  location_scout: "Location Scout Brief",
 };
 
 const FEATURE_EST: Record<AIFeature, { avgIn: number; avgOut: number; perUnit: string }> = {
@@ -41,6 +45,10 @@ const FEATURE_EST: Record<AIFeature, { avgIn: number; avgOut: number; perUnit: s
   schedule_draft: { avgIn: 8000, avgOut: 3000, perUnit: "per run" },
   nl_query: { avgIn: 8000, avgOut: 300, perUnit: "per question" },
   report_narration: { avgIn: 2500, avgOut: 250, perUnit: "per report" },
+  call_sheet: { avgIn: 2500, avgOut: 900, perUnit: "per day" },
+  dood_draft: { avgIn: 3000, avgOut: 1200, perUnit: "per run" },
+  art_suggestions: { avgIn: 2000, avgOut: 800, perUnit: "per character" },
+  location_scout: { avgIn: 2500, avgOut: 500, perUnit: "per location" },
 };
 
 export function AISettings() {
@@ -51,6 +59,14 @@ export function AISettings() {
   const totalIn = aiUsage.reduce((s, e) => s + e.inputTokens, 0);
   const totalOut = aiUsage.reduce((s, e) => s + e.outputTokens, 0);
   const totalCost = aiUsage.reduce((s, e) => s + e.costUsd, 0);
+
+  // Free-tier request budget — the limiter allows ~15 requests/minute and the
+  // account answers 1113 when the day's allowance is spent. This is the meter.
+  const now = Date.now();
+  const reqLastMinute = aiUsage.filter((e) => now - new Date(e.at).getTime() < 60_000).length;
+  const reqLastHour = aiUsage.filter((e) => now - new Date(e.at).getTime() < 3_600_000).length;
+  const RPM_CAP = 15;
+  const minutePct = Math.min(100, (reqLastMinute / RPM_CAP) * 100);
 
   // Usage by feature
   const byFeature = useMemo(() => {
@@ -132,6 +148,40 @@ export function AISettings() {
           <div className="data-value mt-1">${totalCost.toFixed(2)}</div>
         </Card>
       </div>
+
+      {/* Free-tier request meter */}
+      <Card>
+        <CardHeader
+          title="Free-tier request budget"
+          subtitle={`${MODEL} is paced to about ${RPM_CAP} requests/minute; the account answers error 1113 when the day's allowance is spent. A background run pauses on 1113 and keeps its progress — resume it from the AI tab once the allowance resets.`}
+        />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <div className="section-header">Requests · last minute</div>
+            <div className="data-value mt-1">
+              {reqLastMinute}
+              <span className="text-sm text-[var(--text-muted)]"> / {RPM_CAP}</span>
+            </div>
+            <div className="mt-2 h-1.5 rounded-full bg-[var(--bg-elevated)] overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all"
+                style={{
+                  width: `${minutePct}%`,
+                  background: minutePct > 85 ? "var(--color-warning)" : "var(--color-ai)",
+                }}
+              />
+            </div>
+          </div>
+          <div>
+            <div className="section-header">Requests · last hour</div>
+            <div className="data-value mt-1">{reqLastHour}</div>
+          </div>
+          <div>
+            <div className="section-header">Requests · total logged</div>
+            <div className="data-value mt-1">{aiUsage.length}</div>
+          </div>
+        </div>
+      </Card>
 
       {/* Chart */}
       <Card>

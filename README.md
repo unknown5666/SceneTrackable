@@ -67,3 +67,18 @@ To add someone: **Admin → Users → Invite**, and give them the 8-character co
 ## Backups
 
 Admin → Data → **Download backup** exports the whole workspace as JSON; **Restore backup** replaces it.
+
+## v2 additions
+
+- **Multi-location shoot days.** A day can span a company move; the strip board groups its scenes under per-location sub-headers, and scenes at a location the day doesn't cover show as **off-location** (badged, draggable, never hidden) rather than disappearing.
+- **Equipment catalog.** "Add from catalog" on Camera and RF/Comms prefills records from an industry-standard set (ARRI/RED/Sony/Canon/Blackmagic/Panasonic bodies, Sennheiser/Shure/Lectrosonics/Teradek/Hollyland/Eartec) with inline SVG illustrations. Records carry a `presetId` only; illustrations are drawn, not stored.
+- **Drones tab.** DJI-led presets with weight and camera specs, operator/licence/day-rate tracking, day booking, and a one-click **Send to budget** (Camera · Aerial).
+- **Media fields.** `url` and `image` field types (URL-first, uploads downscaled to a ≤50 KB JPEG data-URI), with `ImageThumb`, `MapEmbed`, and a gender-tinted cast avatar.
+- **Resilient AI.** Long runs report to a store-level job registry so a slim TopBar pill shows progress from any page and navigation never cancels a run; a free-tier request meter and 1113 allowance-paused UX are on AI Settings. New GLM-flash features: prop/wardrobe suggestions (Art), location scout brief (Locations), DOOD draft and printable call sheet (Schedule).
+
+### Future / TODO (v2 §F extras not yet built)
+
+- Insertable meal / company-move banner **strips** between scenes on a day (auto company-move dividers exist; manual meal breaks don't yet).
+- Day-strip colouring by the full industry INT/EXT + time convention (white / yellow / blue / green).
+- Equipment **checkout linkage** — checkout entries referencing catalog records by `presetId`.
+- One-line schedule PDF via the printable-sheet path (call-sheet PDF is done).

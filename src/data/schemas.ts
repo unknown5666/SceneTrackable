@@ -19,6 +19,7 @@ export type RecordCollection =
   | "frequencyPlan"
   | "rfEquipment"
   | "cameraKits"
+  | "drones"
   | "equipmentCheckouts"
   | "checklists"
   | "artElements"
@@ -35,7 +36,11 @@ export type FieldType =
   | "checkbox"
   | "date"
   | "time"
-  | "tags";
+  | "tags"
+  /** An https URL — validated, empty allowed. */
+  | "url"
+  /** A URL or a small downscaled data-URI, with a file picker + preview. */
+  | "image";
 
 /** Where a select/multiselect/combo pulls its options from at render time. */
 export type OptionSource =
@@ -146,6 +151,15 @@ export const SCHEMAS: Record<RecordCollection, RecordSchema> = {
         help: "Drives location_lock(…) task deadlines.",
       },
       { key: "address", label: "Address", type: "text", wide: true },
+      {
+        key: "mapUrl",
+        label: "Map",
+        type: "url",
+        wide: true,
+        placeholder: "Google Maps link (falls back to the address)",
+        help: "A Maps URL or embed. Leave blank to map the address above.",
+      },
+      { key: "imageUrl", label: "Scout Photo", type: "image", wide: true },
       { key: "contactName", label: "Contact", type: "text" },
       { key: "contactPhone", label: "Contact Phone", type: "text" },
       { key: "costPerDay", label: "Cost / Day", type: "number", step: 0.01, min: 0 },
@@ -173,13 +187,14 @@ export const SCHEMAS: Record<RecordCollection, RecordSchema> = {
       { key: "dayNumber", label: "Day Number", type: "number", required: true, min: 1, step: 1 },
       { key: "date", label: "Date", type: "date", required: true },
       {
-        key: "location",
-        label: "Location",
-        type: "combo",
+        key: "locations",
+        label: "Locations",
+        type: "multiselect",
         optionsFrom: "locations",
         required: true,
-        placeholder: "Stage 4 / Riverside Ext.",
-        help: "Pick a known location or type a new one.",
+        wide: true,
+        help: "One or more — a day can span a company move between locations.",
+        default: [],
       },
       { key: "estimatedHours", label: "Estimated Hours", type: "number", step: 0.5, min: 0, default: 12 },
       { key: "callTime", label: "Call Time", type: "time" },
@@ -187,7 +202,22 @@ export const SCHEMAS: Record<RecordCollection, RecordSchema> = {
       { key: "weather", label: "Weather", type: "text", placeholder: "Clear, 18°C" },
       { key: "scenes", label: "Scenes", type: "multiselect", optionsFrom: "scenes", wide: true },
     ],
-    fromForm: (v, prev) => ({ ...v, banners: prev?.banners ?? [] }),
+    // A day can span several locations, but `location` (the first) is still
+    // written for every old consumer; `dayLocations()` is the resolver new code
+    // reads. `toForm` seeds the multiselect from a single-location legacy record.
+    toForm: (r) => ({
+      ...r,
+      locations: r.locations?.length ? r.locations : r.location ? [r.location] : [],
+    }),
+    fromForm: (v, prev) => {
+      const locations: string[] = Array.isArray(v.locations) ? v.locations.filter(Boolean) : [];
+      return {
+        ...v,
+        locations,
+        location: locations[0] ?? v.location ?? "",
+        banners: prev?.banners ?? [],
+      };
+    },
   },
 
   // ----------------------------------------------------------
@@ -303,6 +333,7 @@ export const SCHEMAS: Record<RecordCollection, RecordSchema> = {
     label: (r) => `${r.type} ${r.model}`,
     fields: [
       { key: "type", label: "Type", type: "text", required: true, placeholder: "Wireless TX / IFB / Video TX" },
+      { key: "manufacturer", label: "Manufacturer", type: "text", placeholder: "Sennheiser" },
       { key: "model", label: "Model", type: "text", required: true },
       { key: "serial", label: "Serial", type: "text", required: true },
       {
@@ -313,6 +344,7 @@ export const SCHEMAS: Record<RecordCollection, RecordSchema> = {
         default: "available",
       },
       { key: "assignedShootDay", label: "Assigned Day", type: "select", optionsFrom: "shootDays" },
+      { key: "imageUrl", label: "Photo", type: "image", wide: true },
     ],
   },
 
@@ -324,7 +356,9 @@ export const SCHEMAS: Record<RecordCollection, RecordSchema> = {
     label: (r) => r.name,
     fields: [
       { key: "name", label: "Kit Name", type: "text", required: true, placeholder: "A-Cam Alexa + Zooms" },
+      { key: "manufacturer", label: "Manufacturer", type: "text", placeholder: "ARRI" },
       { key: "assignedShootDay", label: "Assigned Day", type: "select", optionsFrom: "shootDays" },
+      { key: "imageUrl", label: "Photo", type: "image", wide: true },
       {
         key: "items",
         label: "Items",
@@ -333,6 +367,41 @@ export const SCHEMAS: Record<RecordCollection, RecordSchema> = {
         help: "One item per line.",
         default: [],
       },
+    ],
+  },
+
+  // ----------------------------------------------------------
+  drones: {
+    singular: "Drone",
+    idPrefix: "drone",
+    entity: "drone",
+    label: (r) => `${r.manufacturer ? `${r.manufacturer} ` : ""}${r.model}`,
+    fields: [
+      { key: "manufacturer", label: "Manufacturer", type: "text", placeholder: "DJI" },
+      { key: "model", label: "Model", type: "text", required: true, placeholder: "Mavic 3 Pro" },
+      { key: "serial", label: "Serial", type: "text" },
+      { key: "weightGrams", label: "Weight (g)", type: "number", step: 1, min: 0 },
+      {
+        key: "regStatus",
+        label: "Registration",
+        type: "select",
+        options: ["not_required", "registered", "pending"],
+        default: "not_required",
+      },
+      {
+        key: "status",
+        label: "Status",
+        type: "select",
+        options: ["available", "assigned", "maintenance"],
+        default: "available",
+      },
+      { key: "assignedShootDay", label: "Assigned Day", type: "select", optionsFrom: "shootDays" },
+      { key: "operatorName", label: "Operator", type: "text", placeholder: "Licensed pilot" },
+      { key: "operatorLicense", label: "Operator License", type: "text", placeholder: "CAA / FAA #" },
+      { key: "operatorRatePerDay", label: "Operator Rate / Day", type: "number", step: 0.01, min: 0 },
+      { key: "droneRatePerDay", label: "Drone Rate / Day", type: "number", step: 0.01, min: 0 },
+      { key: "imageUrl", label: "Photo", type: "image", wide: true },
+      { key: "notes", label: "Notes", type: "textarea", wide: true },
     ],
   },
 
@@ -407,6 +476,7 @@ export const SCHEMAS: Record<RecordCollection, RecordSchema> = {
       },
       { key: "characterName", label: "Character", type: "select", optionsFrom: "cast" },
       { key: "cost", label: "Cost", type: "number", step: 0.01, min: 0 },
+      { key: "imageUrl", label: "Reference Photo", type: "image", wide: true },
       { key: "sceneIds", label: "Scenes", type: "multiselect", optionsFrom: "scenes", wide: true },
       { key: "notes", label: "Notes", type: "textarea", wide: true },
     ],
@@ -439,6 +509,15 @@ export function defaultValues(collection: RecordCollection): Record<string, unkn
   return out;
 }
 
+/** A URL field's value is valid when empty, a data-URI, or an http(s) URL. */
+function urlFieldError(label: string, type: FieldType, value: unknown): string | null {
+  if (typeof value !== "string" || value.trim() === "") return null;
+  const v = value.trim();
+  if (type === "image" && v.startsWith("data:image/")) return null;
+  if (/^https?:\/\/.+/i.test(v)) return null;
+  return `${label} must be a full URL (https://…)`;
+}
+
 /** Returns a map of field key -> error message. Empty when valid. */
 export function validate(
   collection: RecordCollection,
@@ -446,11 +525,19 @@ export function validate(
 ): Record<string, string> {
   const errors: Record<string, string> = {};
   for (const f of SCHEMAS[collection].fields) {
-    if (!f.required) continue;
     const v = values[f.key];
-    const empty =
-      v === "" || v === undefined || v === null || (Array.isArray(v) && v.length === 0);
-    if (empty) errors[f.key] = `${f.label} is required`;
+    if (f.required) {
+      const empty =
+        v === "" || v === undefined || v === null || (Array.isArray(v) && v.length === 0);
+      if (empty) {
+        errors[f.key] = `${f.label} is required`;
+        continue;
+      }
+    }
+    if (f.type === "url" || f.type === "image") {
+      const err = urlFieldError(f.label, f.type, v);
+      if (err) errors[f.key] = err;
+    }
   }
   return errors;
 }

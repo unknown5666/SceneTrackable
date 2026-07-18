@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useRecordEditor } from "@/components/ui/RecordEditor";
+import { ImageThumb, MapEmbed, MapLink } from "@/components/ui/Media";
 import {
   ProposalPicker,
   defaultSelection,
@@ -15,9 +16,10 @@ import {
 import { scenesAtLocation } from "@/lib/locations";
 import { runLocationPass } from "@/lib/script";
 import { locationExists, locationFromProposal } from "@/lib/proposals";
-import type { ProposedLocation } from "@/lib/claude";
+import { aiLocationScout, isAllowanceExhausted, type ProposedLocation } from "@/lib/claude";
+import { Sparkles as SparklesIcon, Loader2 as Loader2Icon, Check as CheckIcon } from "lucide-react";
 import { formatDate, cn } from "@/lib/utils";
-import type { LocationPermitStatus, ProductionLocation } from "@/types";
+import type { LocationPermitStatus, ProductionLocation, Scene } from "@/types";
 
 const STATUS_TONE: Record<LocationPermitStatus, "muted" | "info" | "warning" | "success" | "neutral"> = {
   scouting: "muted",
@@ -44,6 +46,7 @@ export function Locations() {
 
   const [expanded, setExpanded] = useState<string | null>(null);
   const [rebuildOpen, setRebuildOpen] = useState(false);
+  const [scout, setScout] = useState<{ loc: ProductionLocation; scenes: Scene[] } | null>(null);
 
   const rows = useMemo(
     () =>
@@ -146,6 +149,7 @@ export function Locations() {
                         </td>
                         <td className="font-medium">
                           <div className="flex items-center gap-2">
+                            <ImageThumb src={loc.imageUrl} alt={loc.name} size={30} enlarge={false} />
                             {loc.name}
                             {loc.createdByAI && <Badge tone="ai">AI</Badge>}
                           </div>
@@ -179,7 +183,16 @@ export function Locations() {
                       {expanded === loc.id && (
                         <tr>
                           <td colSpan={8} className="bg-[var(--bg-elevated)]">
-                            <LocationDetail loc={loc} scenes={at} days={days.map((d) => d.dayNumber)} />
+                            <LocationDetail
+                              loc={loc}
+                              scenes={at}
+                              days={days.map((d) => d.dayNumber)}
+                              onScout={
+                                ed.canWrite && at.length > 0
+                                  ? () => setScout({ loc, scenes: at })
+                                  : undefined
+                              }
+                            />
                           </td>
                         </tr>
                       )}
@@ -211,6 +224,7 @@ export function Locations() {
 
       {ed.modal}
       <RebuildModal open={rebuildOpen} onClose={() => setRebuildOpen(false)} />
+      <ScoutBriefModal data={scout} onClose={() => setScout(null)} />
     </div>
   );
 }
@@ -219,15 +233,36 @@ function LocationDetail({
   loc,
   scenes,
   days,
+  onScout,
 }: {
   loc: ProductionLocation;
   scenes: { id: string; number: string; intExt: string; timeOfDay: string; synopsis: string }[];
   days: number[];
+  onScout?: () => void;
 }) {
   return (
     <div className="p-4 space-y-3">
+      {onScout && (
+        <div className="flex justify-end">
+          <Button variant="ai" size="sm" onClick={onScout}>
+            <SparklesIcon size={14} /> Scout brief (AI)
+          </Button>
+        </div>
+      )}
+      {(loc.imageUrl || loc.mapUrl || loc.address) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {loc.imageUrl && (
+            <ImageThumb src={loc.imageUrl} alt={loc.name} size={160} rounded="rounded-lg" className="w-full" />
+          )}
+          <MapEmbed value={loc.mapUrl} address={loc.address} height={160} />
+        </div>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-        <DetailBit label="Address" value={loc.address} />
+        <DetailBit
+          label="Address"
+          value={loc.address}
+          extra={<MapLink value={loc.mapUrl} address={loc.address} />}
+        />
         <DetailBit
           label="Contact"
           value={[loc.contactName, loc.contactPhone].filter(Boolean).join(" · ")}
@@ -258,10 +293,158 @@ function LocationDetail({
   );
 }
 
-function DetailBit({ label, value }: { label: string; value?: string }) {
+// ============================================================
+// AI LOCATION SCOUT BRIEF (E4)
+//
+// One small call over a single location's scenes → a review-and-apply brief
+// that fills the location's own notes fields. Never a silent overwrite: the
+// producer edits the proposed text before it's saved.
+// ============================================================
+function ScoutBriefModal({
+  data,
+  onClose,
+}: {
+  data: { loc: ProductionLocation; scenes: Scene[] } | null;
+  onClose: () => void;
+}) {
+  const project = useStore(activeProject);
+  const updateRecord = useStore((s) => s.updateRecord);
+  const recordAIUsage = useStore((s) => s.recordAIUsage);
+
+  const [busy, setBusy] = useState(false);
+  const [limit, setLimit] = useState(false);
+  const [error, setError] = useState("");
+  const [notes, setNotes] = useState("");
+  const [parking, setParking] = useState("");
+  const [power, setPower] = useState("");
+  const [ran, setRan] = useState("");
+
+  const loc = data?.loc;
+
+  // Seed the form when a location's modal opens; clear the marker on close so
+  // reopening the same location re-seeds from the current record.
+  if (data && ran !== loc!.id) {
+    setRan(loc!.id);
+    setNotes(loc!.notes ?? "");
+    setParking(loc!.parkingNotes ?? "");
+    setPower(loc!.powerNotes ?? "");
+    setError("");
+    setLimit(false);
+  } else if (!data && ran !== "") {
+    setRan("");
+  }
+
+  const run = async () => {
+    if (!data) return;
+    setBusy(true);
+    setError("");
+    setLimit(false);
+    try {
+      const digest = data.scenes
+        .map((s) => `Sc.${s.number} ${s.intExt}. ${s.location} — ${s.timeOfDay}: ${s.synopsis}`)
+        .join("\n")
+        .slice(0, 4000);
+      const { brief, result } = await aiLocationScout(data.loc.name, digest, project?.name);
+      recordAIUsage({
+        feature: "location_scout",
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        model: result.model,
+        costUsd: result.costUsd,
+      });
+      if (brief) {
+        const permit = brief.permitNotes ? `\nPermits/access: ${brief.permitNotes}` : "";
+        setNotes([data.loc.notes, `${brief.summary}${permit}`].filter(Boolean).join("\n\n"));
+        if (brief.parkingNotes) setParking(brief.parkingNotes);
+        if (brief.powerNotes) setPower(brief.powerNotes);
+      }
+    } catch (err) {
+      if (isAllowanceExhausted(err)) setLimit(true);
+      else setError((err as Error).message || "The scout brief failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const apply = () => {
+    if (!loc) return;
+    updateRecord("locations", loc.id, {
+      ...loc,
+      notes: notes.trim() || undefined,
+      parkingNotes: parking.trim() || undefined,
+      powerNotes: power.trim() || undefined,
+    });
+    onClose();
+  };
+
+  return (
+    <Modal
+      open={!!data}
+      onClose={busy ? () => undefined : onClose}
+      size="lg"
+      title={`Scout brief — ${loc?.name ?? ""}`}
+      subtitle="One AI pass over this location's scenes. Edit the draft, then apply it to the notes."
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button onClick={apply} disabled={busy}>
+            <CheckIcon size={14} /> Apply to notes
+          </Button>
+          <Button variant="ai" onClick={run} disabled={busy}>
+            {busy ? <Loader2Icon size={14} className="animate-spin" /> : <SparklesIcon size={14} />}
+            {busy ? "Reading scenes…" : "Draft brief"}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        {limit && (
+          <div className="text-xs text-[var(--color-warning)]">
+            GLM free allowance exhausted — try again once it resets. Your notes are unchanged.
+          </div>
+        )}
+        {error && <div className="text-xs text-[var(--color-danger)]">{error}</div>}
+        <div>
+          <label className="section-header block mb-1.5">Notes</label>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            className="w-full min-h-[110px]"
+            placeholder="Run the brief, or write your own."
+          />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="section-header block mb-1.5">Parking</label>
+            <textarea value={parking} onChange={(e) => setParking(e.target.value)} className="w-full min-h-[70px]" />
+          </div>
+          <div>
+            <label className="section-header block mb-1.5">Power</label>
+            <textarea value={power} onChange={(e) => setPower(e.target.value)} className="w-full min-h-[70px]" />
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function DetailBit({
+  label,
+  value,
+  extra,
+}: {
+  label: string;
+  value?: string;
+  extra?: React.ReactNode;
+}) {
   return (
     <div>
-      <div className="section-header">{label}</div>
+      <div className="section-header flex items-center gap-2">
+        {label}
+        {extra}
+      </div>
       <div className="text-[var(--text-secondary)] mt-0.5 whitespace-pre-wrap">
         {value || <span className="text-[var(--text-muted)]">—</span>}
       </div>

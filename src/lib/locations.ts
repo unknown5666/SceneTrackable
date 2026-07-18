@@ -1,9 +1,35 @@
 import { useMemo } from "react";
 import { useStore } from "@/state/store";
-import type { ProductionLocation, Scene } from "@/types";
+import type { ProductionLocation, Scene, ShootDay } from "@/types";
 
 /** Case/whitespace-insensitive key for matching location names across sources. */
 export const locKey = (v: string): string => v.trim().toLowerCase();
+
+/**
+ * Every location a shoot day covers. A day may span more than one place (a
+ * company move), and old records only carry the single `location` string, so
+ * this is the one resolver everything — the strip board, DOOD, reports and
+ * exports — reads instead of `day.location` directly. Empty means "no location
+ * set", which by convention holds any scene.
+ */
+export function dayLocations(day: ShootDay): string[] {
+  if (day.locations?.length) return day.locations.filter(Boolean);
+  return day.location ? [day.location] : [];
+}
+
+/**
+ * Does this scene play on this day, by location?
+ *
+ * A day with no location set holds any scene. Otherwise the scene's location
+ * must be one of the day's — matched case/whitespace-insensitively. A scene
+ * assigned to a day but at a location NOT in its list is *off-location*: still
+ * shown and draggable, never hidden (see the strip board).
+ */
+export function sceneMatchesDay(scene: Scene, day: ShootDay): boolean {
+  const locs = dayLocations(day).map(locKey);
+  if (locs.length === 0) return true;
+  return locs.includes(locKey(scene.location));
+}
 
 /**
  * Every location name the production already knows about, de-duplicated and
@@ -44,7 +70,7 @@ export function useLocationNames(): string[] {
         if (el.category === "locations") addDerived(el.name);
       }
     }
-    for (const d of shootDays) addDerived(d.location);
+    for (const d of shootDays) for (const l of dayLocations(d)) addDerived(l);
     for (const k of Object.keys(locationLockDates ?? {})) addDerived(k);
 
     canonical.sort((a, b) => a.localeCompare(b));

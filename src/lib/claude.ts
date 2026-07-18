@@ -75,6 +75,24 @@ export class ClaudeApiError extends Error {
   }
 }
 
+/**
+ * The 1113 allowance-exhausted state, recognised from a thrown error. It is
+ * permanent for the session, so a background job that hits it *pauses* (keeping
+ * its progress) rather than failing or auto-retrying. Detected from the message
+ * because that's all the error carries by the time it reaches a feature.
+ */
+export function isAllowanceExhausted(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err ?? "");
+  return /\(1113\)|no balance|allowance is exhausted|allowance exhausted/i.test(msg);
+}
+
+/** A transient rate-limit (429/1302) rather than a permanent allowance fault. */
+export function isRateLimited(err: unknown): boolean {
+  if (err instanceof ClaudeApiError && err.status === 429) return true;
+  const msg = err instanceof Error ? err.message : String(err ?? "");
+  return /rate-limit|1302|429/i.test(msg);
+}
+
 export interface ClaudeCallOptions {
   system: string;
   user: string;
@@ -1064,6 +1082,8 @@ export interface ProposedDay {
   dayNumber: number;
   date: string; // YYYY-MM-DD
   location: string;
+  /** A day may cover more than one nearby location with a company move. */
+  locations?: string[];
   sceneNumbers: string[];
   estimatedHours: number;
   rationale?: string;
@@ -1084,6 +1104,7 @@ const SCHEDULE_SCHEMA: Record<string, unknown> = {
           dayNumber: { type: "number" },
           date: { type: "string" },
           location: { type: "string" },
+          locations: { type: "array", items: { type: "string" } },
           sceneNumbers: { type: "array", items: { type: "string" } },
           estimatedHours: { type: "number" },
           rationale: { type: "string" },
@@ -1106,7 +1127,8 @@ Rules for the output:
 - Use only the scene numbers you are given, exactly as given. Every scene appears at most once. It is fine to leave scenes unplaced — a short honest board beats a full invented one.
 - dayNumber starts at 1 and increases by 1 with no gaps.
 - date: consecutive shooting days from the start date given, Monday-Friday only. Skip weekends.
-- location: the canonical location name for that day's scenes.
+- location: the canonical location name for that day's primary block of scenes.
+- locations: when a day deliberately covers a short company move between two nearby locations, list all of that day's locations here (primary first). Only do this when the moved-to scenes are light and the move genuinely saves a day — otherwise omit it and keep one location per day.
 - estimatedHours: what the day realistically takes, from page count and what the scenes demand. A 12-hour day is standard; more than 14 is a red flag.
 - rationale: one short sentence on why these scenes are together on this day.`;
 
@@ -1129,14 +1151,23 @@ export async function aiScheduleDraft(
     days = Array.isArray(parsed.days)
       ? parsed.days
           .filter((d: ProposedDay) => d && Array.isArray(d.sceneNumbers))
-          .map((d: ProposedDay) => ({
-            dayNumber: Number(d.dayNumber),
-            date: String(d.date ?? "").slice(0, 10),
-            location: String(d.location ?? "").trim(),
-            sceneNumbers: d.sceneNumbers.map(String),
-            estimatedHours: Number(d.estimatedHours) || 12,
-            rationale: d.rationale ? String(d.rationale) : undefined,
-          }))
+          .map((d: ProposedDay) => {
+            const locations = Array.isArray(d.locations)
+              ? d.locations.map((l) => String(l).trim()).filter(Boolean)
+              : [];
+            const location = String(d.location ?? "").trim() || locations[0] || "";
+            return {
+              dayNumber: Number(d.dayNumber),
+              date: String(d.date ?? "").slice(0, 10),
+              location,
+              // Keep a locations list only when it genuinely has more than the
+              // primary — a single-entry list is just `location`.
+              locations: locations.length > 1 ? locations : undefined,
+              sceneNumbers: d.sceneNumbers.map(String),
+              estimatedHours: Number(d.estimatedHours) || 12,
+              rationale: d.rationale ? String(d.rationale) : undefined,
+            };
+          })
       : [];
   } catch {
     if (!result.fromMock) throw new ClaudeApiError("Could not parse the schedule as JSON.");
@@ -1228,6 +1259,304 @@ export async function aiAskProduction(
     maxTokens: 700,
   });
   return { answer: result.text.trim(), result };
+}
+
+// ============================================================
+// E4 — GLM-flash-sized proposal features
+//
+// Each is a single small-JSON call (or one call per item, chunked by the
+// caller through the background job runner). All follow the house rule: the
+// model proposes, the user reviews, the store is only written on accept.
+// ============================================================
+
+// ---- Prop / wardrobe suggestions (one call per character) ----
+export interface ProposedArtElement {
+  name: string;
+  category: "wardrobe" | "prop" | "set_dressing" | "makeup";
+  notes?: string;
+}
+
+const ART_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  additionalProperties: false,
+  required: ["elements"],
+  properties: {
+    elements: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["name", "category"],
+        properties: {
+          name: { type: "string" },
+          category: { type: "string", enum: ["wardrobe", "prop", "set_dressing", "makeup"] },
+          notes: { type: "string" },
+        },
+      },
+    },
+  },
+};
+
+const ART_SYSTEM = `You are a costume designer and prop master reading one character's scenes to list the wardrobe and props they need.
+- Propose only items the scenes actually justify — a named prop they handle, a costume the action or time implies, makeup a stunt or continuity needs.
+- Keep it to a reviewable handful (up to ~10), most important first. No generic "a shirt" filler.
+- category is one of: wardrobe, prop, set_dressing, makeup.
+- notes: one short clause on why or which scene, when useful.`;
+
+/** One character's likely wardrobe/props. Throws on live-API failure. */
+export async function aiArtSuggestions(
+  characterName: string,
+  sceneDigest: string,
+  existingNames: string[],
+  projectName?: string
+): Promise<{ elements: ProposedArtElement[]; result: ClaudeResult }> {
+  const result = await callClaude({
+    feature: "art_suggestions",
+    system: ART_SYSTEM,
+    user: `${projectName ? `PRODUCTION: ${projectName}\n` : ""}CHARACTER: ${characterName}
+${existingNames.length ? `ALREADY TRACKED (don't repeat): ${existingNames.join(", ")}\n` : ""}
+THEIR SCENES:
+${sceneDigest}`,
+    maxTokens: 1200,
+    jsonSchema: ART_SCHEMA,
+  });
+  let elements: ProposedArtElement[] = [];
+  try {
+    const parsed = JSON.parse(extractJson(result.text));
+    if (Array.isArray(parsed.elements)) {
+      elements = parsed.elements
+        .filter((e: any) => e && e.name)
+        .map((e: any) => ({
+          name: String(e.name).trim(),
+          category: ["wardrobe", "prop", "set_dressing", "makeup"].includes(e.category)
+            ? e.category
+            : "prop",
+          notes: e.notes ? String(e.notes) : undefined,
+        }));
+    }
+  } catch {
+    if (!result.fromMock) throw new ClaudeApiError("Could not parse the suggestions as JSON.");
+  }
+  return { elements, result };
+}
+
+// ---- Location scout brief (one call per location) ----
+export interface LocationScoutBrief {
+  summary: string;
+  parkingNotes?: string;
+  powerNotes?: string;
+  permitNotes?: string;
+}
+
+const SCOUT_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  additionalProperties: false,
+  required: ["summary"],
+  properties: {
+    summary: { type: "string" },
+    parkingNotes: { type: "string" },
+    powerNotes: { type: "string" },
+    permitNotes: { type: "string" },
+  },
+};
+
+const SCOUT_SYSTEM = `You are a location manager writing a short scout brief for one location from the scenes that shoot there.
+- Infer the practical requirements the scenes imply: power draw (night exteriors, big lighting), parking and base-camp needs (crew size, vehicles), and permit/access flags (public street, minors, weapons, drones, road closures).
+- Be concrete and brief. Every claim must trace to something in the scenes — never invent a detail the scenes don't support. If a field has nothing to say, omit it.
+- summary: 1–2 sentences on what shooting here demands. The note fields: one short line each.`;
+
+/** A per-location scout brief. Throws on live-API failure. */
+export async function aiLocationScout(
+  locationName: string,
+  sceneDigest: string,
+  projectName?: string
+): Promise<{ brief: LocationScoutBrief | null; result: ClaudeResult }> {
+  const result = await callClaude({
+    feature: "location_scout",
+    weight: "light",
+    system: SCOUT_SYSTEM,
+    user: `${projectName ? `PRODUCTION: ${projectName}\n` : ""}LOCATION: ${locationName}
+
+SCENES HERE:
+${sceneDigest}`,
+    maxTokens: 700,
+    jsonSchema: SCOUT_SCHEMA,
+  });
+  let brief: LocationScoutBrief | null = null;
+  try {
+    const parsed = JSON.parse(extractJson(result.text));
+    if (parsed && parsed.summary) {
+      brief = {
+        summary: String(parsed.summary).trim(),
+        parkingNotes: parsed.parkingNotes ? String(parsed.parkingNotes).trim() : undefined,
+        powerNotes: parsed.powerNotes ? String(parsed.powerNotes).trim() : undefined,
+        permitNotes: parsed.permitNotes ? String(parsed.permitNotes).trim() : undefined,
+      };
+    }
+  } catch {
+    if (!result.fromMock) throw new ClaudeApiError("Could not parse the scout brief as JSON.");
+  }
+  return { brief, result };
+}
+
+// ---- DOOD draft (one call over the cast × day grid) ----
+export const DOOD_DRAFT_STATUSES = ["W", "H", "SW", "WF", "SWF", "T", "OFF"] as const;
+export interface ProposedDoodEntry {
+  castRole: string;
+  day: number;
+  status: (typeof DOOD_DRAFT_STATUSES)[number];
+}
+
+const DOOD_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  additionalProperties: false,
+  required: ["entries"],
+  properties: {
+    entries: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["castRole", "day", "status"],
+        properties: {
+          castRole: { type: "string" },
+          day: { type: "number" },
+          status: { type: "string", enum: DOOD_DRAFT_STATUSES },
+        },
+      },
+    },
+  },
+};
+
+const DOOD_SYSTEM = `You are a 1st AD filling in a Day Out Of Days grid from which cast work which shoot days.
+- For each cast member: SW on their first working day, WF on their last, W on working days in between that they appear, H on non-working days that fall between their start and finish (they're held), and OFF outside that span. If a member works only one day, use SWF.
+- Only use the day numbers and cast roles you are given. Never invent a day a cast member works.
+- Return one entry per cell you want to set. Skip cells that should stay OFF outside a member's span.`;
+
+/** One pass over the cast×day grid. Throws on live-API failure. */
+export async function aiDoodDraft(
+  digest: string,
+  projectName?: string
+): Promise<{ entries: ProposedDoodEntry[]; result: ClaudeResult }> {
+  const result = await callClaude({
+    feature: "dood_draft",
+    system: DOOD_SYSTEM,
+    user: `${projectName ? `PRODUCTION: ${projectName}\n\n` : ""}${digest}`,
+    maxTokens: 4000,
+    jsonSchema: DOOD_SCHEMA,
+  });
+  let entries: ProposedDoodEntry[] = [];
+  try {
+    const parsed = JSON.parse(extractJson(result.text));
+    if (Array.isArray(parsed.entries)) {
+      entries = parsed.entries
+        .filter((e: any) => e && e.castRole && Number.isFinite(Number(e.day)))
+        .map((e: any) => ({
+          castRole: String(e.castRole).trim(),
+          day: Number(e.day),
+          status: (DOOD_DRAFT_STATUSES as readonly string[]).includes(e.status) ? e.status : "W",
+        }));
+    }
+  } catch {
+    if (!result.fromMock) throw new ClaudeApiError("Could not parse the DOOD draft as JSON.");
+  }
+  return { entries, result };
+}
+
+// ---- Call-sheet draft (one call per shoot day) ----
+export interface ProposedCallSheet {
+  generalCall?: string;
+  scenes: { number: string; description: string }[];
+  cast: { character: string; pickupOrCall?: string }[];
+  departmentNotes: { department: string; note: string }[];
+  advanceSchedule?: string;
+}
+
+const CALLSHEET_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  additionalProperties: false,
+  required: ["scenes", "cast", "departmentNotes"],
+  properties: {
+    generalCall: { type: "string" },
+    scenes: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["number", "description"],
+        properties: { number: { type: "string" }, description: { type: "string" } },
+      },
+    },
+    cast: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["character"],
+        properties: { character: { type: "string" }, pickupOrCall: { type: "string" } },
+      },
+    },
+    departmentNotes: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["department", "note"],
+        properties: { department: { type: "string" }, note: { type: "string" } },
+      },
+    },
+    advanceSchedule: { type: "string" },
+  },
+};
+
+const CALLSHEET_SYSTEM = `You are a 1st AD drafting a call sheet for one shoot day from its scenes and cast.
+- Order the scenes as a shooting order for the day (usually grouped by set, exteriors first when weather is a risk).
+- Suggest a general crew call time, and a sensible pickup/on-set order for the cast (leads and heavy-makeup roles earliest).
+- departmentNotes: only the departments the day actually loads (e.g. SFX for a gun scene, makeup for a beat, transport for a company move). No generic housekeeping.
+- advanceSchedule: one line on what the next day looks like, if you were told.
+- Use only the scenes, cast and details you are given. Never invent a time you have no basis for — leave it out instead.`;
+
+/** A structured call sheet for one day. Throws on live-API failure. */
+export async function aiCallSheet(
+  dayDigest: string,
+  projectName?: string
+): Promise<{ sheet: ProposedCallSheet | null; result: ClaudeResult }> {
+  const result = await callClaude({
+    feature: "call_sheet",
+    system: CALLSHEET_SYSTEM,
+    user: `${projectName ? `PRODUCTION: ${projectName}\n\n` : ""}${dayDigest}`,
+    maxTokens: 2500,
+    jsonSchema: CALLSHEET_SCHEMA,
+  });
+  let sheet: ProposedCallSheet | null = null;
+  try {
+    const parsed = JSON.parse(extractJson(result.text));
+    if (parsed && Array.isArray(parsed.scenes)) {
+      sheet = {
+        generalCall: parsed.generalCall ? String(parsed.generalCall) : undefined,
+        scenes: parsed.scenes
+          .filter((s: any) => s && s.number)
+          .map((s: any) => ({ number: String(s.number), description: String(s.description ?? "") })),
+        cast: Array.isArray(parsed.cast)
+          ? parsed.cast
+              .filter((c: any) => c && c.character)
+              .map((c: any) => ({
+                character: String(c.character),
+                pickupOrCall: c.pickupOrCall ? String(c.pickupOrCall) : undefined,
+              }))
+          : [],
+        departmentNotes: Array.isArray(parsed.departmentNotes)
+          ? parsed.departmentNotes
+              .filter((d: any) => d && d.department && d.note)
+              .map((d: any) => ({ department: String(d.department), note: String(d.note) }))
+          : [],
+        advanceSchedule: parsed.advanceSchedule ? String(parsed.advanceSchedule) : undefined,
+      };
+    }
+  } catch {
+    if (!result.fromMock) throw new ClaudeApiError("Could not parse the call sheet as JSON.");
+  }
+  return { sheet, result };
 }
 
 // ------------------------------------------------------------
