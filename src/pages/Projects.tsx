@@ -332,7 +332,7 @@ export function Projects() {
                           }
                           if (e.key === "Escape") setRenaming(null);
                         }}
-                        className="h-7 text-sm w-full"
+                        className="h-7 text-sm w-full px-2 py-0 leading-none"
                         autoFocus
                       />
                       <button onClick={() => setRenaming(null)} className="text-[var(--text-muted)]">
