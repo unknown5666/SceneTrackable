@@ -181,7 +181,7 @@ export function CloudSync({ embedded }: { embedded?: boolean } = {}) {
               </Button>
               <Button
                 variant="secondary"
-                onClick={() => run(() => pushWorkspace(), "Workspace uploaded.")}
+                onClick={() => run(() => pushWorkspace(true), "Workspace uploaded.")}
                 disabled={busy}
               >
                 <CloudUpload size={14} /> Force upload
