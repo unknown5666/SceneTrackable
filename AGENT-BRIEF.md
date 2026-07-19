@@ -114,6 +114,10 @@ DOOD, budget, tasks, departments, reports. Rebranded from an earlier "Production
   shared `intExtChip`/`IntExtBadge`/`TimeBadge` coding. Strip board grid + Tasks kanban scroll in their own `overflow-x-auto`.
 
 ## Conventions / gotchas
+- **Small `<select>` clip gotcha:** the global `input,textarea,select` rule in `index.css` sets `padding: 8px 12px`. A `<select>`
+  given a fixed short height (e.g. `h-7`) with `box-sizing: border-box` then has too little content box for its line — the
+  value renders clipped to its top half. Fix per-select with `px-1.5 py-0 leading-none` (see the Category select in
+  `Breakdown.tsx` element table). Watch for this on any compact/inline select.
 - Reference files as clickable links in replies. Match surrounding code style; keep comment density similar.
 - Add `data-tour="key"` when a new element should be tour-spotlightable (and, if it's a page, a step in `data/tour.ts`).
 - When adding a page, register the route in `src/App.tsx` (under `<MainLayout>`, wrap with `AccessGuard`/`AdminGuard` as needed)
