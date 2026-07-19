@@ -563,3 +563,152 @@ export async function runBreakdown(
     locations: loc.locations,
   };
 }
+
+// ------------------------------------------------------------
+// Retry — Pass 2 only, over a subset of scenes
+// ------------------------------------------------------------
+export interface RetryBreakdownResult {
+  /** Only the retried scenes, each carrying its freshly extracted elements. */
+  scenes: Scene[];
+  usage: Omit<AIUsageEntry, "id" | "at">[];
+  fromMock: boolean;
+  failedScenes: { sceneNumber: string; error: string }[];
+}
+
+/**
+ * Re-runs the scene-breakdown pass for a specific set of scenes, reusing an
+ * already-computed character bible. This is the "retry the missing scenes"
+ * path: the character/location passes aren't repeated, so a handful of scenes
+ * that fell back to the offline heuristic (a rate-limit blip, a dropped batch)
+ * can be re-analyzed live without redoing the whole script.
+ */
+export async function retryBreakdownScenes(
+  scenes: Scene[],
+  characterBible: ScriptCharacter[],
+  projectName?: string,
+  onProgress?: (p: BreakdownProgress) => void,
+  onSceneDone?: (e: SceneBreakdownEvent) => void
+): Promise<RetryBreakdownResult> {
+  const usage: Omit<AIUsageEntry, "id" | "at">[] = [];
+  const failedScenes: { sceneNumber: string; error: string }[] = [];
+  let anyMock = false;
+  let done = 0;
+  let currentSceneNumber = scenes[0]?.number ?? "";
+
+  const report = (waitingSeconds?: number) =>
+    onProgress?.({ done, total: scenes.length, currentSceneNumber, stage: "scenes", waitingSeconds });
+  const onWait = (seconds: number) => report(seconds);
+  report();
+
+  const toElements = (
+    els: { name: string; category: string; subCategory?: string; description?: string; notes?: string }[]
+  ) =>
+    els.map((e) => ({
+      id: id("el"),
+      name: e.name,
+      category: e.category as ElementCategory,
+      subCategory: e.subCategory,
+      description: e.description,
+      notes: e.notes,
+    }));
+
+  const out = new Map<string, Scene>();
+  const finish = (scene: Scene, elements: BreakdownElement[], duration: number, synopsis?: string) => {
+    out.set(scene.id, {
+      ...scene,
+      elements,
+      synopsis: synopsis ?? scene.synopsis,
+      estimatedShootMinutes: duration || scene.estimatedShootMinutes,
+      vfxFlags: elements.some((e) => e.category === "vfx"),
+      sfxFlags: elements.some((e) => e.category === "sfx"),
+    });
+  };
+
+  const batches = chunk(scenes, BREAKDOWN_BATCH_SIZE);
+  await mapWithConcurrency(batches, BREAKDOWN_CONCURRENCY, async (batch) => {
+    try {
+      const { proposals: got, result } = await aiBreakdownBatch(batch, {
+        characterBible,
+        projectName,
+        onWait,
+      });
+      if (result.fromMock) anyMock = true;
+      usage.push({
+        feature: "script_breakdown",
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        model: result.model,
+        costUsd: result.costUsd,
+      });
+      for (const scene of batch) {
+        const p = got.get(scene.number);
+        let fallback = false;
+        if (p) {
+          finish(scene, toElements(p.elements), p.estimated_duration_minutes || scene.estimatedShootMinutes, p.synopsis);
+        } else {
+          failedScenes.push({ sceneNumber: scene.number, error: "The AI returned no entry for this scene." });
+          const fb = demoBreakdown(scene);
+          finish(scene, toElements(fb.elements), fb.estimated_duration_minutes);
+          fallback = true;
+        }
+        done += 1;
+        currentSceneNumber = scene.number;
+        report();
+        onSceneDone?.({ sceneId: scene.id, number: scene.number, elements: out.get(scene.id)!.elements, fallback });
+      }
+    } catch (err) {
+      const message = (err as Error).message || "Unknown error";
+      for (const scene of batch) {
+        failedScenes.push({ sceneNumber: scene.number, error: message });
+        const fb = demoBreakdown(scene);
+        finish(scene, toElements(fb.elements), fb.estimated_duration_minutes);
+        done += 1;
+        currentSceneNumber = scene.number;
+        report();
+        onSceneDone?.({ sceneId: scene.id, number: scene.number, elements: out.get(scene.id)!.elements, fallback: true });
+      }
+    }
+  });
+
+  return { scenes: scenes.map((s) => out.get(s.id)!), usage, fromMock: anyMock, failedScenes };
+}
+
+// ------------------------------------------------------------
+// Failure classification — is a retry worth waiting for?
+// ------------------------------------------------------------
+export interface AICooldown {
+  kind: "rate" | "allowance";
+  /** Suggested wait before the retry has a chance of succeeding. */
+  seconds: number;
+}
+
+/**
+ * Looks at the scenes that fell back and decides whether the cause was a
+ * provider limit worth cooling down on. A rate limit (free tier is 15 RPM)
+ * clears in about a minute; an exhausted allowance is effectively permanent,
+ * but we still surface a long timer so the run offers a clear next step
+ * instead of silently giving up. Returns null when nothing suggests a limit
+ * (or when the run was demo-only, where retrying wouldn't change anything).
+ */
+export function classifyAIFailure(
+  failedScenes: { sceneNumber: string; error: string }[],
+  fromMock: boolean
+): AICooldown | null {
+  if (fromMock || failedScenes.length === 0) return null;
+  return classifyAIError(failedScenes.map((f) => f.error).join(" "));
+}
+
+/**
+ * Same classification for a single error message (e.g. a one-shot draft that
+ * failed) — is the cause a provider limit worth waiting out, and for how long?
+ */
+export function classifyAIError(message: string): AICooldown | null {
+  const blob = (message || "").toLowerCase();
+  if (/allowance|quota|1113|insufficient|exhaust|out of credit/.test(blob)) {
+    return { kind: "allowance", seconds: 300 };
+  }
+  if (/rate|429|too many|limit|throttl|overload|timeout|timed out|network|fetch/.test(blob)) {
+    return { kind: "rate", seconds: 60 };
+  }
+  return null;
+}

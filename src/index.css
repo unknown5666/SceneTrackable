@@ -78,6 +78,54 @@ body {
 }
 
 /* ============================================================
+   AMBIENT GRADIENT BACKGROUND (opt-in via Settings)
+   A fixed wash that sits behind the app content (which lives above the
+   base bg) and blends the chosen tint + accent into `--bg-base`. Off by
+   default; toggled with [data-bg] / [data-bg-animate] on <html>.
+   ============================================================ */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 500ms ease;
+  --bg-grad-a: var(--bg-grad-color, var(--accent-blue));
+  --bg-grad-b: var(--accent-blue);
+  background:
+    radial-gradient(60% 55% at 15% 12%, color-mix(in srgb, var(--bg-grad-a) 42%, transparent), transparent 70%),
+    radial-gradient(55% 50% at 88% 18%, color-mix(in srgb, var(--bg-grad-b) 32%, transparent), transparent 72%),
+    radial-gradient(65% 60% at 50% 105%, color-mix(in srgb, var(--bg-grad-a) 26%, transparent), transparent 72%);
+  background-color: var(--bg-base);
+  background-size: 200% 200%;
+  background-position: 0% 50%, 100% 0%, 50% 100%;
+}
+:root[data-bg="gradient"] body::before {
+  opacity: 1;
+}
+/* The app shell paints the base color by default; in gradient mode it goes
+   transparent so the body wash shows through behind the surfaces/cards. */
+.app-shell {
+  background: var(--bg-base);
+}
+:root[data-bg="gradient"] .app-shell {
+  background: transparent;
+}
+:root[data-bg="gradient"][data-bg-animate="on"] body::before {
+  animation: st-bg-shift 26s ease-in-out infinite;
+}
+@keyframes st-bg-shift {
+  0%,
+  100% {
+    background-position: 0% 50%, 100% 0%, 50% 100%;
+  }
+  50% {
+    background-position: 100% 50%, 0% 100%, 50% 0%;
+  }
+}
+
+/* ============================================================
    SCROLLBAR
    ============================================================ */
 ::-webkit-scrollbar {

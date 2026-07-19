@@ -61,6 +61,60 @@ import {
   registerRehydrate,
 } from "@/lib/cloud";
 import { pushToast } from "@/lib/toast";
+import { navigateTo } from "@/lib/nav";
+import {
+  runBreakdown,
+  retryBreakdownScenes,
+  classifyAIFailure,
+  type BreakdownProgress,
+} from "@/lib/script";
+import type { ProposedLocation, ScriptCharacter as ScriptChar } from "@/lib/claude";
+
+/** One scene's extracted elements, as fed to the breakdown theater. */
+export interface BreakdownSceneResult {
+  elements: BreakdownElement[];
+  /** True when this scene used the offline heuristic (worth retrying live). */
+  fallback: boolean;
+}
+
+/**
+ * The live script-breakdown run, hoisted out of the Projects modal so it keeps
+ * running — and stays reviewable/retryable — after the dialog is closed or the
+ * user navigates away. Transient (never persisted).
+ */
+export interface BreakdownRunState {
+  projectId: string;
+  projectName?: string;
+  /** Parsed scenes, for the theater grid and for retrying by id. */
+  scenes: Scene[];
+  results: Record<string, BreakdownSceneResult>;
+  progress: BreakdownProgress | null;
+  status: "running" | "done" | "error";
+  startedAt: number;
+  runSeconds: number;
+  /** True while a retry-the-missing-scenes pass is in flight. */
+  retrying: boolean;
+  // Source metadata, committed to the project's script record on completion.
+  source: "pdf" | "paste";
+  fileName?: string;
+  rawText: string;
+  pageCount?: number;
+  // Completion payload (proposals to review, plus diagnostics).
+  characters: ScriptChar[];
+  locations: ProposedLocation[];
+  failedScenes: { sceneNumber: string; error: string }[];
+  usedDemo: boolean;
+  error?: string;
+  /**
+   * When the provider is rate-limited/out of allowance, the epoch-ms after
+   * which a retry is worth attempting. Drives the "try again in Xs" countdown.
+   */
+  cooldownUntil?: number;
+  /** Kind of pause, for the message + whether auto-retry makes sense. */
+  cooldownKind?: "rate" | "allowance";
+  /** Auto-fire the retry the moment the cooldown elapses. */
+  autoRetry: boolean;
+}
 
 /**
  * `access` is what every page guard reads, so it is never authored directly —
@@ -299,6 +353,12 @@ interface State extends ProductionData {
    * running. See the E1 job actions below.
    */
   aiJobs: Record<string, AIJobState>;
+  /**
+   * The live script-breakdown run. Lifted out of the Projects modal so the run
+   * keeps going — and stays reviewable — after the user closes the dialog or
+   * navigates away. Transient (stripped from persistence, like `aiJobs`).
+   */
+  breakdownRun: BreakdownRunState | null;
 
   // ------------------------------------------------------------
   // Auth actions
@@ -424,6 +484,24 @@ interface State extends ProductionData {
   aiJobFail: (key: string, error: string) => void;
   aiJobReset: (key: string) => void;
 
+  // ---- Background script breakdown ----
+  /** Kick off a full breakdown that survives closing the dialog / navigation. */
+  startBreakdownRun: (input: {
+    projectId: string;
+    projectName?: string;
+    scenes: Scene[];
+    source: "pdf" | "paste";
+    fileName?: string;
+    rawText: string;
+    pageCount?: number;
+  }) => Promise<void>;
+  /** Re-run only the scenes that fell back to the offline heuristic. */
+  retryBreakdownScenes: () => Promise<void>;
+  /** Toggle auto-retry-on-cooldown-elapse for the current run. */
+  setBreakdownAutoRetry: (on: boolean) => void;
+  /** Discard the run once the user has reviewed (or dismissed) it. */
+  clearBreakdownRun: () => void;
+
   toggleChecklistItem: (checklistId: string, itemId: string, byUserId: string) => void;
   assignRFEquipmentToDay: (equipmentId: string, day: number | null) => void;
   assignKitToDay: (kitId: string, day: number | null) => void;
@@ -469,6 +547,7 @@ export const useStore = create<State>()(
       aiUsage: [],
       aiConfig: { alertThresholdPct: 80 },
       aiJobs: {},
+      breakdownRun: null,
 
       // ========================================================
       // AUTH
@@ -1292,6 +1371,208 @@ export const useStore = create<State>()(
           return { aiJobs: next };
         }),
 
+      // ---- Background script breakdown ----
+      startBreakdownRun: async (input) => {
+        const { projectId, projectName, scenes, source, fileName, rawText, pageCount } = input;
+        const startedAt = Date.now();
+        set({
+          breakdownRun: {
+            projectId,
+            projectName,
+            scenes,
+            results: {},
+            progress: { done: 0, total: scenes.length, currentSceneNumber: "", stage: "characters" },
+            status: "running",
+            startedAt,
+            runSeconds: 0,
+            retrying: false,
+            source,
+            fileName,
+            rawText,
+            pageCount,
+            characters: [],
+            locations: [],
+            failedScenes: [],
+            usedDemo: false,
+            autoRetry: true,
+          },
+        });
+        // Track in the global job registry so the TopBar pill renders it from
+        // any page; the route deep-links back to the review dialog.
+        get().aiJobBegin("script_breakdown", {
+          label: "Script breakdown",
+          total: scenes.length,
+          route: "/projects?review=1",
+        });
+
+        try {
+          const res = await runBreakdown(
+            scenes,
+            (p) => {
+              set((s) => (s.breakdownRun ? { breakdownRun: { ...s.breakdownRun, progress: p } } : {}));
+              get().aiJobProgress("script_breakdown", p.done, p.total);
+            },
+            projectName,
+            (e) => {
+              set((s) =>
+                s.breakdownRun
+                  ? {
+                      breakdownRun: {
+                        ...s.breakdownRun,
+                        results: {
+                          ...s.breakdownRun.results,
+                          [e.sceneId]: { elements: e.elements, fallback: e.fallback },
+                        },
+                      },
+                    }
+                  : {}
+              );
+            }
+          );
+
+          const runSeconds = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
+          // Land results on the run's project. switchProject is a no-op when it
+          // is already active (the common path); if the user browsed to another
+          // project mid-run it puts the results where they belong.
+          get().switchProject(projectId);
+          get().replaceScenes(res.scenes);
+          get().setCharacterBible(res.characters);
+          get().setProjectScript({
+            fileName: source === "pdf" ? fileName : undefined,
+            rawText,
+            uploadedAt: new Date().toISOString(),
+            pageCount,
+            source,
+          });
+          res.usage.forEach((u) => get().recordAIUsage(u));
+          get().aiJobDone("script_breakdown");
+
+          const cooldown = classifyAIFailure(res.failedScenes, res.fromMock);
+          set((s) =>
+            s.breakdownRun
+              ? {
+                  breakdownRun: {
+                    ...s.breakdownRun,
+                    status: "done",
+                    runSeconds,
+                    characters: res.characters,
+                    locations: res.locations,
+                    failedScenes: res.failedScenes,
+                    usedDemo: res.fromMock,
+                    cooldownUntil: cooldown ? Date.now() + cooldown.seconds * 1000 : undefined,
+                    cooldownKind: cooldown?.kind,
+                  },
+                }
+              : {}
+          );
+
+          const elementCount = res.scenes.reduce((n, sc) => n + sc.elements.length, 0);
+          pushToast({
+            title: "Breakdown complete",
+            description:
+              res.failedScenes.length > 0
+                ? `${res.scenes.length} scenes · ${res.failedScenes.length} need a retry`
+                : `${res.scenes.length} scenes · ${elementCount} elements`,
+            tone: res.failedScenes.length > 0 ? "warning" : "success",
+            action: { label: "Review", run: () => navigateTo("/projects?review=1") },
+          });
+        } catch (e) {
+          const msg = (e as Error).message || "Breakdown failed.";
+          get().aiJobFail("script_breakdown", msg);
+          set((s) => (s.breakdownRun ? { breakdownRun: { ...s.breakdownRun, status: "error", error: msg } } : {}));
+          pushToast({ title: "Breakdown failed", description: msg, tone: "danger" });
+        }
+      },
+
+      retryBreakdownScenes: async () => {
+        const run = get().breakdownRun;
+        if (!run || run.retrying) return;
+        // Everything that used the offline heuristic is worth another live pass.
+        const targets = run.scenes.filter((sc) => run.results[sc.id]?.fallback);
+        if (targets.length === 0) return;
+
+        set({
+          breakdownRun: { ...run, retrying: true, cooldownUntil: undefined, cooldownKind: undefined },
+        });
+        get().aiJobBegin("script_breakdown", {
+          label: `Retrying ${targets.length} scene${targets.length === 1 ? "" : "s"}`,
+          total: targets.length,
+          route: "/projects?review=1",
+        });
+
+        try {
+          const res = await retryBreakdownScenes(
+            targets,
+            run.characters,
+            run.projectName,
+            (p) => get().aiJobProgress("script_breakdown", p.done, p.total),
+            (e) => {
+              set((s) =>
+                s.breakdownRun
+                  ? {
+                      breakdownRun: {
+                        ...s.breakdownRun,
+                        results: {
+                          ...s.breakdownRun.results,
+                          [e.sceneId]: { elements: e.elements, fallback: e.fallback },
+                        },
+                      },
+                    }
+                  : {}
+              );
+            }
+          );
+
+          // Merge the retried scenes back into the project's scene list.
+          get().switchProject(run.projectId);
+          const byId = new Map(res.scenes.map((sc) => [sc.id, sc]));
+          const merged = get().scenes.map((sc) => byId.get(sc.id) ?? sc);
+          get().replaceScenes(merged);
+          res.usage.forEach((u) => get().recordAIUsage(u));
+          get().aiJobDone("script_breakdown");
+
+          const cooldown = classifyAIFailure(res.failedScenes, res.fromMock);
+          set((s) => {
+            if (!s.breakdownRun) return {};
+            const stillFailed = new Set(res.failedScenes.map((f) => f.sceneNumber));
+            // Keep any earlier failures that weren't in this retry batch.
+            const carried = s.breakdownRun.failedScenes.filter(
+              (f) => !targets.some((t) => t.number === f.sceneNumber)
+            );
+            return {
+              breakdownRun: {
+                ...s.breakdownRun,
+                retrying: false,
+                failedScenes: [...carried, ...res.failedScenes.filter((f) => stillFailed.has(f.sceneNumber))],
+                usedDemo: s.breakdownRun.usedDemo && res.fromMock,
+                cooldownUntil: cooldown ? Date.now() + cooldown.seconds * 1000 : undefined,
+                cooldownKind: cooldown?.kind,
+              },
+            };
+          });
+
+          const remaining = get().breakdownRun?.failedScenes.length ?? 0;
+          pushToast({
+            title: remaining > 0 ? "Some scenes still need a retry" : "All scenes analyzed",
+            description:
+              remaining > 0
+                ? `${remaining} scene${remaining === 1 ? "" : "s"} left`
+                : "Every scene is now broken down live.",
+            tone: remaining > 0 ? "warning" : "success",
+          });
+        } catch (e) {
+          const msg = (e as Error).message || "Retry failed.";
+          get().aiJobFail("script_breakdown", msg);
+          set((s) => (s.breakdownRun ? { breakdownRun: { ...s.breakdownRun, retrying: false } } : {}));
+          pushToast({ title: "Retry failed", description: msg, tone: "danger" });
+        }
+      },
+
+      setBreakdownAutoRetry: (on) =>
+        set((s) => (s.breakdownRun ? { breakdownRun: { ...s.breakdownRun, autoRetry: on } } : {})),
+
+      clearBreakdownRun: () => set({ breakdownRun: null }),
+
       // ---- Checklists ----
       toggleChecklistItem: (checklistId, itemId, byUserId) =>
         set((s) => ({
@@ -1641,11 +1922,12 @@ export const useStore = create<State>()(
       name: "scenetrackable-v1",
       storage: createJSONStorage(() => localStorage),
       version: 5,
-      // aiJobs is deliberately transient: on reload an interrupted run must
-      // present as resumable (its results were saved incrementally), never as
-      // still-running against a promise that no longer exists.
+      // aiJobs / breakdownRun are deliberately transient: on reload an
+      // interrupted run must present as resumable (its results were saved
+      // incrementally), never as still-running against a promise that no
+      // longer exists.
       partialize: (state) => {
-        const { aiJobs: _aiJobs, ...rest } = state;
+        const { aiJobs: _aiJobs, breakdownRun: _breakdownRun, ...rest } = state;
         return rest as State;
       },
       migrate: (persisted, from) => {

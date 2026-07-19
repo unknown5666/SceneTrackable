@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Outlet, Navigate, useLocation } from "react-router-dom";
+import { Outlet, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
@@ -11,12 +11,37 @@ import { Toaster } from "@/components/ui/Toaster";
 import { useStore } from "@/state/store";
 import { useIsDesktop } from "@/lib/useMediaQuery";
 import { resumeCloud } from "@/lib/cloud";
+import { setNavigator } from "@/lib/nav";
 
 export function MainLayout() {
   const userId = useStore((s) => s.currentUserId);
   const pinned = useStore((s) => s.sidebarPinned);
   const desktop = useIsDesktop();
   const location = useLocation();
+  const navigate = useNavigate();
+
+  // Bridge react-router navigation to non-component callers (store/toasts) —
+  // e.g. the "Review" action on the background-breakdown completion toast.
+  useEffect(() => {
+    setNavigator(navigate);
+    return () => setNavigator(null);
+  }, [navigate]);
+
+  // Background auto-retry: when a breakdown parked on a provider limit and the
+  // user left auto-retry armed, fire the retry once the cooldown elapses —
+  // regardless of which page they're on or whether the dialog is open.
+  const cooldownUntil = useStore((s) => s.breakdownRun?.cooldownUntil);
+  const autoRetryArmed = useStore((s) => s.breakdownRun?.autoRetry);
+  useEffect(() => {
+    if (!cooldownUntil || !autoRetryArmed) return;
+    const iv = setInterval(() => {
+      const r = useStore.getState().breakdownRun;
+      if (r?.cooldownUntil && r.autoRetry && !r.retrying && Date.now() >= r.cooldownUntil) {
+        void useStore.getState().retryBreakdownScenes();
+      }
+    }, 1000);
+    return () => clearInterval(iv);
+  }, [cooldownUntil, autoRetryArmed]);
   const reduce = useReducedMotion();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -46,7 +71,7 @@ export function MainLayout() {
   if (!userId) return <Navigate to="/login" replace />;
 
   return (
-    <div className="min-h-screen" style={{ background: "var(--bg-base)" }}>
+    <div className="app-shell min-h-screen">
       <Sidebar mobileOpen={mobileOpen} onCloseMobile={() => setMobileOpen(false)} />
       <div
         style={{ marginLeft: desktop ? (pinned ? 240 : 64) : 0 }}

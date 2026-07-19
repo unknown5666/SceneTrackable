@@ -5,9 +5,11 @@ import { Card } from "@/components/ui/Card";
 import { HelpButton } from "@/components/ui/HelpButton";
 import {
   ACCENTS,
+  BG_COLORS,
   readAppearance,
   saveAppearance,
   type Density,
+  type BackgroundMode,
 } from "@/lib/appearance";
 import { cn } from "@/lib/utils";
 
@@ -85,7 +87,7 @@ export function Settings() {
         </div>
 
         {/* Density */}
-        <div>
+        <div className="mb-6">
           <div className="text-xs font-medium text-[var(--text-secondary)] mb-2">Density</div>
           <div className="inline-flex rounded-lg border border-[var(--border-default)] p-0.5">
             {(["comfortable", "compact"] as Density[]).map((d) => (
@@ -103,6 +105,80 @@ export function Settings() {
               </button>
             ))}
           </div>
+        </div>
+
+        {/* Background */}
+        <div>
+          <div className="text-xs font-medium text-[var(--text-secondary)] mb-2">Background</div>
+          <div className="inline-flex rounded-lg border border-[var(--border-default)] p-0.5 mb-3">
+            {(
+              [
+                { v: "solid", label: "Solid" },
+                { v: "gradient", label: "Gradient" },
+              ] as { v: BackgroundMode; label: string }[]
+            ).map((o) => (
+              <button
+                key={o.v}
+                onClick={() => update({ background: o.v })}
+                className={cn(
+                  "px-3.5 h-8 rounded-md text-xs font-medium transition-colors",
+                  appearance.background === o.v
+                    ? "bg-[var(--active-tint)] text-[var(--accent-blue)]"
+                    : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                )}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+
+          {appearance.background === "gradient" && (
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2.5">
+                {BG_COLORS.map((c) => {
+                  const active = appearance.bgColor.toLowerCase() === c.value.toLowerCase();
+                  return (
+                    <button
+                      key={c.value}
+                      onClick={() => update({ bgColor: c.value })}
+                      title={c.name}
+                      className="w-9 h-9 rounded-full flex items-center justify-center transition-transform hover:scale-110"
+                      style={{
+                        background: c.value,
+                        boxShadow: active ? `0 0 0 2px var(--bg-surface), 0 0 0 4px ${c.value}` : "none",
+                      }}
+                      aria-label={c.name}
+                    >
+                      {active && <Check size={16} className="text-white" />}
+                    </button>
+                  );
+                })}
+                {/* Any color */}
+                <label
+                  className="w-9 h-9 rounded-full border border-[var(--border-default)] grid place-items-center cursor-pointer overflow-hidden relative"
+                  title="Custom color"
+                  style={{ background: appearance.bgColor }}
+                >
+                  <input
+                    type="color"
+                    value={appearance.bgColor}
+                    onChange={(e) => update({ bgColor: e.target.value })}
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                  />
+                </label>
+              </div>
+
+              <label className="inline-flex items-center gap-2 text-xs text-[var(--text-secondary)] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={appearance.bgAnimate}
+                  onChange={(e) => update({ bgAnimate: e.target.checked })}
+                  className="accent-[var(--accent-blue)]"
+                />
+                Slowly shift the gradient
+              </label>
+            </div>
+          )}
         </div>
       </Card>
     </div>
