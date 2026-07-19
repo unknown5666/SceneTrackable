@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useRef } from "react";
+import React, { useMemo, useState, useRef, useEffect } from "react";
 import {
   FolderKanban,
   Plus,
@@ -11,10 +11,14 @@ import {
   Film,
   Pencil,
   X,
+  Minimize2,
+  RefreshCw,
+  Clock,
+  AlertTriangle,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { useStore } from "@/state/store";
+import { useStore, type BreakdownRunState } from "@/state/store";
 import { staggerContainer, staggerItem } from "@/lib/motion";
 import { ProjectPoster } from "@/components/ui/ProjectPoster";
 import { Card } from "@/components/ui/Card";
@@ -24,11 +28,10 @@ import { Modal } from "@/components/ui/Modal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { LoadSampleButton } from "@/components/ui/LoadSampleButton";
 import { formatDate } from "@/lib/utils";
-import { parseScreenplay, runBreakdown, type BreakdownProgress } from "@/lib/script";
+import { parseScreenplay } from "@/lib/script";
 import {
   BreakdownTheater,
   TheaterSummary,
-  type TheaterResult,
 } from "@/components/breakdown/BreakdownTheater";
 import { extractPdfText } from "@/lib/pdf";
 import type { ProposedLocation, ScriptCharacter } from "@/lib/claude";
@@ -47,7 +50,9 @@ import type { Scene } from "@/types";
 
 const CURRENCIES = ["AED", "USD", "EUR", "GBP", "INR", "CAD"];
 
-type UploadStage = "input" | "parsing" | "parsed" | "running" | "done" | "error";
+// Only the pre-run stages are local now; the run itself (running/done/error)
+// lives in the store as `breakdownRun`, so it survives closing this dialog.
+type UploadStage = "input" | "parsing" | "parsed" | "error";
 
 export function Projects() {
   const nav = useNavigate();
@@ -57,18 +62,15 @@ export function Projects() {
   const switchProject = useStore((s) => s.switchProject);
   const deleteProject = useStore((s) => s.deleteProject);
   const renameProject = useStore((s) => s.renameProject);
-  const setProjectScript = useStore((s) => s.setProjectScript);
-  const replaceScenes = useStore((s) => s.replaceScenes);
-  const recordAIUsage = useStore((s) => s.recordAIUsage);
-  const setCharacterBible = useStore((s) => s.setCharacterBible);
   const addCastMember = useStore((s) => s.addCastMember);
   const addRecord = useStore((s) => s.addRecord);
   const cast = useStore((s) => s.cast);
   const storeLocations = useStore((s) => s.locations);
-  const aiJobBegin = useStore((s) => s.aiJobBegin);
-  const aiJobProgress = useStore((s) => s.aiJobProgress);
-  const aiJobDone = useStore((s) => s.aiJobDone);
-  const aiJobFail = useStore((s) => s.aiJobFail);
+
+  // The background breakdown run + its controls.
+  const breakdownRun = useStore((s) => s.breakdownRun);
+  const startBreakdownRun = useStore((s) => s.startBreakdownRun);
+  const clearBreakdownRun = useStore((s) => s.clearBreakdownRun);
 
   // Create modal
   const [createOpen, setCreateOpen] = useState(false);
@@ -88,33 +90,70 @@ export function Projects() {
   const [rawText, setRawText] = useState("");
   const [parsed, setParsed] = useState<Scene[]>([]);
   const [pageCount, setPageCount] = useState<number | undefined>(undefined);
-  const [progress, setProgress] = useState<BreakdownProgress | null>(null);
-  // Live per-scene results for the breakdown theater, and the run clock.
-  const [theaterResults, setTheaterResults] = useState<Record<string, TheaterResult>>({});
-  const [runSeconds, setRunSeconds] = useState(0);
-  const runStartRef = useRef(0);
   const [errorMsg, setErrorMsg] = useState("");
-  const [usedDemo, setUsedDemo] = useState(false);
-  const [failedScenes, setFailedScenes] = useState<{ sceneNumber: string; error: string }[]>([]);
-  const [foundCharacters, setFoundCharacters] = useState<ScriptCharacter[]>([]);
-  const [foundLocations, setFoundLocations] = useState<ProposedLocation[]>([]);
+  // Reopening the run view (theater/proposals) without a fresh upload — from
+  // the resume bar or the TopBar pill's `?review=1` deep link.
+  const [reviewOpen, setReviewOpen] = useState(false);
+  // Proposal selections, seeded when a run completes.
   const [castSel, setCastSel] = useState<Set<string>>(new Set());
   const [locSel, setLocSel] = useState<Set<string>>(new Set());
   const fileInput = useRef<HTMLInputElement>(null);
 
+  const [params, setParams] = useSearchParams();
+
+  // Deep link from the pill / completion toast opens the run view.
+  useEffect(() => {
+    if (params.get("review") && breakdownRun) {
+      setReviewOpen(true);
+      const next = new URLSearchParams(params);
+      next.delete("review");
+      setParams(next, { replace: true });
+    }
+  }, [params, breakdownRun, setParams]);
+
+  // Seed the accept-these-records selections once a run finishes. Keyed on the
+  // run's start time so a retry (which doesn't change the cast/locations) never
+  // stomps a selection the user is mid-edit on.
+  const doneStamp = breakdownRun?.status === "done" ? breakdownRun.startedAt : 0;
+  useEffect(() => {
+    if (!breakdownRun || breakdownRun.status !== "done") return;
+    setCastSel(
+      defaultSelection(
+        breakdownRun.characters
+          .filter((c) => c.speaking)
+          .map((c) => ({ key: c.name, label: c.name, existing: Boolean(characterExists(c, cast)) }))
+      )
+    );
+    setLocSel(
+      defaultSelection(
+        breakdownRun.locations.map((l) => ({
+          key: l.name,
+          label: l.name,
+          existing: Boolean(locationExists(l, storeLocations)),
+        }))
+      )
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doneStamp]);
+
+  // Whether the modal should render the run view (theater/proposals) rather
+  // than the pre-run upload flow.
+  const runView = Boolean(breakdownRun) && (uploadFor === breakdownRun?.projectId || reviewOpen);
+
   /**
    * Commits the accepted proposals. The breakdown itself is already saved —
-   * this is the step that stops the cast bible and the location list from
-   * being thrown away the moment this modal closes.
+   * this stops the cast bible and the location list from being thrown away
+   * when the dialog closes.
    */
   const acceptProposals = () => {
+    if (!breakdownRun) return;
     const scenes = useStore.getState().scenes;
-    for (const c of foundCharacters) {
+    for (const c of breakdownRun.characters) {
       if (!castSel.has(c.name)) continue;
       if (characterExists(c, useStore.getState().cast)) continue;
       addCastMember(castFromCharacter(c, scenes));
     }
-    for (const l of foundLocations) {
+    for (const l of breakdownRun.locations) {
       if (!locSel.has(l.name)) continue;
       if (locationExists(l, useStore.getState().locations)) continue;
       addRecord("locations", locationFromProposal(l));
@@ -144,6 +183,7 @@ export function Projects() {
   const openUpload = (id: string) => {
     switchProject(id);
     setUploadFor(id);
+    setReviewOpen(false);
     setStage("input");
     setPasteText("");
     setFileName("");
@@ -151,17 +191,14 @@ export function Projects() {
     setSource("paste");
     setParsed([]);
     setPageCount(undefined);
-    setProgress(null);
     setErrorMsg("");
-    setUsedDemo(false);
-    setFailedScenes([]);
-    setFoundCharacters([]);
-    setFoundLocations([]);
   };
 
+  // The run persists in the store, so closing is always safe — it just drops
+  // to the background (TopBar pill + completion toast keep the user informed).
   const closeUpload = () => {
-    if (stage === "running" || stage === "parsing") return;
     setUploadFor(null);
+    setReviewOpen(false);
   };
 
   const onFile = async (file: File) => {
@@ -198,89 +235,31 @@ export function Projects() {
     }
   };
 
-  const run = async () => {
-    setStage("running");
-    setProgress({ done: 0, total: parsed.length, currentSceneNumber: "", stage: "characters" });
-    setTheaterResults({});
-    runStartRef.current = Date.now();
-    // Track in the store so the TopBar pill shows this long run from any page.
-    aiJobBegin("script_breakdown", {
-      label: "Script breakdown",
-      total: parsed.length,
-      route: "/projects",
+  // Kick off the run in the store and let it stream into the theater. The
+  // dialog can be closed at any time; the run keeps going.
+  const run = () => {
+    if (!uploadFor) return;
+    const projectName = projects.find((p) => p.id === uploadFor)?.name;
+    void startBreakdownRun({
+      projectId: uploadFor,
+      projectName,
+      scenes: parsed,
+      source,
+      fileName: source === "pdf" ? fileName : undefined,
+      rawText,
+      pageCount,
     });
-    try {
-      const projectName = projects.find((p) => p.id === uploadFor)?.name;
-      const {
-        scenes,
-        usage,
-        fromMock,
-        failedScenes: failed,
-        characters,
-        locations,
-      } = await runBreakdown(
-        parsed,
-        (p) => {
-          setProgress(p);
-          aiJobProgress("script_breakdown", p.done, p.total);
-        },
-        projectName,
-        (e) => {
-          // Feed the theater as each scene lands.
-          setTheaterResults((prev) => ({
-            ...prev,
-            [e.sceneId]: { elements: e.elements, fallback: e.fallback },
-          }));
-        }
-      );
-      setRunSeconds(Math.max(1, Math.round((Date.now() - runStartRef.current) / 1000)));
-      aiJobDone("script_breakdown");
-      replaceScenes(scenes);
-      setFailedScenes(failed);
-      setFoundCharacters(characters);
-      setFoundLocations(locations);
-      // Persisted, not just displayed: the cast step below reads it, and so
-      // does every later single-scene re-run.
-      setCharacterBible(characters);
-      // Pre-check the speaking roles and the unrecorded locations — the
-      // common case is accepting them, and anything already on the books is
-      // left out by defaultSelection.
-      setCastSel(
-        defaultSelection(
-          characters
-            .filter((c) => c.speaking)
-            .map((c) => ({
-              key: c.name,
-              label: c.name,
-              existing: Boolean(characterExists(c, cast)),
-            }))
-        )
-      );
-      setLocSel(
-        defaultSelection(
-          locations.map((l) => ({
-            key: l.name,
-            label: l.name,
-            existing: Boolean(locationExists(l, storeLocations)),
-          }))
-        )
-      );
-      setProjectScript({
-        fileName: source === "pdf" ? fileName : undefined,
-        rawText,
-        uploadedAt: new Date().toISOString(),
-        pageCount,
-        source,
-      });
-      usage.forEach((u) => recordAIUsage(u));
-      setUsedDemo(fromMock);
-      setStage("done");
-    } catch (e) {
-      setErrorMsg((e as Error).message || "Breakdown failed.");
-      setStage("error");
-      aiJobFail("script_breakdown", (e as Error).message || "Breakdown failed.");
-    }
   };
+
+  const finishReview = (accept: boolean) => {
+    if (accept) acceptProposals();
+    clearBreakdownRun();
+    closeUpload();
+    nav("/breakdown");
+  };
+
+  const modalOpen = !!uploadFor || reviewOpen;
+  const runStatus = runView ? breakdownRun!.status : null;
 
   return (
     <div className="max-w-[1200px] mx-auto">
@@ -293,6 +272,15 @@ export function Projects() {
           <Plus size={14} /> New project
         </Button>
       </div>
+
+      {/* Resume bar for a run happening in the background */}
+      {breakdownRun && !modalOpen && (
+        <ResumeBar
+          run={breakdownRun}
+          onOpen={() => setReviewOpen(true)}
+          onDismiss={breakdownRun.status !== "running" ? () => clearBreakdownRun() : undefined}
+        />
+      )}
 
       {projects.length === 0 ? (
         <Card padding="lg">
@@ -459,13 +447,33 @@ export function Projects() {
 
       {/* Upload / breakdown modal */}
       <Modal
-        open={!!uploadFor}
+        open={modalOpen}
         onClose={closeUpload}
         title="Upload script → AI breakdown"
         subtitle="Upload a PDF screenplay or paste the text. SceneTrackable extracts every scene and element."
         size="lg"
         footer={
-          stage === "input" ? (
+          runStatus === "running" ? (
+            <Button variant="secondary" onClick={closeUpload}>
+              <Minimize2 size={14} /> Continue in background
+            </Button>
+          ) : runStatus === "done" ? (
+            <>
+              <Button variant="secondary" onClick={() => finishReview(false)}>
+                Skip
+              </Button>
+              <Button onClick={() => finishReview(true)}>
+                {acceptedCount > 0
+                  ? `Create ${acceptedCount} record${acceptedCount === 1 ? "" : "s"} & continue`
+                  : "Continue"}{" "}
+                <ArrowRight size={14} />
+              </Button>
+            </>
+          ) : runStatus === "error" ? (
+            <Button variant="secondary" onClick={() => { clearBreakdownRun(); closeUpload(); }}>
+              Close
+            </Button>
+          ) : stage === "input" ? (
             <>
               <Button variant="secondary" onClick={closeUpload}>
                 Cancel
@@ -483,30 +491,6 @@ export function Projects() {
                 <Sparkles size={14} /> Run breakdown ({parsed.length} scenes)
               </Button>
             </>
-          ) : stage === "done" ? (
-            <>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setUploadFor(null);
-                  nav("/breakdown");
-                }}
-              >
-                Skip
-              </Button>
-              <Button
-                onClick={() => {
-                  acceptProposals();
-                  setUploadFor(null);
-                  nav("/breakdown");
-                }}
-              >
-                {acceptedCount > 0
-                  ? `Create ${acceptedCount} record${acceptedCount === 1 ? "" : "s"} & continue`
-                  : "Continue"}{" "}
-                <ArrowRight size={14} />
-              </Button>
-            </>
           ) : stage === "error" ? (
             <Button variant="secondary" onClick={() => setStage("input")}>
               Try again
@@ -514,111 +498,262 @@ export function Projects() {
           ) : null
         }
       >
-        {stage === "input" && (
-          <div className="space-y-5">
-            {/* PDF drop */}
-            <div
-              onClick={() => fileInput.current?.click()}
-              className="border-2 border-dashed border-[var(--border-default)] hover:border-[var(--accent-blue)] rounded-card p-8 text-center cursor-pointer transition-colors"
-            >
-              <Upload size={28} className="mx-auto text-[var(--text-muted)]" />
-              <div className="mt-2 text-sm font-medium text-[var(--text-primary)]">Upload a PDF screenplay</div>
-              <div className="text-xs text-[var(--text-muted)] mt-1">Parsed privately in your browser</div>
-              <input
-                ref={fileInput}
-                type="file"
-                accept="application/pdf,.pdf"
-                className="hidden"
-                onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])}
+        {runView ? (
+          runStatus === "running" ? (
+            <BreakdownTheater
+              scenes={breakdownRun!.scenes}
+              results={breakdownRun!.results}
+              progress={breakdownRun!.progress}
+            />
+          ) : runStatus === "done" ? (
+            <div className="space-y-5">
+              <TheaterSummary
+                sceneCount={breakdownRun!.scenes.length}
+                elementCount={Object.values(breakdownRun!.results).reduce(
+                  (n, r) => n + r.elements.length,
+                  0
+                )}
+                characterCount={breakdownRun!.characters.length}
+                locationCount={breakdownRun!.locations.length}
+                seconds={breakdownRun!.runSeconds}
+              />
+              <RetryPanel run={breakdownRun!} />
+              <BreakdownResults
+                characters={breakdownRun!.characters}
+                locations={breakdownRun!.locations}
+                usedDemo={breakdownRun!.usedDemo}
+                castSelection={castSel}
+                onCastSelection={setCastSel}
+                locationSelection={locSel}
+                onLocationSelection={setLocSel}
               />
             </div>
-
-            <div className="flex items-center gap-3 text-xs text-[var(--text-muted)]">
-              <div className="flex-1 h-px bg-[var(--border-default)]" /> OR PASTE
-              <div className="flex-1 h-px bg-[var(--border-default)]" />
-            </div>
-
-            <textarea
-              value={pasteText}
-              onChange={(e) => setPasteText(e.target.value)}
-              placeholder={"Paste your screenplay here…\n\nINT. COFFEE SHOP - DAY\n\nMAYA sits by the window, nursing a cold espresso…"}
-              className="w-full h-48 font-mono text-xs resize-none"
+          ) : (
+            <EmptyState
+              icon={<Film size={40} />}
+              title="Breakdown failed"
+              subtitle={breakdownRun!.error || "Something went wrong."}
             />
-          </div>
-        )}
-
-        {stage === "parsing" && (
-          <div className="flex flex-col items-center py-12 gap-3">
-            <Loader2 size={32} className="animate-spin text-[var(--color-ai)]" />
-            <div className="text-sm text-[var(--text-secondary)]">Reading “{fileName}”…</div>
-          </div>
-        )}
-
-        {stage === "parsed" && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <Badge tone="success" dot>
-                {parsed.length} scenes detected
-              </Badge>
-              {pageCount && <Badge tone="muted">{pageCount} pages</Badge>}
-              {source === "pdf" && <Badge tone="muted">{fileName}</Badge>}
-            </div>
-            <div className="text-sm text-[var(--text-secondary)]">
-              Ready to break down. This analyzes each scene for cast, extras, props, wardrobe, SFX, VFX,
-              vehicles, animals, locations and production requirements.
-            </div>
-            <div className="max-h-56 overflow-y-auto rounded-card border border-[var(--border-default)] divide-y divide-[var(--border-default)]">
-              {parsed.slice(0, 40).map((s) => (
-                <div key={s.id} className="flex items-center gap-3 p-2.5 text-sm">
-                  <span className="font-mono text-xs text-[var(--text-muted)] w-8 shrink-0">{s.number}</span>
-                  <Badge tone="neutral">{s.intExt}</Badge>
-                  <span className="truncate flex-1 text-[var(--text-primary)]">{s.location}</span>
-                  <span className="text-[10px] text-[var(--text-muted)] shrink-0">{s.timeOfDay}</span>
+          )
+        ) : (
+          <>
+            {stage === "input" && (
+              <div className="space-y-5">
+                {/* PDF drop */}
+                <div
+                  onClick={() => fileInput.current?.click()}
+                  className="border-2 border-dashed border-[var(--border-default)] hover:border-[var(--accent-blue)] rounded-card p-8 text-center cursor-pointer transition-colors"
+                >
+                  <Upload size={28} className="mx-auto text-[var(--text-muted)]" />
+                  <div className="mt-2 text-sm font-medium text-[var(--text-primary)]">Upload a PDF screenplay</div>
+                  <div className="text-xs text-[var(--text-muted)] mt-1">Parsed privately in your browser</div>
+                  <input
+                    ref={fileInput}
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    className="hidden"
+                    onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])}
+                  />
                 </div>
-              ))}
-              {parsed.length > 40 && (
-                <div className="p-2 text-center text-xs text-[var(--text-muted)]">
-                  + {parsed.length - 40} more
+
+                <div className="flex items-center gap-3 text-xs text-[var(--text-muted)]">
+                  <div className="flex-1 h-px bg-[var(--border-default)]" /> OR PASTE
+                  <div className="flex-1 h-px bg-[var(--border-default)]" />
                 </div>
-              )}
-            </div>
-          </div>
-        )}
 
-        {stage === "running" && (
-          <BreakdownTheater scenes={parsed} results={theaterResults} progress={progress} />
-        )}
+                <textarea
+                  value={pasteText}
+                  onChange={(e) => setPasteText(e.target.value)}
+                  placeholder={"Paste your screenplay here…\n\nINT. COFFEE SHOP - DAY\n\nMAYA sits by the window, nursing a cold espresso…"}
+                  className="w-full h-48 font-mono text-xs resize-none"
+                />
+              </div>
+            )}
 
-        {stage === "done" && (
-          <div className="space-y-5">
-            <TheaterSummary
-              sceneCount={parsed.length}
-              elementCount={Object.values(theaterResults).reduce(
-                (n, r) => n + r.elements.length,
-                0
-              )}
-              characterCount={foundCharacters.length}
-              locationCount={foundLocations.length}
-              seconds={runSeconds}
-            />
-            <BreakdownResults
-              sceneCount={parsed.length}
-              characters={foundCharacters}
-              locations={foundLocations}
-              usedDemo={usedDemo}
-              failedScenes={failedScenes}
-              castSelection={castSel}
-              onCastSelection={setCastSel}
-              locationSelection={locSel}
-              onLocationSelection={setLocSel}
-            />
-          </div>
-        )}
+            {stage === "parsing" && (
+              <div className="flex flex-col items-center py-12 gap-3">
+                <Loader2 size={32} className="animate-spin text-[var(--color-ai)]" />
+                <div className="text-sm text-[var(--text-secondary)]">Reading “{fileName}”…</div>
+              </div>
+            )}
 
-        {stage === "error" && (
-          <EmptyState icon={<Film size={40} />} title="Couldn't parse the script" subtitle={errorMsg} />
+            {stage === "parsed" && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Badge tone="success" dot>
+                    {parsed.length} scenes detected
+                  </Badge>
+                  {pageCount && <Badge tone="muted">{pageCount} pages</Badge>}
+                  {source === "pdf" && <Badge tone="muted">{fileName}</Badge>}
+                </div>
+                <div className="text-sm text-[var(--text-secondary)]">
+                  Ready to break down. This analyzes each scene for cast, extras, props, wardrobe, SFX, VFX,
+                  vehicles, animals, locations and production requirements. You can keep working while it runs.
+                </div>
+                <div className="max-h-56 overflow-y-auto rounded-card border border-[var(--border-default)] divide-y divide-[var(--border-default)]">
+                  {parsed.slice(0, 40).map((s) => (
+                    <div key={s.id} className="flex items-center gap-3 p-2.5 text-sm">
+                      <span className="font-mono text-xs text-[var(--text-muted)] w-8 shrink-0">{s.number}</span>
+                      <Badge tone="neutral">{s.intExt}</Badge>
+                      <span className="truncate flex-1 text-[var(--text-primary)]">{s.location}</span>
+                      <span className="text-[10px] text-[var(--text-muted)] shrink-0">{s.timeOfDay}</span>
+                    </div>
+                  ))}
+                  {parsed.length > 40 && (
+                    <div className="p-2 text-center text-xs text-[var(--text-muted)]">
+                      + {parsed.length - 40} more
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {stage === "error" && (
+              <EmptyState icon={<Film size={40} />} title="Couldn't parse the script" subtitle={errorMsg} />
+            )}
+          </>
         )}
       </Modal>
+    </div>
+  );
+}
+
+/**
+ * A slim bar shown on the Projects page while a breakdown is running (or done
+ * and awaiting review) with the dialog closed — the way back into the theater.
+ */
+function ResumeBar({
+  run,
+  onOpen,
+  onDismiss,
+}: {
+  run: BreakdownRunState;
+  onOpen: () => void;
+  onDismiss?: () => void;
+}) {
+  const done = run.progress?.done ?? 0;
+  const total = run.progress?.total ?? run.scenes.length;
+  const failed = run.failedScenes.length;
+  const running = run.status === "running";
+
+  return (
+    <div className="mb-4 flex items-center gap-3 rounded-card border border-[rgba(139,92,246,0.3)] bg-[rgba(139,92,246,0.06)] px-4 py-3">
+      {running ? (
+        <Loader2 size={16} className="animate-spin text-[var(--color-ai)] shrink-0" />
+      ) : (
+        <Sparkles size={16} className="text-[var(--color-ai)] shrink-0" />
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium text-[var(--text-primary)]">
+          {running
+            ? `Breaking down ${run.projectName ?? "your script"}…`
+            : `Breakdown ready to review`}
+        </div>
+        <div className="text-xs text-[var(--text-secondary)] tabular-nums">
+          {running
+            ? `Scene ${done}/${total} · you can keep working`
+            : failed > 0
+              ? `${run.scenes.length} scenes · ${failed} need a retry`
+              : `${run.scenes.length} scenes analyzed`}
+        </div>
+      </div>
+      <Button size="sm" variant="secondary" onClick={onOpen}>
+        {running ? "View progress" : "Review"} <ArrowRight size={12} />
+      </Button>
+      {onDismiss && (
+        <button
+          onClick={onDismiss}
+          className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)]"
+          aria-label="Dismiss"
+        >
+          <X size={14} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Retry controls for the scenes that fell back to the offline heuristic. When
+ * the fallback was caused by a provider limit, a countdown shows when a live
+ * retry is worth attempting, and (if armed) fires it automatically.
+ */
+function RetryPanel({ run }: { run: BreakdownRunState }) {
+  const retry = useStore((s) => s.retryBreakdownScenes);
+  const setAutoRetry = useStore((s) => s.setBreakdownAutoRetry);
+  const failed = run.failedScenes.length;
+  const [remaining, setRemaining] = useState(0);
+
+  // Tick the cooldown for display. The actual auto-retry is fired by an
+  // always-mounted watcher in MainLayout, so it happens even when this dialog
+  // is closed and the run is in the background.
+  useEffect(() => {
+    if (!run.cooldownUntil) {
+      setRemaining(0);
+      return;
+    }
+    const tick = () => setRemaining(Math.max(0, Math.round((run.cooldownUntil! - Date.now()) / 1000)));
+    tick();
+    const iv = setInterval(tick, 1000);
+    return () => clearInterval(iv);
+  }, [run.cooldownUntil]);
+
+  if (failed === 0 && !run.retrying) return null;
+
+  const cooling = remaining > 0;
+  const mm = Math.floor(remaining / 60);
+  const ss = String(remaining % 60).padStart(2, "0");
+
+  return (
+    <div className="rounded-card border border-[var(--border-default)] bg-[var(--bg-surface)] p-3.5 space-y-3">
+      <div className="flex items-start gap-2.5">
+        <AlertTriangle size={16} className="text-[var(--color-warning)] shrink-0 mt-0.5" />
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-medium text-[var(--text-primary)]">
+            {run.retrying
+              ? "Retrying the missing scenes…"
+              : `${failed} scene${failed === 1 ? "" : "s"} used the offline fallback`}
+          </div>
+          <div className="text-xs text-[var(--text-secondary)] mt-0.5">
+            {run.cooldownKind === "allowance"
+              ? "The AI provider's allowance is used up. You can try again later, or keep the offline results."
+              : run.cooldownKind === "rate"
+                ? "The provider was rate-limited. A quick wait usually clears it."
+                : "Re-run just these scenes to replace the offline guesses with a live analysis."}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        <Button
+          size="sm"
+          variant="ai"
+          onClick={() => retry()}
+          disabled={run.retrying}
+          loading={run.retrying}
+        >
+          {!run.retrying && <RefreshCw size={13} />}
+          {cooling ? `Retry now` : `Retry ${failed} scene${failed === 1 ? "" : "s"}`}
+        </Button>
+
+        {cooling && (
+          <span className="inline-flex items-center gap-1.5 text-xs text-[var(--color-warning)] tabular-nums">
+            <Clock size={13} /> auto-retry in {mm}:{ss}
+          </span>
+        )}
+
+        {run.cooldownUntil && (
+          <label className="inline-flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer ml-auto">
+            <input
+              type="checkbox"
+              checked={run.autoRetry}
+              onChange={(e) => setAutoRetry(e.target.checked)}
+              className="accent-[var(--color-ai)]"
+            />
+            Auto-retry when ready
+          </label>
+        )}
+      </div>
     </div>
   );
 }
@@ -631,21 +766,17 @@ export function Projects() {
  * Locations pages start empty even though the AI already did the work.
  */
 function BreakdownResults({
-  sceneCount,
   characters,
   locations,
   usedDemo,
-  failedScenes,
   castSelection,
   onCastSelection,
   locationSelection,
   onLocationSelection,
 }: {
-  sceneCount: number;
   characters: ScriptCharacter[];
   locations: ProposedLocation[];
   usedDemo: boolean;
-  failedScenes: { sceneNumber: string; error: string }[];
   castSelection: Set<string>;
   onCastSelection: (s: Set<string>) => void;
   locationSelection: Set<string>;
@@ -718,13 +849,6 @@ function BreakdownResults({
           <Badge tone="ai">
             Demo mode — add a Claude or Gemini API key in AI Settings for live analysis
           </Badge>
-        )}
-        {failedScenes.length > 0 && (
-          <div className="text-xs text-[var(--color-warning)] max-w-md">
-            {failedScenes.length} scene{failedScenes.length > 1 ? "s" : ""} could not be analyzed
-            live and used the offline fallback ({failedScenes[0].error}). Re-run the breakdown, or
-            re-analyze those scenes individually in the Breakdown page.
-          </div>
         )}
       </div>
 

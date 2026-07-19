@@ -493,9 +493,22 @@ export async function importBackup(file: File): Promise<string | null> {
   return "This file doesn't look like a SceneTrackable backup or project export.";
 }
 
-/** Shared validation + full-workspace replace for a persisted-store payload. */
-function applyBackupText(text: string): string | null {
-  const parsed = JSON.parse(text);
+/**
+ * Shared validation + full-workspace replace for a persisted-store payload.
+ *
+ * `land` controls where we go afterwards. A plain reload keeps the current URL,
+ * which is right for an in-app restore — but wrong when the loader was clicked
+ * from the logged-out `/login` screen: reloading there just re-renders the
+ * login form even though the restore signed the user in. "home" navigates to
+ * the app root instead, which routes an authenticated user into the app.
+ */
+function applyBackupText(text: string, land: "reload" | "home" = "reload"): string | null {
+  let parsed: any;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return "This file doesn't look like a SceneTrackable backup.";
+  }
   if (!parsed || typeof parsed !== "object" || !parsed.state || typeof parsed.version !== "number") {
     return "This file doesn't look like a SceneTrackable backup.";
   }
@@ -504,7 +517,8 @@ function applyBackupText(text: string): string | null {
   }
   ensureFreshDigest(parsed.state);
   localStorage.setItem(STORE_KEY, JSON.stringify(parsed));
-  window.location.reload();
+  if (land === "home") window.location.assign(import.meta.env.BASE_URL || "/");
+  else window.location.reload();
   return null;
 }
 
@@ -532,7 +546,14 @@ export async function loadSampleProduction(): Promise<string | null> {
       cache: "no-store",
     });
     if (!res.ok) return `Couldn't load the sample (HTTP ${res.status}).`;
-    return applyBackupText(await res.text());
+    const text = await res.text();
+    // On a static host a missing file often 200s with the SPA's index.html
+    // instead of a 404 — guard so that reads as a clear error, not a crash.
+    if (text.trimStart().startsWith("<")) {
+      return "The sample file wasn't found (sample-production.json is missing from the deploy).";
+    }
+    // Loaded from the logged-out landing screen too, so route home on success.
+    return applyBackupText(text, "home");
   } catch {
     return "Couldn't load the sample production. Check your connection and try again.";
   }

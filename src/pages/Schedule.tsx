@@ -52,6 +52,8 @@ import {
 import { printCallSheet } from "@/lib/export";
 import { ProposalPicker, type ProposalItem } from "@/components/ui/ProposalPicker";
 import { HelpButton } from "@/components/ui/HelpButton";
+import { CooldownRetry, type ActiveCooldown } from "@/components/ui/CooldownRetry";
+import { classifyAIError } from "@/lib/script";
 import {
   buildScheduleDigest,
   defaultStartDate,
@@ -517,6 +519,7 @@ function DraftScheduleModal({ open, onClose }: { open: boolean; onClose: () => v
   const [result, setResult] = useState<ScheduleValidation | null>(null);
   const [fromMock, setFromMock] = useState(false);
   const [error, setError] = useState("");
+  const [cooldown, setCooldown] = useState<ActiveCooldown | null>(null);
 
   // A published board has gone out to departments; redrafting over it would
   // silently contradict call sheets people are already working from.
@@ -526,6 +529,7 @@ function DraftScheduleModal({ open, onClose }: { open: boolean; onClose: () => v
   const run = async () => {
     setBusy(true);
     setError("");
+    setCooldown(null);
     try {
       const digest = buildScheduleDigest(data, startDate, scenes);
       const { days, result: res } = await aiScheduleDraft(digest, project?.name);
@@ -541,7 +545,11 @@ function DraftScheduleModal({ open, onClose }: { open: boolean; onClose: () => v
       setFromMock(mock);
       setResult(validateSchedule(proposed, scenes, startDate));
     } catch (e) {
-      setError((e as Error).message || "Couldn't draft a schedule.");
+      const msg = (e as Error).message || "Couldn't draft a schedule.";
+      setError(msg);
+      // If it was a provider limit, offer a timed (optionally automatic) retry.
+      const c = classifyAIError(msg);
+      setCooldown(c ? { kind: c.kind, until: Date.now() + c.seconds * 1000 } : null);
     } finally {
       setBusy(false);
     }
@@ -561,6 +569,7 @@ function DraftScheduleModal({ open, onClose }: { open: boolean; onClose: () => v
     setError("");
     setReplace(false);
     setFromMock(false);
+    setCooldown(null);
     onClose();
   };
 
@@ -598,7 +607,10 @@ function DraftScheduleModal({ open, onClose }: { open: boolean; onClose: () => v
       }
     >
       {error ? (
-        <EmptyState icon={<Calendar size={40} />} title="Couldn't draft a schedule" subtitle={error} />
+        <div className="space-y-4">
+          <EmptyState icon={<Calendar size={40} />} title="Couldn't draft a schedule" subtitle={error} />
+          <CooldownRetry cooldown={cooldown} onRetry={run} busy={busy} label="Retry draft" />
+        </div>
       ) : result ? (
         <div className="space-y-4">
           <div className="flex items-center gap-2 flex-wrap">
