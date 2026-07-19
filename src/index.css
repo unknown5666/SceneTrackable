@@ -328,7 +328,9 @@ textarea::placeholder {
   line-height: 1.45;
 }
 :root[data-density="compact"] .pos-table thead th,
-:root[data-density="compact"] .pos-table tbody td {
+:root[data-density="compact"] .pos-table tbody td,
+:root[data-density="compact"] table.st-datatable thead th,
+:root[data-density="compact"] table.st-datatable tbody td {
   padding-top: 8px;
   padding-bottom: 8px;
 }

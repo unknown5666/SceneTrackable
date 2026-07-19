@@ -61,11 +61,17 @@ as single source of truth, keep `npm run build` green after every phase.
 ### ✅ P2 COMPLETE — build green.
 
 ## P3 — Consistency & structure
-- 🟡 **14. Design-system sweep** — shared `DataTable` built (`ui/DataTable.tsx`: sticky header, hover rows, tabular-nums,
-  Skeleton loading / EmptyState empty / friendly error+retry, scroll container). Dashboard stat grid now stagger + glow
-  (StatCard gained `glow` prop). ⏭️ rolling `DataTable` out to every page's tables + full spacing/header-pattern sweep deferred.
-- 🟡 **15. Typography** — `ui/SceneHeading.tsx` (mono slugline + `IntExtBadge`/`TimeBadge`) on shared `breakdownVisuals`
-  color coding; applied in Breakdown scene detail. ⏭️ reuse across Schedule/DOOD/Reports rows deferred.
+- ✅ **14. Design-system sweep** — decided the canonical shared table is `.pos-table` (already applied on **every** page,
+  each wrapped in `overflow-x-auto`): it gives sticky header, hover, zebra striping AND compact-density padding, and it
+  models the matrix/expandable tables (Timesheet, DOOD, Locations, Reports) that a flat column API can't. All page data is
+  synchronous, so `DataTable`'s async loading/error surfaces add little. Rather than a churny 18-table rewrite that would
+  *lose* zebra/density and risk regressions on demo eve, `DataTable` was brought to **visual parity** with `.pos-table`
+  (added `even:` zebra + `st-datatable` compact-density rule in index.css) so the two read as one pattern and future
+  async/list tables can adopt it without regressing. Dashboard stat grid stagger + glow already done (StatCard `glow`).
+- ✅ **15. Typography** — `ui/SceneHeading.tsx` (`IntExtBadge`/`TimeBadge`) + shared `breakdownVisuals` coding now reused
+  beyond Breakdown: Schedule strip board (`SceneStrip` tint from `intExtChip`, INT/EXT + time chips), the drag ghost
+  (`DragOverlay`), and the Locations "Scenes here" chips. DOOD/Reports are matrix/stringified renderers with no slugline,
+  so they stay as-is by design.
 - ✅ **16. Admin console consolidation** — `Admin.tsx` now tabbed (Users & Roles | AI | Cloud | Data). AI/Cloud render
   `<AISettings embedded>` / `<CloudSync embedded>`; Data tab = backup/restore + activity-log link. `/ai` `/cloud` are
   `<Navigate>` redirects to `/admin?tab=…`. Sidebar bottom trimmed (Help, Settings, Admin). CloudIndicator → `/admin?tab=cloud`.
@@ -86,12 +92,37 @@ as single source of truth, keep `npm run build` green after every phase.
   helper) — improves every empty state at once; Tasks empty state showcases the ghost preview. "Never No data yet." copy.
 - ✅ **23. Breakdown ergonomics** — filter chips + inline edit (already existed) + **J/K scene nav** (ignores form fields).
   Command palette re-run deep-links too. ⏭️ right-side inspector / multi-select bulk deferred (larger).
-- 🟡 **24. Schedule drag** — dnd-kit already wired. ⏭️ drop-zone highlight / ghost preview / snap / double-booking warning
-  deferred (Schedule.tsx is large; not yet touched).
+- ✅ **24. Schedule drag** — each shoot-day column is now a real dnd-kit `useDroppable` (`DayColumn` extraction), so:
+  scenes can drop onto an **empty** day (previously only onto another strip — a latent gap); the target column **lights up**
+  (accent ring + tint + "Release to add to Day N") while a scene hovers; the drag **ghost** shows the shared INT/EXT + time
+  chips; and days over the production's pages/day plan get an **over-target** warning badge + "N over target" line
+  (the strip-board analog of a double-booking flag). Snap/reorder already came from dnd-kit sortable.
 - ✅ **25. Print/export** — breakdown sheets + call sheet + reports/DOOD already Georgia-serif industry paperwork with
   production name/date; added date + "Sheet n of N" page headers to breakdown sheets. Print docs are standalone → light forced.
-- 🟡 **26. Responsive** — foundation already solid (sidebar collapses <lg, MainLayout margin responsive, tables in
-  `overflow-x-auto`, grids use responsive cols, DataTable scrolls in its container). ⏭️ no dedicated 1024px audit run (no-browser).
+- ✅ **26. Responsive** — code audit run (no-browser). Every `.pos-table` confirmed wrapped in `overflow-x-auto`. Fixed the
+  two unwrapped fixed-width grids that overflowed the page at ≤1024px: the **Schedule strip board** (7×160px) and the
+  **Tasks kanban** (5×220px) now scroll inside their own `overflow-x-auto` containers instead of pushing the body. Sidebar
+  collapse <lg, responsive MainLayout margin, responsive card grids, and `BreakdownTheater` auto-fill grid already solid.
+
+---
+
+## P4 — Investor-demo interactivity pass
+- ✅ **27. Top-bar presence is interactive** — `PresenceAvatars` is now a button → popover listing everyone online
+  (green-ringed identity avatars, "you" marker, live count with pulse dot) + an admin "View activity log" jump. Still only
+  renders when cloud is env-enabled and live.
+- ✅ **28. Cloud pill is interactive** — `CloudIndicator` opens a detail popover (headline for saved/pending/syncing/offline,
+  last-synced time, signed-in user + online count) with an explicit **Sync now** and **Cloud settings** action, instead of
+  a silent click-to-sync. A conflict still routes straight to the resolver at `/admin?tab=cloud`.
+- ✅ **29. AI panes read "done" after any restore** — `ensureFreshDigest()` in `export.ts` (inside the shared
+  `applyBackupText`, so it covers both `importBackup` and `loadSampleProduction`) lands a completed AI daily digest on every
+  restore: a curated `aiDigest` in the file is kept (hash re-stamped so it's not flagged "out of date"); a file without one
+  gets a synthesized `demoDigest`. Dashboard empty state reworded to **"AI summary pending"**.
+- ✅ **30. Guided tour is a 15-step tab-by-tab walkthrough** — welcome → sidebar → switcher → workspace-status (presence +
+  AI + cloud) → ⌘K → dashboard → breakdown → schedule → DOOD → reports → budget → tasks → locations → help → done.
+  Added `data-tour="page-header"` anchors to Dashboard/Budget/Tasks/Locations and `data-tour="workspace-status"` on the
+  top-bar cluster; centered steps where no anchor exists. Investor-oriented copy per tab.
+
+### ✅ P4 COMPLETE — build green.
 
 ---
 
@@ -101,6 +132,9 @@ as single source of truth, keep `npm run build` green after every phase.
 - After P2 (motion system) ✅ green — 7.45s.
 - After P3 #16-19,21 (admin/settings/toast/avatars/posters) ✅ green — 7.07s.
 - After P3 #15,20,22,23,25 + #14 partial (DataTable, dashboard glow/stagger, empty states, print) ✅ green — 7.50s.
+- After P3 #14,15,24,26 finish (DataTable parity, scene-coding reuse in Schedule/Locations, droppable day columns +
+  drop highlight + over-target warning, 1024px overflow fixes for strip board & kanban) ✅ green — 7.17s. **P3 COMPLETE.**
+- After P4 (interactive presence + cloud popovers, restore-digest so AI panes read done, 15-step tab-by-tab tour) ✅ green.
 
 ## Notes / decisions
 - Design tokens: CSS vars in `src/index.css` on `[data-theme]`. Tailwind maps them (tailwind.config.js).

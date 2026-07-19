@@ -6,8 +6,9 @@
 // error, or another person's changes that can't be applied silently.
 // ============================================================
 
-import React, { useEffect, useState, useSyncExternalStore } from "react";
-import { CloudOff, RefreshCw, AlertTriangle, Check, Loader2 } from "lucide-react";
+import React, { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { CloudOff, RefreshCw, AlertTriangle, Check, Loader2, ChevronDown, Settings as SettingsIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import {
   cloudEnabled,
@@ -19,25 +20,34 @@ import {
   type CloudStatus,
 } from "@/lib/cloud";
 import { Button } from "@/components/ui/Button";
+import { menuVariants } from "@/lib/motion";
 import { formatDateTime } from "@/lib/utils";
 
 export function useCloudStatus(): CloudStatus {
   return useSyncExternalStore(subscribeCloud, getCloudStatus, getCloudStatus);
 }
 
-/** Compact status pill for the top bar. */
+/** Compact status pill for the top bar, with a detail popover. */
 export function CloudIndicator() {
   const status = useCloudStatus();
   const nav = useNavigate();
   const [spinning, setSpinning] = useState(false);
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      if (open && ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [open]);
 
   if (!cloudEnabled) return null;
 
-  const click = async () => {
-    if (status.conflict) {
-      nav("/admin?tab=cloud");
-      return;
-    }
+  const busy = spinning || Boolean(status.pushing);
+
+  const sync = async () => {
     setSpinning(true);
     try {
       await syncNow();
@@ -46,22 +56,87 @@ export function CloudIndicator() {
     }
   };
 
+  const trigger = () => {
+    // A conflict is the one state that needs the full resolver, not a popover.
+    if (status.conflict) {
+      nav("/admin?tab=cloud");
+      return;
+    }
+    setOpen((v) => !v);
+  };
+
   const { icon, label, tone } = describe(status, spinning);
+  const headline = busy
+    ? "Syncing changes…"
+    : status.phase !== "connected"
+    ? "Working offline"
+    : status.dirty
+    ? "Changes pending upload"
+    : "All changes saved to the cloud";
 
   return (
-    <button
-      onClick={click}
-      title={
-        status.lastSyncedAt
-          ? `Last synced ${formatDateTime(status.lastSyncedAt)}`
-          : "Not synced yet"
-      }
-      className="flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-md border border-[var(--border-default)] hover:border-[var(--text-muted)] transition-colors"
-      style={{ color: tone }}
-    >
-      {icon}
-      <span className="hidden sm:inline">{label}</span>
-    </button>
+    <div className="relative" ref={ref}>
+      <button
+        onClick={trigger}
+        title={status.lastSyncedAt ? `Last synced ${formatDateTime(status.lastSyncedAt)}` : "Not synced yet"}
+        className="flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-md border border-[var(--border-default)] hover:border-[var(--text-muted)] transition-colors"
+        style={{ color: tone }}
+      >
+        {icon}
+        <span className="hidden sm:inline">{label}</span>
+        {!status.conflict && <ChevronDown size={11} className="hidden sm:inline opacity-60" />}
+      </button>
+
+      <AnimatePresence>
+        {open && !status.conflict && (
+          <motion.div
+            className="absolute right-0 top-full mt-2 w-64 rounded-card border border-[var(--border-default)] z-50 p-3.5 origin-top-right"
+            style={{ background: "var(--bg-elevated)" }}
+            variants={menuVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+          >
+            <div className="flex items-start gap-2.5">
+              <span className="mt-0.5" style={{ color: tone }}>
+                {icon}
+              </span>
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-[var(--text-primary)]">{headline}</div>
+                <div className="text-xs text-[var(--text-secondary)]">
+                  {status.lastSyncedAt ? `Last synced ${formatDateTime(status.lastSyncedAt)}` : "Not synced yet"}
+                </div>
+              </div>
+            </div>
+
+            {status.username && (
+              <div className="mt-2.5 text-[11px] text-[var(--text-muted)]">
+                Signed in as <span className="text-[var(--text-secondary)]">{status.username}</span>
+                {status.onlineUsers?.length ? ` · ${status.onlineUsers.length} online` : ""}
+              </div>
+            )}
+
+            <button
+              onClick={sync}
+              disabled={busy}
+              className="mt-3 w-full flex items-center justify-center gap-1.5 h-8 rounded-md text-xs bg-[var(--bg-surface-hover)] text-[var(--text-primary)] hover:bg-[var(--active-tint)] transition-colors disabled:opacity-60"
+            >
+              {busy ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+              {busy ? "Syncing…" : status.dirty ? "Sync now" : "Sync again"}
+            </button>
+            <button
+              onClick={() => {
+                nav("/admin?tab=cloud");
+                setOpen(false);
+              }}
+              className="mt-2 w-full flex items-center justify-center gap-1.5 h-8 rounded-md text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] transition-colors"
+            >
+              <SettingsIcon size={13} /> Cloud settings
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
 

@@ -36,7 +36,7 @@ export function Budget() {
 
   return (
     <div className="max-w-[1400px] mx-auto">
-      <div className="mb-4">
+      <div className="mb-4" data-tour="page-header">
         <div className="section-header">Budget & Accounting</div>
         <div className="page-title mt-1">Financial Overview</div>
       </div>

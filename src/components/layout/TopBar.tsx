@@ -162,7 +162,7 @@ export function TopBar({ onOpenSidebar }: TopBarProps) {
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2" data-tour="workspace-status">
         <PresenceAvatars />
         <AIStatusPill />
         <CloudIndicator />

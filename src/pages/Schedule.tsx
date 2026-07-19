@@ -6,6 +6,7 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
+  useDroppable,
   type DragStartEvent,
   type DragEndEvent,
 } from "@dnd-kit/core";
@@ -21,11 +22,8 @@ import {
   ChevronLeft,
   ChevronRight,
   GripVertical,
-  Sun,
-  Moon,
   MapPin,
   ArrowRightLeft,
-  Users,
   Wand2,
   Sparkles,
   Loader2,
@@ -39,7 +37,9 @@ import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { Tabs } from "@/components/ui/Tabs";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { useRecordEditor } from "@/components/ui/RecordEditor";
+import { IntExtBadge, TimeBadge } from "@/components/ui/SceneHeading";
+import { intExtChip } from "@/lib/breakdownVisuals";
+import { useRecordEditor, type RecordEditor } from "@/components/ui/RecordEditor";
 import { formatDate, cn } from "@/lib/utils";
 import { dayLocations, sceneMatchesDay, locKey } from "@/lib/locations";
 import {
@@ -304,156 +304,42 @@ function StripBoard() {
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${visibleDays}, minmax(160px, 1fr))` }}>
-          {visibleShootDays.map((day) => {
-            const assigned = day.scenes.map((sid) => scenes.find((s) => s.id === sid)!).filter(Boolean);
-            // Every assigned scene stays on the board — page totals cover the
-            // lot, off-location included, since they still shoot this day.
-            const totalPages = assigned.reduce((s, sc) => s + sc.pages, 0);
-            const locs = dayLocations(day);
-            const { groups, multi } = groupDayScenes(assigned, day);
-            const isToday = day.dayNumber === production.currentShootDay;
-
-            return (
-              <div
+        {/* The board can be wider than the viewport (7 columns × 160px), so it
+            scrolls inside its own container rather than pushing the page. */}
+        <div className="overflow-x-auto pb-1">
+          <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${visibleDays}, minmax(160px, 1fr))` }}>
+            {visibleShootDays.map((day) => (
+              <DayColumn
                 key={day.id}
-                className={cn(
-                  "rounded-card border min-h-[300px] flex flex-col",
-                  isToday
-                    ? "border-[var(--accent-blue)]"
-                    : "border-[var(--border-default)]"
-                )}
-                style={{ background: "var(--bg-surface)" }}
-              >
-                {/* Column header */}
-                <div
-                  className={cn(
-                    "p-3 border-b border-[var(--border-default)]",
-                    isToday && "bg-[var(--active-tint)]"
-                  )}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm font-semibold text-[var(--text-primary)]">
-                      Day {day.dayNumber}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {isToday && <Badge tone="info">Today</Badge>}
-                      <ed.RowActions id={day.id} />
-                    </div>
-                  </div>
-                  <div className="text-[10px] text-[var(--text-muted)] mt-0.5">
-                    {formatDate(day.date)} · {day.callTime}–{day.wrapTime}
-                  </div>
-                  <div className="text-[10px] text-[var(--text-secondary)] mt-1 flex items-start gap-1">
-                    <MapPin size={8} className="mt-0.5 shrink-0" />
-                    <span className="min-w-0">
-                      {locs.length ? locs.join(" → ") : "No location set"}
-                      {multi && (
-                        <span className="ml-1 text-[var(--color-warning)]">· company move</span>
-                      )}
-                    </span>
-                  </div>
-                  <div className="text-[10px] text-[var(--text-muted)] mt-0.5">
-                    {totalPages.toFixed(1)} pages · ~{day.estimatedHours}h
-                  </div>
-                </div>
-
-                {/* Banners */}
-                {day.banners?.map((b, i) => (
-                  <div
-                    key={i}
-                    className="px-3 py-1.5 text-[10px] font-medium border-b border-[var(--border-default)]"
-                    style={{
-                      background:
-                        b.type === "day_off"
-                          ? "rgba(239,68,68,0.08)"
-                          : b.type === "company_move"
-                          ? "rgba(245,158,11,0.08)"
-                          : "rgba(79,123,247,0.08)",
-                      color:
-                        b.type === "day_off"
-                          ? "var(--color-danger)"
-                          : b.type === "company_move"
-                          ? "var(--color-warning)"
-                          : "var(--accent-blue)",
-                    }}
-                  >
-                    {b.label}
-                  </div>
-                ))}
-
-                {/* Scene strips droppable zone. One SortableContext over the
-                    whole day (in grouped order); the groups are visual. */}
-                <SortableContext
-                  items={groups.flatMap((g) => g.scenes.map((sc) => sc.id))}
-                  strategy={verticalListSortingStrategy}
-                  id={`day_${day.dayNumber}`}
-                >
-                  <div
-                    className="flex-1 p-1.5 space-y-1 min-h-[80px]"
-                    data-droppable-id={`day_${day.dayNumber}`}
-                  >
-                    {assigned.length === 0 && (
-                      <div className="text-center text-[10px] text-[var(--text-muted)] py-6">
-                        Drop scenes here
-                      </div>
-                    )}
-                    {groups.map((g, gi) => (
-                      <React.Fragment key={g.location || gi}>
-                        {/* Sub-header + company-move banner only when a day
-                            genuinely spans locations. */}
-                        {multi && (
-                          <>
-                            {gi > 0 && (
-                              <div
-                                className="my-1 px-2 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wide flex items-center gap-1"
-                                style={{ background: "rgba(245,158,11,0.10)", color: "var(--color-warning)" }}
-                              >
-                                <ArrowRightLeft size={9} /> Company move
-                              </div>
-                            )}
-                            <div
-                              className={cn(
-                                "px-1 pt-0.5 text-[9px] font-semibold uppercase tracking-wide truncate",
-                                g.off ? "text-[var(--color-warning)]" : "text-[var(--text-muted)]"
-                              )}
-                              title={g.location}
-                            >
-                              {g.location}
-                            </div>
-                          </>
-                        )}
-                        {g.scenes.map((sc) => (
-                          <SceneStrip
-                            key={sc.id}
-                            scene={sc}
-                            offLocation={!sceneMatchesDay(sc, day)}
-                          />
-                        ))}
-                      </React.Fragment>
-                    ))}
-                  </div>
-                </SortableContext>
-              </div>
-            );
-          })}
+                day={day}
+                scenes={scenes}
+                currentShootDay={production.currentShootDay}
+                plannedPagesPerDay={production.plannedPagesPerDay}
+                ed={ed}
+              />
+            ))}
+          </div>
         </div>
 
         <DragOverlay>
           {dragScene && (
             <div
-              className="rounded-lg p-2 border-2 text-xs shadow-lg"
+              className="rounded-lg p-2 shadow-lg border-2"
               style={{
                 borderColor: "var(--accent-blue)",
                 background: "var(--bg-elevated)",
-                transform: "scale(1.02)",
-                width: 150,
+                transform: "scale(1.03)",
+                width: 160,
               }}
             >
-              <div className="font-mono font-semibold text-[var(--text-primary)]">
-                {dragScene.number}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="font-mono text-xs font-semibold text-[var(--text-primary)]">
+                  {dragScene.number}
+                </span>
+                <IntExtBadge intExt={dragScene.intExt} />
+                <TimeBadge time={dragScene.timeOfDay} />
               </div>
-              <div className="text-[10px] text-[var(--text-secondary)] truncate">
+              <div className="text-[10px] text-[var(--text-secondary)] truncate mt-1">
                 {dragScene.location}
               </div>
             </div>
@@ -852,6 +738,170 @@ function useScheduleData(): ProductionData {
   );
 }
 
+/**
+ * One shoot-day column on the strip board. A real dnd-kit droppable so scenes
+ * can land on an *empty* day (not just onto another strip), and so the column
+ * lights up while a scene hovers over it. Over-target days are flagged when the
+ * production carries a pages/day plan.
+ */
+function DayColumn({
+  day,
+  scenes,
+  currentShootDay,
+  plannedPagesPerDay,
+  ed,
+}: {
+  day: ShootDay;
+  scenes: Scene[];
+  currentShootDay: number;
+  plannedPagesPerDay?: number;
+  ed: RecordEditor;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: `day_${day.dayNumber}` });
+
+  const assigned = day.scenes.map((sid) => scenes.find((s) => s.id === sid)!).filter(Boolean);
+  // Every assigned scene stays on the board — page totals cover the lot,
+  // off-location included, since they still shoot this day.
+  const totalPages = assigned.reduce((s, sc) => s + sc.pages, 0);
+  const locs = dayLocations(day);
+  const { groups, multi } = groupDayScenes(assigned, day);
+  const isToday = day.dayNumber === currentShootDay;
+  const overPacked = Boolean(plannedPagesPerDay && totalPages > plannedPagesPerDay + 0.05);
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        "rounded-card border min-h-[300px] flex flex-col transition-colors",
+        isToday && !isOver ? "border-[var(--accent-blue)]" : "border-[var(--border-default)]"
+      )}
+      style={{
+        background: isOver ? "var(--active-tint)" : "var(--bg-surface)",
+        boxShadow: isOver ? "0 0 0 2px var(--accent-blue)" : undefined,
+      }}
+    >
+      {/* Column header */}
+      <div
+        className={cn(
+          "p-3 border-b border-[var(--border-default)]",
+          isToday && "bg-[var(--active-tint)]"
+        )}
+      >
+        <div className="flex items-center justify-between">
+          <div className="text-sm font-semibold text-[var(--text-primary)]">
+            Day {day.dayNumber}
+          </div>
+          <div className="flex items-center gap-1">
+            {overPacked && (
+              <span title={`Over the ${plannedPagesPerDay}pg/day target`}>
+                <Badge tone="warning">{totalPages.toFixed(1)}pg</Badge>
+              </span>
+            )}
+            {isToday && <Badge tone="info">Today</Badge>}
+            <ed.RowActions id={day.id} />
+          </div>
+        </div>
+        <div className="text-[10px] text-[var(--text-muted)] mt-0.5">
+          {formatDate(day.date)} · {day.callTime}–{day.wrapTime}
+        </div>
+        <div className="text-[10px] text-[var(--text-secondary)] mt-1 flex items-start gap-1">
+          <MapPin size={8} className="mt-0.5 shrink-0" />
+          <span className="min-w-0">
+            {locs.length ? locs.join(" → ") : "No location set"}
+            {multi && <span className="ml-1 text-[var(--color-warning)]">· company move</span>}
+          </span>
+        </div>
+        <div
+          className={cn(
+            "text-[10px] mt-0.5",
+            overPacked ? "text-[var(--color-warning)]" : "text-[var(--text-muted)]"
+          )}
+        >
+          {totalPages.toFixed(1)} pages · ~{day.estimatedHours}h
+          {overPacked && plannedPagesPerDay
+            ? ` · ${(totalPages - plannedPagesPerDay).toFixed(1)} over target`
+            : ""}
+        </div>
+      </div>
+
+      {/* Banners */}
+      {day.banners?.map((b, i) => (
+        <div
+          key={i}
+          className="px-3 py-1.5 text-[10px] font-medium border-b border-[var(--border-default)]"
+          style={{
+            background:
+              b.type === "day_off"
+                ? "rgba(239,68,68,0.08)"
+                : b.type === "company_move"
+                ? "rgba(245,158,11,0.08)"
+                : "rgba(79,123,247,0.08)",
+            color:
+              b.type === "day_off"
+                ? "var(--color-danger)"
+                : b.type === "company_move"
+                ? "var(--color-warning)"
+                : "var(--accent-blue)",
+          }}
+        >
+          {b.label}
+        </div>
+      ))}
+
+      {/* Scene strips droppable zone. One SortableContext over the whole day
+          (in grouped order); the groups are visual. */}
+      <SortableContext
+        items={groups.flatMap((g) => g.scenes.map((sc) => sc.id))}
+        strategy={verticalListSortingStrategy}
+        id={`day_${day.dayNumber}`}
+      >
+        <div className="flex-1 p-1.5 space-y-1 min-h-[80px]">
+          {assigned.length === 0 && (
+            <div
+              className={cn(
+                "text-center text-[10px] py-6 transition-colors",
+                isOver ? "text-[var(--accent-blue)] font-medium" : "text-[var(--text-muted)]"
+              )}
+            >
+              {isOver ? `Release to add to Day ${day.dayNumber}` : "Drop scenes here"}
+            </div>
+          )}
+          {groups.map((g, gi) => (
+            <React.Fragment key={g.location || gi}>
+              {/* Sub-header + company-move banner only when a day genuinely
+                  spans locations. */}
+              {multi && (
+                <>
+                  {gi > 0 && (
+                    <div
+                      className="my-1 px-2 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wide flex items-center gap-1"
+                      style={{ background: "rgba(245,158,11,0.10)", color: "var(--color-warning)" }}
+                    >
+                      <ArrowRightLeft size={9} /> Company move
+                    </div>
+                  )}
+                  <div
+                    className={cn(
+                      "px-1 pt-0.5 text-[9px] font-semibold uppercase tracking-wide truncate",
+                      g.off ? "text-[var(--color-warning)]" : "text-[var(--text-muted)]"
+                    )}
+                    title={g.location}
+                  >
+                    {g.location}
+                  </div>
+                </>
+              )}
+              {g.scenes.map((sc) => (
+                <SceneStrip key={sc.id} scene={sc} offLocation={!sceneMatchesDay(sc, day)} />
+              ))}
+            </React.Fragment>
+          ))}
+        </div>
+      </SortableContext>
+    </div>
+  );
+}
+
 function SceneStrip({ scene, offLocation = false }: { scene: Scene; offLocation?: boolean }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: scene.id });
@@ -862,18 +912,17 @@ function SceneStrip({ scene, offLocation = false }: { scene: Scene; offLocation?
     opacity: isDragging ? 0.4 : 1,
   };
 
-  const bgColor = offLocation
-    ? "rgba(245,158,11,0.14)"
-    : scene.intExt === "EXT"
-    ? "rgba(245,158,11,0.08)"
-    : scene.intExt === "INT/EXT"
-    ? "rgba(139,92,246,0.08)"
-    : "rgba(79,123,247,0.06)";
+  // Strip tint follows the shared INT/EXT coding so a scene reads the same
+  // colour here as in the Breakdown and the theater; off-location overrides to
+  // the warning tint.
+  const background = offLocation
+    ? "color-mix(in srgb, var(--color-warning) 16%, transparent)"
+    : intExtChip(scene.intExt).background;
 
   return (
     <div
       ref={setNodeRef}
-      style={{ ...style, background: bgColor }}
+      style={{ ...style, background }}
       className={cn(
         "rounded-lg p-2 border cursor-grab active:cursor-grabbing group",
         offLocation ? "border-[var(--color-warning)]" : "border-[var(--border-default)]"
@@ -881,14 +930,13 @@ function SceneStrip({ scene, offLocation = false }: { scene: Scene; offLocation?
       {...attributes}
       {...listeners}
     >
-      <div className="flex items-center gap-1.5">
-        <GripVertical size={10} className="text-[var(--text-muted)] opacity-0 group-hover:opacity-100" />
-        <span className="font-mono text-xs font-semibold text-[var(--text-primary)]">
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <GripVertical size={10} className="text-[var(--text-muted)] opacity-0 group-hover:opacity-100 shrink-0" />
+        <span className="font-mono text-xs font-semibold text-[var(--text-primary)] shrink-0">
           {scene.number}
         </span>
-        <span className="text-[10px] text-[var(--text-muted)]">{scene.intExt}</span>
-        {scene.timeOfDay === "NIGHT" && <Moon size={8} className="text-[var(--color-ai)]" />}
-        {scene.timeOfDay === "DAY" && <Sun size={8} className="text-[var(--color-warning)]" />}
+        <IntExtBadge intExt={scene.intExt} />
+        <TimeBadge time={scene.timeOfDay} />
       </div>
       {offLocation && (
         <div

@@ -78,7 +78,10 @@ export function DataTable<T>({
         className
       )}
     >
-      <table className="w-full text-sm border-collapse">
+      {/* `st-datatable` picks up the same compact-density padding as `.pos-table`
+          (see index.css). Zebra + hover below mirror the pos-table look so the
+          two render as one table pattern. */}
+      <table className="st-datatable w-full text-sm border-collapse">
         <thead>
           <tr>
             {columns.map((c) => (
@@ -98,7 +101,7 @@ export function DataTable<T>({
         <tbody>
           {loading ? (
             Array.from({ length: skeletonRows }).map((_, i) => (
-              <tr key={`sk_${i}`} className="border-b border-[var(--border-default)] last:border-b-0">
+              <tr key={`sk_${i}`}>
                 {columns.map((c) => (
                   <td key={c.key} className="px-4 py-3">
                     <Skeleton className="h-4" />
@@ -120,7 +123,7 @@ export function DataTable<T>({
                 key={keyOf(row, i)}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
                 className={cn(
-                  "border-b border-[var(--border-default)] last:border-b-0 transition-colors hover:bg-[var(--row-hover)]",
+                  "transition-colors even:bg-[var(--row-alt)] hover:bg-[var(--row-hover)]",
                   onRowClick && "cursor-pointer",
                   rowClassName?.(row)
                 )}

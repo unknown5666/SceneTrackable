@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { IntExtBadge, TimeBadge } from "@/components/ui/SceneHeading";
 import { useRecordEditor } from "@/components/ui/RecordEditor";
 import { ImageThumb, MapEmbed, MapLink } from "@/components/ui/Media";
 import {
@@ -73,7 +74,7 @@ export function Locations() {
 
   return (
     <div className="max-w-[1400px] mx-auto">
-      <div className="flex items-start justify-between gap-3 mb-6">
+      <div className="flex items-start justify-between gap-3 mb-6" data-tour="page-header">
         <div>
           <div className="section-header">Locations</div>
           <div className="page-title mt-1">Location Bible</div>
@@ -281,9 +282,11 @@ function LocationDetail({
               <span
                 key={s.id}
                 title={s.synopsis}
-                className="text-[11px] px-2 py-1 rounded-badge bg-[var(--bg-surface)] border border-[var(--border-default)] text-[var(--text-secondary)]"
+                className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-badge bg-[var(--bg-surface)] border border-[var(--border-default)]"
               >
-                <span className="font-mono">{s.number}</span> · {s.intExt} · {s.timeOfDay}
+                <span className="font-mono text-[var(--text-secondary)]">{s.number}</span>
+                <IntExtBadge intExt={s.intExt as Scene["intExt"]} />
+                <TimeBadge time={s.timeOfDay as Scene["timeOfDay"]} />
               </span>
             ))}
           </div>

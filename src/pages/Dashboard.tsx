@@ -245,7 +245,7 @@ function PageHeader({ role }: { role: RoleId }) {
     .replace("_", " ")
     .replace(/\b\w/g, (m) => m.toUpperCase());
   return (
-    <div>
+    <div data-tour="page-header">
       <div className="section-header">Dashboard</div>
       <div className="page-title mt-1">Good day, {label}.</div>
     </div>
@@ -719,8 +719,8 @@ function AdminDashboard() {
           ) : !digest.text ? (
             <EmptyState
               icon={<Sparkles size={40} />}
-              title="No digest yet"
-              subtitle="Generate a digest of overdue tasks, budget pressure, upcoming location locks and cast conflicts."
+              title="AI summary pending"
+              subtitle="Generate an AI digest of overdue tasks, budget pressure, upcoming location locks and cast conflicts. Loading a production also fills this in automatically."
             />
           ) : (
             <>
