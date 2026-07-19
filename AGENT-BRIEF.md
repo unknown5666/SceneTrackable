@@ -53,6 +53,9 @@ DOOD, budget, tasks, departments, reports. Rebranded from an earlier "Production
   Store deletes call `pushToast` with an **Undo** action.
 - Cloud sync: `src/lib/cloud.ts` (Supabase, env-gated `VITE_SUPABASE_URL`/`_ANON_KEY`). `useCloudStatus()` →
   `{ phase, dirty, conflict, live, onlineUsers, username }`. **Do NOT change cloud/AI logic unless the task says so.**
+  - `pushWorkspace(force?)`: non-force pushes are blocked when `rev == null` ("Still syncing…" guard, cloud.ts) to protect
+    the team; **force MUST pass `true`** (→ `p_expected_rev = null`, server force-overwrites). CloudSync's "Force upload"
+    button therefore calls `pushWorkspace(true)`. Bootstrap (first-run workspace claim) is automatic at login (store.ts).
 
 ## AI
 - `src/lib/claude.ts` = provider (Z.ai GLM only, key hardcoded/public free tier; 15 RPM; error 1113 = allowance gone, permanent).
