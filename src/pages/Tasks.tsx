@@ -109,7 +109,7 @@ export function Tasks() {
 
   return (
     <div className="max-w-[1400px] mx-auto">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6" data-tour="page-header">
         <div>
           <div className="section-header">Tasks</div>
           <div className="page-title mt-1">Task Engine</div>
@@ -421,6 +421,7 @@ function KanbanView({
   onDelete: (t: Task) => void;
 }) {
   return (
+    <div className="overflow-x-auto pb-1">
     <div
       className="grid gap-3"
       style={{ gridTemplateColumns: `repeat(${STATUS_COLUMNS.length}, minmax(220px, 1fr))` }}
@@ -517,6 +518,7 @@ function KanbanView({
           </div>
         );
       })}
+    </div>
     </div>
   );
 }

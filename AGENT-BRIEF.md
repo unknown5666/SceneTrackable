@@ -27,6 +27,10 @@ DOOD, budget, tasks, departments, reports. Rebranded from an earlier "Production
   Skeleton, ProgressBar, CountUp, DataTable, SceneHeading/IntExtBadge/TimeBadge, ProjectPoster, IdentityAvatar,
   HelpButton, LoadSampleButton, Toaster`.
 - Layout in `src/components/layout/`: `MainLayout, TopBar, Sidebar, CloudIndicator, AIStatusPill, PresenceAvatars, Footer`.
+  Top-bar right cluster (all in a `data-tour="workspace-status"` wrapper) is **interactive**: `PresenceAvatars` = clickable
+  online-teammate popover (green-ringed identity avatars + admin "View activity log"); `AIStatusPill` = running-AI-job ring
+  + detail popover; `CloudIndicator` = sync-state pill + popover with headline, last-synced, "Sync now" and "Cloud settings"
+  (a conflict routes straight to `/admin?tab=cloud`). Presence/cloud only render when cloud is env-enabled + live.
 - **Motion:** shared variants in `src/lib/motion.ts` (`pageVariants, staggerContainer/Item, menuVariants, modalPanelVariants,
   backdropVariants, chipVariants`, `SPRING/POP/EASE`). Rules: 150–250ms, subtle, always respect `prefers-reduced-motion`
   (`useReducedMotion()` from framer, or the global reduced-motion CSS in index.css).
@@ -67,20 +71,48 @@ DOOD, budget, tasks, departments, reports. Rebranded from an earlier "Production
 - **Help hub** — `pages/Tutorial.tsx` (tabs: Guided tour + Feature handbook). Tour overlay = `components/TourOverlay.tsx`
   (custom spotlight, steps in `data/tour.ts`, `data-tour="..."` anchors on real elements, progress persisted in store
   `tour:{running,stepIndex,completed}`). Handbook content = `data/handbook.ts` (22 docs). Contextual `HelpButton` ("?").
+  - **Tour is a full 15-step tab-by-tab investor walkthrough**: welcome → sidebar → switcher → workspace-status → ⌘K →
+    dashboard → breakdown → schedule → DOOD → reports → budget → tasks → locations → help → done. Steps with no `target`
+    center; steps with a `target` spotlight a live `data-tour` anchor. `page-header` anchors now exist on Dashboard,
+    Breakdown, Schedule, Reports, Budget, Tasks, Locations; plus `sidebar`, `project-switcher`, `workspace-status`.
+    TourOverlay navigates to `step.route` and polls ~40 rAF for the anchor, gracefully centering if it never mounts.
+- **AI panes read "done" after any restore** — `ensureFreshDigest()` in `export.ts` runs inside `applyBackupText` (shared by
+  `importBackup` + `loadSampleProduction`), so uploading dummy data or the sample lands a completed AI daily digest: a
+  curated `aiDigest.text` in the file is kept (hash just re-stamped so the dashboard doesn't flag it "out of date"), and a
+  file without one gets a synthesized `demoDigest`. Empty digest state now reads "AI summary pending". Sample also ships
+  `aiUsage` + `aiDigest` (see `scripts/build-sample.mjs`).
 - **Admin console** = tabbed (Users&Roles | AI | Cloud | Data). `/ai` `/cloud` are redirects to `/admin?tab=…`.
   `AISettings`/`CloudSync` take an `embedded` prop.
 - **Settings** (`/settings`, `pages/Settings.tsx`) — theme preview cards, accent swatches, density.
 
+## Tables (design-system decision — P3 #14)
+- **`.pos-table` (in `index.css`) is the canonical shared table** — used on every page, each wrapped in `overflow-x-auto`.
+  Gives sticky header, hover, **zebra** (`nth-child(even)` → `--row-alt`) and **compact-density** padding. It's the right
+  fit for the app's matrix/expandable tables (Timesheet, DOOD, Locations, Reports) that a flat column API can't model.
+- **`ui/DataTable.tsx`** is the flat-list/async variant, brought to visual parity (`even:` zebra + `st-datatable`
+  compact-density rule). All page data is synchronous, so its loading/error surfaces are for future async tables. Don't
+  force-migrate working `pos-table`s — adopt `DataTable` only for genuinely flat, async lists.
+
+## Schedule strip board (P3 #15/#24) — `pages/Schedule.tsx`
+- Each shoot-day column is a `DayColumn` with a real dnd-kit `useDroppable` (`id="day_N"`), so scenes drop onto **empty**
+  days (not only onto strips) and the column lights up while hovering (`isOver` → ring + tint + "Release to add"). Days
+  over `production.plannedPagesPerDay` show an **over-target** warning badge. `SceneStrip` + the `DragOverlay` ghost use the
+  shared `intExtChip`/`IntExtBadge`/`TimeBadge` coding. Strip board grid + Tasks kanban scroll in their own `overflow-x-auto`.
+
 ## Conventions / gotchas
 - Reference files as clickable links in replies. Match surrounding code style; keep comment density similar.
-- Add `data-tour="key"` when a new element should be tour-spotlightable.
+- Add `data-tour="key"` when a new element should be tour-spotlightable (and, if it's a page, a step in `data/tour.ts`).
 - When adding a page, register the route in `src/App.tsx` (under `<MainLayout>`, wrap with `AccessGuard`/`AdminGuard` as needed)
   and add a handbook doc in `data/handbook.ts` if it's a feature area.
 - Deletes should `pushToast` with Undo (see store `deleteRecord`/`deleteTask`/`removeCastMember` for the pattern).
 - Currency default AED. Dates: convert relative → absolute when persisting sample/demo data.
 - Persisted-state additive fields are safe (zustand merges initial over missing persisted keys) — no version bump needed for adds.
 
+## Status
+- **P1, P2, P3 all ✅ complete** (`POLISH-CHECKLIST.md` has the detail + build log). Plus the top-bar interactivity,
+  restore-digest, and expanded tour from the latest pass. `npm run build` green.
+
 ## How to resume
-1. Open `POLISH-CHECKLIST.md`, find the first ⬜/🟡 item.
+1. Open `POLISH-CHECKLIST.md` for status; the checklist is the source of truth for what's done.
 2. Do the work using the primitives above; keep tokens as the styling source of truth.
-3. `npm run build` must stay green; update the checklist; don't touch AI/cloud logic.
+3. `npm run build` must stay green; update the checklist; don't touch AI/cloud logic (`claude.ts`/`cloud.ts`/`supabase/`).

@@ -3,8 +3,9 @@
 // workspace backup / restore (JSON of the persisted store).
 // ============================================================
 
-import type { Scene } from "@/types";
-import type { ProposedCallSheet } from "@/lib/claude";
+import type { ProductionData, Scene } from "@/types";
+import { demoDigest, type ProposedCallSheet } from "@/lib/claude";
+import { buildDigestInput } from "@/lib/metrics";
 
 const STORE_KEY = "scenetrackable-v1";
 
@@ -268,6 +269,31 @@ export function exportBackup(): void {
   downloadText(`scenetrackable-backup-${stamp}.json`, raw, "application/json");
 }
 
+/**
+ * Give the restored workspace a completed AI daily digest so every AI surface
+ * reads as "done" the moment dummy data lands — no key, no waiting, no rate
+ * limits during a demo. A hand-authored digest in the file is kept as-is (only
+ * its freshness hash is re-stamped to the current numbers so the dashboard
+ * doesn't flag it "out of date"); anything else gets a synthesized one.
+ */
+function ensureFreshDigest(state: Record<string, unknown>): void {
+  if (!state || !state.production || !Array.isArray(state.scenes)) return;
+  try {
+    const input = buildDigestInput(state as unknown as ProductionData);
+    const existing = state.aiDigest as { text?: string; model?: string } | undefined;
+    const curated = typeof existing?.text === "string" && existing.text.trim().length > 0;
+    state.aiDigest = {
+      at: new Date().toISOString(),
+      text: curated ? existing!.text : demoDigest(input.facts),
+      hash: input.hash,
+      model: existing?.model ?? "demo",
+    };
+  } catch {
+    // A partial dummy file just won't get a synthesized digest — the dashboard
+    // falls back to its "AI summary pending" state, which is fine.
+  }
+}
+
 /** Shared validation + apply for a persisted-store payload. */
 function applyBackupText(text: string): string | null {
   const parsed = JSON.parse(text);
@@ -277,7 +303,8 @@ function applyBackupText(text: string): string | null {
   if (!Array.isArray(parsed.state.users) || !Array.isArray(parsed.state.projects)) {
     return "Backup is missing core data (users/projects).";
   }
-  localStorage.setItem(STORE_KEY, text);
+  ensureFreshDigest(parsed.state);
+  localStorage.setItem(STORE_KEY, JSON.stringify(parsed));
   window.location.reload();
   return null;
 }
