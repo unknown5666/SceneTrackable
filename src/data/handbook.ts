@@ -376,7 +376,11 @@ export const HANDBOOK: HandbookDoc[] = [
       "Users & Roles — add teammates, issue invite codes, tune permissions.",
       "AI — usage budget and alerts.",
       "Cloud — connection status and conflict tools.",
-      "Data — download a backup, restore one, or open the activity log.",
+      "Data — download the full workspace or a single project, restore (merge) a file's projects in, or open the activity log.",
+    ],
+    tips: [
+      "Restoring MERGES a file's project(s) into your workspace — a project with the same name is updated, the rest are added, and your other projects, users and roles are left alone. Use \"Replace everything…\" only to wipe and swap in a full backup.",
+      "\"Download this project\" makes a portable single-project file you can restore into any workspace.",
     ],
   },
   {

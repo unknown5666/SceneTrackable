@@ -68,7 +68,18 @@ DOOD, budget, tasks, departments, reports. Rebranded from an earlier "Production
 - **Breakdown theater** (`components/breakdown/BreakdownTheater.tsx`) — live scene grid + `TheaterSummary`, wired in `Projects.tsx`.
 - **Sample production** — `scripts/build-sample.mjs` generates `public/sample-production.json` (O. Henry "Gift of the Magi",
   public domain). Regenerate: `node scripts/build-sample.mjs`. Loaded via `loadSampleProduction()` (`src/lib/export.ts`) →
-  same restore path as an Admin backup → reloads → cloud-syncs. `LoadSampleButton` on Projects empty state + Login.
+  full-replace restore path → reloads → cloud-syncs. `LoadSampleButton` on Projects empty state + Login.
+- **Backup / restore (`src/lib/export.ts`, Admin → Data)** — TWO file shapes: full-workspace envelope `{state,version}` (many
+  projects + users/roles) and single-project export `{type:"scenetrackable-project",version,project,data}`. **Restore is
+  ADDITIVE by default**: `importBackup(file)` detects the shape, extracts its project(s) via `projectsFromState`, and
+  `mergeProjects` folds them into the current workspace (same-id project updated, rest added, first becomes active) —
+  **never touching other projects/users/roles**. `exportProject(pid?)` downloads one project; `exportBackup()` the whole
+  workspace. `restoreFullBackup(file)` is the DESTRUCTIVE replace (the old behaviour), behind the "Replace everything…"
+  danger control only. `mergeProjects` keeps the store's active-at-top-level / inactive-in-`projectData` invariant.
+- **Showcase file** — `scripts/build-showcase.mjs` composes `scenetrackable-showcase.json` (repo root): a MULTI-project
+  workspace (Salt & Static + Gift of the Magi) unioning both user sets. Push it, then Admin → Data → Restore. Regenerate
+  after editing either source: `node scripts/build-showcase.mjs` (reads `scenetrackable-demo-showcase.json` +
+  `public/sample-production.json`).
 - **Command palette** ⌘K — `components/CommandPalette.tsx` (mounted in MainLayout). Indexes pages/scenes/cast/locations/props/
   handbook + actions. Scene deep-link `?scene=<id>` + `?action=rerun` handled in `Breakdown.tsx`.
 - **Help hub** — `pages/Tutorial.tsx` (tabs: Guided tour + Feature handbook). Tour overlay = `components/TourOverlay.tsx`

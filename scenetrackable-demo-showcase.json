@@ -1,0 +1,2028 @@
+{
+  "state": {
+    "production": {
+      "id": "prod_saltstatic",
+      "title": "Salt & Static",
+      "currency": "AED",
+      "budget": 322000,
+      "totalShootDays": 4,
+      "currentShootDay": 0,
+      "plannedPagesPerDay": 2.5,
+      "script": {
+        "totalPages": 10,
+        "totalScenes": 7
+      }
+    },
+    "crew": [
+      {
+        "id": "crew_dp",
+        "name": "Ines Marlow",
+        "role": "Director of Photography",
+        "department": "camera",
+        "email": "ines@saltstatic.example",
+        "ratePerHour": 98,
+        "otRateMultiplier": 1.5
+      },
+      {
+        "id": "crew_gaffer",
+        "name": "Theo Vance",
+        "role": "Gaffer",
+        "department": "camera",
+        "email": "theo@saltstatic.example",
+        "ratePerHour": 64,
+        "otRateMultiplier": 1.5
+      },
+      {
+        "id": "crew_1ad",
+        "name": "Salma Reyes",
+        "role": "1st Assistant Director",
+        "department": "production",
+        "email": "salma@saltstatic.example",
+        "ratePerHour": 82
+      },
+      {
+        "id": "crew_art",
+        "name": "Bram Holt",
+        "role": "Production Designer",
+        "department": "art",
+        "email": "bram@saltstatic.example",
+        "ratePerHour": 72
+      },
+      {
+        "id": "crew_ward",
+        "name": "June Park",
+        "role": "Costume Designer",
+        "department": "wardrobe",
+        "email": "june@saltstatic.example",
+        "ratePerHour": 58
+      },
+      {
+        "id": "crew_sound",
+        "name": "Otis Kane",
+        "role": "Production Sound Mixer",
+        "department": "sound",
+        "email": "otis@saltstatic.example",
+        "ratePerHour": 66
+      },
+      {
+        "id": "crew_vfx",
+        "name": "Wren Alvarez",
+        "role": "VFX Supervisor",
+        "department": "vfx",
+        "email": "wren@saltstatic.example",
+        "ratePerHour": 90
+      },
+      {
+        "id": "crew_stunt",
+        "name": "Marcus Reed",
+        "role": "Stunt Coordinator",
+        "department": "stunts",
+        "email": "marcus@saltstatic.example",
+        "ratePerHour": 84
+      },
+      {
+        "id": "crew_acct",
+        "name": "Dahlia Fenn",
+        "role": "Production Accountant",
+        "department": "accounting",
+        "email": "dahlia@saltstatic.example",
+        "ratePerHour": 62
+      }
+    ],
+    "cast": [
+      {
+        "id": "cast_mara",
+        "name": "Nadia Sarr",
+        "role": "Mara Chen",
+        "category": "lead",
+        "scenes": [
+          "sc_1",
+          "sc_3",
+          "sc_4",
+          "sc_5",
+          "sc_6"
+        ],
+        "ratePerDay": 3400,
+        "agent": "Harbor Talent",
+        "contact": "nadia@example.com",
+        "gender": "F"
+      },
+      {
+        "id": "cast_eli",
+        "name": "Dominic Farrow",
+        "role": "Eli Okoro",
+        "category": "lead",
+        "scenes": [
+          "sc_2",
+          "sc_4",
+          "sc_5",
+          "sc_6"
+        ],
+        "ratePerDay": 3600,
+        "agent": "Harbor Talent",
+        "contact": "dominic@example.com",
+        "gender": "M"
+      },
+      {
+        "id": "cast_double",
+        "name": "Kai Brenner",
+        "role": "Mara — stunt double",
+        "category": "day_player",
+        "scenes": [
+          "sc_3"
+        ],
+        "ratePerDay": 1200,
+        "gender": "M"
+      }
+    ],
+    "scenes": [
+      {
+        "id": "sc_1",
+        "number": "1",
+        "intExt": "EXT",
+        "location": "Harbor Breakwater",
+        "timeOfDay": "DUSK",
+        "synopsis": "MARA hauls the last crates as the harbor lights flicker and die — the whole coast goes dark.",
+        "scriptText": "EXT. HARBOR BREAKWATER - DUSK\n\nMARA CHEN, 24, weather-beaten, drags crates up the slick concrete. The string of harbor lights STUTTERS — then the entire coastline blacks out at once.\n\nMARA\nThat's not a fuse.",
+        "pages": 1.25,
+        "estimatedShootMinutes": 69,
+        "elements": [
+          {
+            "id": "el_cast_mara_chen",
+            "name": "Mara Chen",
+            "category": "cast",
+            "subCategory": "Lead",
+            "description": "On camera the whole scene"
+          },
+          {
+            "id": "el_props_fish_crates",
+            "name": "Fish crates",
+            "category": "props",
+            "subCategory": "Set dressing",
+            "description": "Wet, weathered"
+          },
+          {
+            "id": "el_sfx_harbor_light_string",
+            "name": "Harbor light string",
+            "category": "sfx",
+            "subCategory": "Practical",
+            "description": "Programmed flicker → blackout"
+          },
+          {
+            "id": "el_vfx_coastline_blackout",
+            "name": "Coastline blackout",
+            "category": "vfx",
+            "subCategory": "Environment",
+            "description": "Kill city glow on the far shore"
+          },
+          {
+            "id": "el_wardrobe_mara_s_oilskin_jacket",
+            "name": "Mara's oilskin jacket",
+            "category": "wardrobe",
+            "subCategory": "Contemporary",
+            "description": "Salt-stained yellow"
+          },
+          {
+            "id": "el_vehicles_fishing_trawler",
+            "name": "Fishing trawler",
+            "category": "vehicles",
+            "subCategory": "Picture",
+            "description": "Moored, background"
+          }
+        ],
+        "vfxFlags": true,
+        "sfxFlags": true
+      },
+      {
+        "id": "sc_2",
+        "number": "2",
+        "intExt": "INT",
+        "location": "Coastal Radio Station",
+        "timeOfDay": "NIGHT",
+        "synopsis": "ELI fights the failing transmitter by torchlight; the backup generator coughs and holds.",
+        "scriptText": "INT. COASTAL RADIO STATION - NIGHT\n\nELI OKORO, 39, sweeps a torch over a wall of dead meters. He slaps the generator. It COUGHS, catches, and one green light holds.\n\nELI\nCome on. Stay with me.",
+        "pages": 2,
+        "estimatedShootMinutes": 110,
+        "elements": [
+          {
+            "id": "el_cast_eli_okoro",
+            "name": "Eli Okoro",
+            "category": "cast",
+            "subCategory": "Lead",
+            "description": "First appearance"
+          },
+          {
+            "id": "el_props_transmitter_rack",
+            "name": "Transmitter rack",
+            "category": "props",
+            "subCategory": "Hero",
+            "description": "Period-agnostic broadcast gear"
+          },
+          {
+            "id": "el_props_backup_generator",
+            "name": "Backup generator",
+            "category": "props",
+            "subCategory": "Hero",
+            "description": "SFX: cough + catch"
+          },
+          {
+            "id": "el_sfx_torch_beam_haze",
+            "name": "Torch beam haze",
+            "category": "sfx",
+            "subCategory": "Lighting",
+            "description": "Atmos smoke + practical torch"
+          },
+          {
+            "id": "el_vfx_meter_glow_up",
+            "name": "Meter glow-up",
+            "category": "vfx",
+            "subCategory": "Invisible",
+            "description": "Bring dead meters to life on cue"
+          },
+          {
+            "id": "el_props_eli_s_headset",
+            "name": "Eli's headset",
+            "category": "props",
+            "subCategory": "Hand prop"
+          }
+        ],
+        "vfxFlags": true,
+        "sfxFlags": true
+      },
+      {
+        "id": "sc_3",
+        "number": "3",
+        "intExt": "EXT",
+        "location": "Cliff Road",
+        "timeOfDay": "NIGHT",
+        "synopsis": "Mara races the coast road on a motorbike toward the transmitter tower, headlight carving the dark.",
+        "scriptText": "EXT. CLIFF ROAD - NIGHT\n\nA single headlight carves the black. MARA leans her bike hard through the switchbacks, the dead town falling away below.",
+        "pages": 1.5,
+        "estimatedShootMinutes": 83,
+        "elements": [
+          {
+            "id": "el_cast_mara_chen",
+            "name": "Mara Chen",
+            "category": "cast",
+            "subCategory": "Lead"
+          },
+          {
+            "id": "el_vehicles_motorbike",
+            "name": "Motorbike",
+            "category": "vehicles",
+            "subCategory": "Picture",
+            "description": "Hero — stunt double for leans"
+          },
+          {
+            "id": "el_sfx_bike_headlight",
+            "name": "Bike headlight",
+            "category": "sfx",
+            "subCategory": "Lighting",
+            "description": "Practical + tracking beam"
+          },
+          {
+            "id": "el_stunts_stunt_rider_double",
+            "name": "Stunt rider double",
+            "category": "stunts",
+            "subCategory": "Featured",
+            "description": "Cornering at speed"
+          },
+          {
+            "id": "el_vfx_aerial_chase_plate",
+            "name": "Aerial chase plate",
+            "category": "vfx",
+            "subCategory": "Drone plate",
+            "description": "Stabilize + speed ramp"
+          },
+          {
+            "id": "el_extras_cliff_edge_crowd_control",
+            "name": "Cliff edge crowd control",
+            "category": "extras",
+            "subCategory": "Background",
+            "description": "None — closed road"
+          }
+        ],
+        "vfxFlags": true,
+        "sfxFlags": true
+      },
+      {
+        "id": "sc_4",
+        "number": "4",
+        "intExt": "INT",
+        "location": "Coastal Radio Station",
+        "timeOfDay": "NIGHT",
+        "synopsis": "Mara and Eli argue, then rig her boat battery to the transmitter — the signal claws back to life.",
+        "scriptText": "INT. COASTAL RADIO STATION - NIGHT\n\nMARA drops a marine battery on the desk. Sparks. ELI stares.\n\nELI\nThat'll fry the whole board.\n\nMARA\nOr it'll talk. Pick one.",
+        "pages": 2.5,
+        "estimatedShootMinutes": 138,
+        "elements": [
+          {
+            "id": "el_cast_mara_chen",
+            "name": "Mara Chen",
+            "category": "cast",
+            "subCategory": "Lead"
+          },
+          {
+            "id": "el_cast_eli_okoro",
+            "name": "Eli Okoro",
+            "category": "cast",
+            "subCategory": "Lead"
+          },
+          {
+            "id": "el_props_marine_battery",
+            "name": "Marine battery",
+            "category": "props",
+            "subCategory": "Hero",
+            "description": "Jump-rig to the rack"
+          },
+          {
+            "id": "el_sfx_spark_burst",
+            "name": "Spark burst",
+            "category": "sfx",
+            "subCategory": "Pyro",
+            "description": "Small practical spark — licensed"
+          },
+          {
+            "id": "el_vfx_signal_alive_glow",
+            "name": "Signal-alive glow",
+            "category": "vfx",
+            "subCategory": "Invisible",
+            "description": "Board lights ripple on"
+          },
+          {
+            "id": "el_props_jumper_cables",
+            "name": "Jumper cables",
+            "category": "props",
+            "subCategory": "Hand prop"
+          }
+        ],
+        "vfxFlags": true,
+        "sfxFlags": true
+      },
+      {
+        "id": "sc_5",
+        "number": "5",
+        "intExt": "EXT",
+        "location": "Transmitter Tower Base",
+        "timeOfDay": "NIGHT",
+        "synopsis": "They climb to reset the dish; wind and height. A drone lifts to reveal the dark coast for miles.",
+        "scriptText": "EXT. TRANSMITTER TOWER BASE - NIGHT\n\nWind screams. ELI and MARA start up the gantry ladder. We rise with them — then keep rising, up past the dish, to reveal a coastline swallowed whole by the dark.",
+        "pages": 1,
+        "estimatedShootMinutes": 55,
+        "elements": [
+          {
+            "id": "el_cast_mara_chen",
+            "name": "Mara Chen",
+            "category": "cast",
+            "subCategory": "Lead"
+          },
+          {
+            "id": "el_cast_eli_okoro",
+            "name": "Eli Okoro",
+            "category": "cast",
+            "subCategory": "Lead"
+          },
+          {
+            "id": "el_props_tower_gantry",
+            "name": "Tower gantry",
+            "category": "props",
+            "subCategory": "Set dressing",
+            "description": "Safety-rigged practical"
+          },
+          {
+            "id": "el_stunts_height_safety_rig",
+            "name": "Height safety rig",
+            "category": "stunts",
+            "subCategory": "Rigging",
+            "description": "Fall arrest — both actors"
+          },
+          {
+            "id": "el_sfx_wind_machine",
+            "name": "Wind machine",
+            "category": "sfx",
+            "subCategory": "Atmos",
+            "description": "Ritter fan + debris"
+          },
+          {
+            "id": "el_vfx_aerial_reveal",
+            "name": "Aerial reveal",
+            "category": "vfx",
+            "subCategory": "Drone plate",
+            "description": "Vertical pull-up, sky + coast extension"
+          },
+          {
+            "id": "el_vfx_dark_coast_extension",
+            "name": "Dark coast extension",
+            "category": "vfx",
+            "subCategory": "Environment",
+            "description": "Matte the blacked-out shoreline"
+          }
+        ],
+        "vfxFlags": true,
+        "sfxFlags": true
+      },
+      {
+        "id": "sc_5A",
+        "number": "5A",
+        "intExt": "EXT",
+        "location": "Coast — Aerial",
+        "timeOfDay": "NIGHT",
+        "synopsis": "INSERT — the drone holds high; one window, then a dozen, then a hundred flicker back on across the coast.",
+        "scriptText": "EXT. COAST - NIGHT (AERIAL INSERT)\n\nFrom high above: one window glows. Then a dozen. Then a whole coastline of them, blooming back to life as the signal reaches home.",
+        "pages": 0.5,
+        "estimatedShootMinutes": 28,
+        "elements": [
+          {
+            "id": "el_vfx_lights_return_bloom",
+            "name": "Lights-return bloom",
+            "category": "vfx",
+            "subCategory": "Environment",
+            "description": "CG windows bloom on across matte coast"
+          },
+          {
+            "id": "el_vfx_aerial_hold",
+            "name": "Aerial hold",
+            "category": "vfx",
+            "subCategory": "Drone plate",
+            "description": "Locked high-altitude plate"
+          },
+          {
+            "id": "el_vfx_star_field",
+            "name": "Star field",
+            "category": "vfx",
+            "subCategory": "Environment",
+            "description": "Clean sky replace"
+          }
+        ],
+        "vfxFlags": true,
+        "sfxFlags": false
+      },
+      {
+        "id": "sc_6",
+        "number": "6",
+        "intExt": "INT",
+        "location": "Coastal Radio Station",
+        "timeOfDay": "DAWN",
+        "synopsis": "Dawn. The town is lit. Mara and Eli, wrecked and grinning, sign off the night broadcast.",
+        "scriptText": "INT. COASTAL RADIO STATION - DAWN\n\nGrey light. Both of them slumped, filthy, alive. ELI leans to the mic.\n\nELI\nThat's the night shift. Get some sleep, coast. We've got you.",
+        "pages": 1.25,
+        "estimatedShootMinutes": 69,
+        "elements": [
+          {
+            "id": "el_cast_mara_chen",
+            "name": "Mara Chen",
+            "category": "cast",
+            "subCategory": "Lead"
+          },
+          {
+            "id": "el_cast_eli_okoro",
+            "name": "Eli Okoro",
+            "category": "cast",
+            "subCategory": "Lead"
+          },
+          {
+            "id": "el_props_broadcast_mic",
+            "name": "Broadcast mic",
+            "category": "props",
+            "subCategory": "Hero"
+          },
+          {
+            "id": "el_sfx_dawn_window_light",
+            "name": "Dawn window light",
+            "category": "sfx",
+            "subCategory": "Lighting",
+            "description": "Warm sunrise wash"
+          },
+          {
+            "id": "el_props_coffee_flasks",
+            "name": "Coffee flasks",
+            "category": "props",
+            "subCategory": "Set dressing"
+          }
+        ],
+        "vfxFlags": false,
+        "sfxFlags": true
+      }
+    ],
+    "characterBible": [
+      {
+        "name": "Mara Chen",
+        "speaking": true,
+        "importance": "lead",
+        "description": "Fisher's daughter. Fearless, blunt, keeps the boat and the town alive.",
+        "firstSceneNumber": "1"
+      },
+      {
+        "name": "Eli Okoro",
+        "speaking": true,
+        "importance": "lead",
+        "description": "The last radio engineer. Stubborn, tender, married to the transmitter.",
+        "firstSceneNumber": "2"
+      }
+    ],
+    "locations": [
+      {
+        "id": "loc_harbor",
+        "name": "Harbor Breakwater",
+        "type": "EXT",
+        "address": "North Mole, Port Kessel",
+        "contactName": "Harbor Authority",
+        "contactPhone": "+1 555 0200",
+        "permitStatus": "locked",
+        "lockDate": "2026-07-24",
+        "parkingNotes": "Unit base on the quay",
+        "powerNotes": "Genny only — no tie-in on the mole",
+        "costPerDay": 2200,
+        "notes": "Tide table pinned to call sheet. Night work."
+      },
+      {
+        "id": "loc_station",
+        "name": "Coastal Radio Station",
+        "type": "INT",
+        "address": "Stage 2, Kessel Studios",
+        "contactName": "Studio Ops",
+        "contactPhone": "+1 555 0210",
+        "permitStatus": "locked",
+        "lockDate": "2026-07-24",
+        "parkingNotes": "Studio lot A",
+        "powerNotes": "House power + 60kW genny backup",
+        "costPerDay": 1900,
+        "notes": "Standing set — practical transmitter wall."
+      },
+      {
+        "id": "loc_cliff",
+        "name": "Cliff Road",
+        "type": "EXT",
+        "address": "Old Coast Highway, mile 7",
+        "contactName": "County Film Office",
+        "contactPhone": "+1 555 0230",
+        "permitStatus": "permit_pending",
+        "parkingNotes": "Rolling closure — traffic mgmt hired",
+        "powerNotes": "Mobile genny truck",
+        "costPerDay": 2600,
+        "notes": "Stunt road closure 20:00–04:00."
+      },
+      {
+        "id": "loc_tower",
+        "name": "Transmitter Tower Base",
+        "type": "EXT",
+        "address": "Kessel Head ridge",
+        "contactName": "County Film Office",
+        "permitStatus": "optioned",
+        "parkingNotes": "4x4 shuttle from mile 7",
+        "powerNotes": "Genny + tower service power",
+        "costPerDay": 1500,
+        "notes": "Height rigging — stunt sign-off required."
+      }
+    ],
+    "shootDays": [
+      {
+        "id": "day_1",
+        "dayNumber": 1,
+        "date": "2026-07-24",
+        "location": "Coastal Radio Station",
+        "locations": [
+          "Coastal Radio Station"
+        ],
+        "estimatedHours": 11,
+        "callTime": "08:00",
+        "wrapTime": "19:00",
+        "weather": "Interior — controlled",
+        "scenes": [
+          "sc_2",
+          "sc_4",
+          "sc_6"
+        ],
+        "banners": [
+          {
+            "type": "meal",
+            "label": "Lunch 13:00 (34 crew)"
+          }
+        ]
+      },
+      {
+        "id": "day_2",
+        "dayNumber": 2,
+        "date": "2026-07-25",
+        "location": "Harbor Breakwater",
+        "locations": [
+          "Harbor Breakwater"
+        ],
+        "estimatedHours": 10,
+        "callTime": "15:00",
+        "wrapTime": "01:00",
+        "weather": "Clear, 9°C, high tide 21:40",
+        "scenes": [
+          "sc_1"
+        ],
+        "banners": [
+          {
+            "type": "meal",
+            "label": "Second meal 21:00"
+          },
+          {
+            "type": "note",
+            "label": "Tide-critical — sc.1 before 22:00"
+          }
+        ]
+      },
+      {
+        "id": "day_3",
+        "dayNumber": 3,
+        "date": "2026-07-26",
+        "location": "Cliff Road",
+        "locations": [
+          "Cliff Road",
+          "Transmitter Tower Base"
+        ],
+        "estimatedHours": 12,
+        "callTime": "16:00",
+        "wrapTime": "04:00",
+        "weather": "Night — clear, wind 25km/h",
+        "scenes": [
+          "sc_3",
+          "sc_5"
+        ],
+        "banners": [
+          {
+            "type": "company_move",
+            "label": "Company move → Tower Base 22:30"
+          },
+          {
+            "type": "meal",
+            "label": "Second meal 22:00"
+          }
+        ]
+      },
+      {
+        "id": "day_4",
+        "dayNumber": 4,
+        "date": "2026-07-27",
+        "location": "Transmitter Tower Base",
+        "locations": [
+          "Transmitter Tower Base",
+          "Coast — Aerial"
+        ],
+        "estimatedHours": 8,
+        "callTime": "18:00",
+        "wrapTime": "02:00",
+        "weather": "Night — clear",
+        "scenes": [
+          "sc_5A"
+        ],
+        "banners": [
+          {
+            "type": "company_move",
+            "label": "Split unit: aerial team on the ridge"
+          }
+        ]
+      }
+    ],
+    "dood": {
+      "cast_mara": {
+        "1": "SW",
+        "2": "W",
+        "3": "W",
+        "4": "WF"
+      },
+      "cast_eli": {
+        "1": "SW",
+        "2": "OFF",
+        "3": "W",
+        "4": "WF"
+      },
+      "cast_double": {
+        "1": "OFF",
+        "2": "OFF",
+        "3": "SWF",
+        "4": "OFF"
+      }
+    },
+    "publishedSchedule": {
+      "version": 3,
+      "publishedAt": "2026-07-17T09:00:00.000Z",
+      "lastChanges": [
+        {
+          "sceneId": "sc_5",
+          "fromDay": 3,
+          "toDay": 3
+        }
+      ]
+    },
+    "locationLockDates": {},
+    "tasks": [
+      {
+        "id": "task_battery",
+        "title": "Rig safe marine-battery jump gag (sc.4)",
+        "owner": "crew_art",
+        "department": "props",
+        "deadlineRule": "manual(2026-07-22)",
+        "computedDeadline": "2026-07-22T18:00:00.000Z",
+        "status": "in_progress",
+        "priority": "high",
+        "createdAt": "2026-07-13T09:00:00.000Z",
+        "updatedAt": "2026-07-18T09:00:00.000Z",
+        "linkedScene": "sc_4",
+        "description": "Practical spark, licensed pyro sign-off. Backup rig."
+      },
+      {
+        "id": "task_bike",
+        "title": "Motorbike prep + stunt rehearsal (cliff road)",
+        "owner": "crew_stunt",
+        "department": "stunts",
+        "deadlineRule": "manual(2026-07-23)",
+        "computedDeadline": "2026-07-23T18:00:00.000Z",
+        "status": "review",
+        "priority": "critical",
+        "createdAt": "2026-07-13T09:00:00.000Z",
+        "updatedAt": "2026-07-18T09:00:00.000Z",
+        "linkedScene": "sc_3",
+        "description": "Cornering passes with double; camera-bike tracking."
+      },
+      {
+        "id": "task_droneplan",
+        "title": "Drone flight plan + night waiver — aerial reveal",
+        "owner": "crew_dp",
+        "department": "camera",
+        "deadlineRule": "manual(2026-07-21)",
+        "computedDeadline": "2026-07-21T18:00:00.000Z",
+        "status": "in_progress",
+        "priority": "high",
+        "createdAt": "2026-07-13T09:00:00.000Z",
+        "updatedAt": "2026-07-18T09:00:00.000Z",
+        "linkedScene": "sc_5A",
+        "linkedShootDay": 4
+      },
+      {
+        "id": "task_towersafe",
+        "title": "Tower height-rig safety sign-off",
+        "owner": "crew_stunt",
+        "department": "stunts",
+        "deadlineRule": "manual(2026-07-25)",
+        "computedDeadline": "2026-07-25T18:00:00.000Z",
+        "status": "blocked",
+        "priority": "critical",
+        "createdAt": "2026-07-13T09:00:00.000Z",
+        "updatedAt": "2026-07-18T09:00:00.000Z",
+        "blockedBy": [
+          "task_permit"
+        ],
+        "linkedScene": "sc_5",
+        "description": "Blocked on tower-base permit."
+      },
+      {
+        "id": "task_permit",
+        "title": "Pull EXT night permit — Cliff Road + Tower",
+        "owner": "crew_1ad",
+        "department": "production",
+        "deadlineRule": "manual(2026-07-22)",
+        "computedDeadline": "2026-07-22T18:00:00.000Z",
+        "status": "blocked",
+        "priority": "critical",
+        "createdAt": "2026-07-13T09:00:00.000Z",
+        "updatedAt": "2026-07-18T09:00:00.000Z",
+        "blockedBy": [
+          "task_traffic"
+        ],
+        "description": "Waiting on traffic-management confirmation."
+      },
+      {
+        "id": "task_traffic",
+        "title": "Confirm traffic management — road closure",
+        "owner": "crew_1ad",
+        "department": "production",
+        "deadlineRule": "manual(2026-07-20)",
+        "computedDeadline": "2026-07-20T18:00:00.000Z",
+        "status": "completed",
+        "priority": "medium",
+        "createdAt": "2026-07-13T09:00:00.000Z",
+        "updatedAt": "2026-07-18T09:00:00.000Z"
+      },
+      {
+        "id": "task_windfx",
+        "title": "Wind machine + debris package — tower",
+        "owner": "crew_gaffer",
+        "department": "camera",
+        "deadlineRule": "manual(2026-07-24)",
+        "computedDeadline": "2026-07-24T18:00:00.000Z",
+        "status": "not_started",
+        "priority": "medium",
+        "createdAt": "2026-07-13T09:00:00.000Z",
+        "updatedAt": "2026-07-18T09:00:00.000Z",
+        "linkedScene": "sc_5"
+      },
+      {
+        "id": "task_tide",
+        "title": "Tide-window plan for harbor night (sc.1)",
+        "owner": "crew_1ad",
+        "department": "production",
+        "deadlineRule": "manual(2026-07-23)",
+        "computedDeadline": "2026-07-23T18:00:00.000Z",
+        "status": "in_progress",
+        "priority": "high",
+        "createdAt": "2026-07-13T09:00:00.000Z",
+        "updatedAt": "2026-07-18T09:00:00.000Z",
+        "linkedShootDay": 2,
+        "linkedScene": "sc_1"
+      },
+      {
+        "id": "task_genny",
+        "title": "Book 60kW genny + fuel for station backup",
+        "owner": "crew_gaffer",
+        "department": "camera",
+        "deadlineRule": "manual(2026-07-23)",
+        "computedDeadline": "2026-07-23T18:00:00.000Z",
+        "status": "not_started",
+        "priority": "medium",
+        "createdAt": "2026-07-13T09:00:00.000Z",
+        "updatedAt": "2026-07-18T09:00:00.000Z",
+        "linkedShootDay": 1
+      },
+      {
+        "id": "task_call1",
+        "title": "Distribute Day 1 call sheet",
+        "owner": "crew_1ad",
+        "department": "production",
+        "deadlineRule": "manual(2026-07-23)",
+        "computedDeadline": "2026-07-23T18:00:00.000Z",
+        "status": "not_started",
+        "priority": "low",
+        "createdAt": "2026-07-13T09:00:00.000Z",
+        "updatedAt": "2026-07-18T09:00:00.000Z",
+        "linkedShootDay": 1
+      }
+    ],
+    "budgetLines": [
+      {
+        "id": "bl_atl_1",
+        "code": "1100",
+        "category": "Above the Line",
+        "subcategory": "Cast",
+        "department": "cast",
+        "description": "Principal cast + stunt double",
+        "budgeted": 46000,
+        "committed": 41000,
+        "spent": 15200
+      },
+      {
+        "id": "bl_atl_2",
+        "code": "1200",
+        "category": "Above the Line",
+        "subcategory": "Director/Producer",
+        "department": "production",
+        "description": "Director & producer fees",
+        "budgeted": 60000,
+        "committed": 60000,
+        "spent": 30000
+      },
+      {
+        "id": "bl_cam",
+        "code": "2100",
+        "category": "Production",
+        "subcategory": "Camera",
+        "department": "camera",
+        "description": "Camera + grip/electric + genny",
+        "budgeted": 54000,
+        "committed": 46000,
+        "spent": 11800
+      },
+      {
+        "id": "bl_stunt",
+        "code": "2150",
+        "category": "Production",
+        "subcategory": "Stunts",
+        "department": "stunts",
+        "description": "Stunt coordination, rigging, bike",
+        "budgeted": 28000,
+        "committed": 19000,
+        "spent": 6400
+      },
+      {
+        "id": "bl_art",
+        "code": "2200",
+        "category": "Production",
+        "subcategory": "Art/Set",
+        "department": "art",
+        "description": "Set dressing, transmitter build, props",
+        "budgeted": 33000,
+        "committed": 24500,
+        "spent": 12900
+      },
+      {
+        "id": "bl_ward",
+        "code": "2300",
+        "category": "Production",
+        "subcategory": "Wardrobe",
+        "department": "wardrobe",
+        "description": "Contemporary costume + repeats",
+        "budgeted": 15000,
+        "committed": 9800,
+        "spent": 4100
+      },
+      {
+        "id": "bl_loc",
+        "code": "2400",
+        "category": "Production",
+        "subcategory": "Locations",
+        "department": "production",
+        "description": "Location fees, permits, traffic mgmt",
+        "budgeted": 26000,
+        "committed": 14200,
+        "spent": 5300
+      },
+      {
+        "id": "bl_vfx",
+        "code": "3100",
+        "category": "Post",
+        "subcategory": "VFX",
+        "department": "vfx",
+        "description": "Blackout, aerial extension, lights-return",
+        "budgeted": 42000,
+        "committed": 22000,
+        "spent": 0
+      },
+      {
+        "id": "bl_sound",
+        "code": "3200",
+        "category": "Post",
+        "subcategory": "Sound",
+        "department": "sound",
+        "description": "Production sound + mix",
+        "budgeted": 18000,
+        "committed": 10000,
+        "spent": 3600
+      }
+    ],
+    "purchaseOrders": [
+      {
+        "id": "po_1",
+        "number": "PO-0001",
+        "vendor": "Kessel Grip & Electric",
+        "description": "60kW genny + distro, 4 days",
+        "amount": 6800,
+        "currency": "AED",
+        "accountCode": "2100",
+        "department": "camera",
+        "linkedShootDay": 1,
+        "requestedBy": "crew_gaffer",
+        "requestedAt": "2026-07-15T09:00:00.000Z",
+        "status": "approved",
+        "approvals": [
+          {
+            "step": "accountant",
+            "by": "crew_acct",
+            "at": "2026-07-16T09:00:00.000Z",
+            "decision": "approved",
+            "note": "Within camera line."
+          },
+          {
+            "step": "admin",
+            "by": "user_admin",
+            "at": "2026-07-16T14:00:00.000Z",
+            "decision": "approved"
+          }
+        ],
+        "auditLog": [
+          {
+            "at": "2026-07-15T09:00:00.000Z",
+            "by": "crew_gaffer",
+            "action": "submitted"
+          },
+          {
+            "at": "2026-07-16T09:00:00.000Z",
+            "by": "crew_acct",
+            "action": "accountant_approved"
+          },
+          {
+            "at": "2026-07-16T14:00:00.000Z",
+            "by": "user_admin",
+            "action": "admin_approved"
+          }
+        ]
+      },
+      {
+        "id": "po_2",
+        "number": "PO-0002",
+        "vendor": "SkyLine Aerial Unit",
+        "description": "Drone day + operator — aerial reveal (sc.5/5A)",
+        "amount": 7400,
+        "currency": "AED",
+        "accountCode": "2100",
+        "department": "camera",
+        "linkedShootDay": 4,
+        "requestedBy": "crew_dp",
+        "requestedAt": "2026-07-18T09:00:00.000Z",
+        "status": "accountant_review",
+        "approvals": [],
+        "auditLog": [
+          {
+            "at": "2026-07-18T09:00:00.000Z",
+            "by": "crew_dp",
+            "action": "submitted"
+          }
+        ]
+      },
+      {
+        "id": "po_3",
+        "number": "PO-0003",
+        "vendor": "Precision Stunt Rigging",
+        "description": "Tower fall-arrest rig + riggers, 1 night",
+        "amount": 5200,
+        "currency": "AED",
+        "accountCode": "2150",
+        "department": "stunts",
+        "linkedShootDay": 3,
+        "requestedBy": "crew_stunt",
+        "requestedAt": "2026-07-19T09:00:00.000Z",
+        "status": "submitted",
+        "approvals": [],
+        "auditLog": [
+          {
+            "at": "2026-07-19T09:00:00.000Z",
+            "by": "crew_stunt",
+            "action": "submitted"
+          }
+        ]
+      },
+      {
+        "id": "po_4",
+        "number": "PO-0004",
+        "vendor": "TideWater Marine",
+        "description": "Picture trawler + marine safety boat",
+        "amount": 3900,
+        "currency": "AED",
+        "accountCode": "2400",
+        "department": "production",
+        "linkedShootDay": 2,
+        "requestedBy": "crew_1ad",
+        "requestedAt": "2026-07-17T09:00:00.000Z",
+        "status": "rejected",
+        "approvals": [
+          {
+            "step": "accountant",
+            "by": "crew_acct",
+            "at": "2026-07-18T09:00:00.000Z",
+            "decision": "rejected",
+            "note": "Re-bid — safety boat quoted separately."
+          }
+        ],
+        "auditLog": [
+          {
+            "at": "2026-07-17T09:00:00.000Z",
+            "by": "crew_1ad",
+            "action": "submitted"
+          },
+          {
+            "at": "2026-07-18T09:00:00.000Z",
+            "by": "crew_acct",
+            "action": "accountant_rejected"
+          }
+        ]
+      }
+    ],
+    "pettyCash": [
+      {
+        "id": "pc_1",
+        "date": "2026-07-16T09:00:00.000Z",
+        "amount": 210,
+        "currency": "AED",
+        "description": "Marine battery + jumper cables (props)",
+        "department": "art",
+        "loggedBy": "crew_art"
+      },
+      {
+        "id": "pc_2",
+        "date": "2026-07-17T09:00:00.000Z",
+        "amount": 120,
+        "currency": "AED",
+        "description": "Hi-vis + gloves — night crew",
+        "department": "production",
+        "loggedBy": "crew_1ad"
+      },
+      {
+        "id": "pc_3",
+        "date": "2026-07-18T09:00:00.000Z",
+        "amount": 85,
+        "currency": "AED",
+        "description": "Coffee & flasks — cliff road recce",
+        "department": "camera",
+        "loggedBy": "crew_gaffer"
+      }
+    ],
+    "vfxShots": [
+      {
+        "id": "vfx_blackout",
+        "shotNumber": "001_010",
+        "sceneId": "sc_1",
+        "description": "Coastline blackout — kill far-shore city glow",
+        "complexity": "moderate",
+        "status": "awarded",
+        "vendorId": "vend_lumen",
+        "reviewRounds": 2,
+        "reviewsCompleted": 1,
+        "plateDeliveryDate": "2026-07-29",
+        "finalDueDate": "2026-08-16"
+      },
+      {
+        "id": "vfx_meters",
+        "shotNumber": "002_020",
+        "sceneId": "sc_2",
+        "description": "Dead meters glow up on cue",
+        "complexity": "simple",
+        "status": "in_progress",
+        "vendorId": "vend_inhouse",
+        "reviewRounds": 2,
+        "reviewsCompleted": 1,
+        "plateDeliveryDate": "2026-07-28",
+        "finalDueDate": "2026-08-08"
+      },
+      {
+        "id": "vfx_signal",
+        "shotNumber": "004_030",
+        "sceneId": "sc_4",
+        "description": "Signal-alive ripple across the board",
+        "complexity": "simple",
+        "status": "in_progress",
+        "vendorId": "vend_inhouse",
+        "reviewRounds": 2,
+        "reviewsCompleted": 0,
+        "finalDueDate": "2026-08-10"
+      },
+      {
+        "id": "vfx_aerial",
+        "shotNumber": "005_040",
+        "sceneId": "sc_5",
+        "description": "Vertical pull-up: sky replace + dark-coast extension",
+        "complexity": "complex",
+        "status": "bid",
+        "vendorId": "vend_lumen",
+        "reviewRounds": 3,
+        "reviewsCompleted": 0,
+        "plateDeliveryDate": "2026-07-31",
+        "finalDueDate": "2026-08-24"
+      },
+      {
+        "id": "vfx_bloom",
+        "shotNumber": "005A_050",
+        "sceneId": "sc_5A",
+        "description": "Lights-return bloom across matte coastline",
+        "complexity": "complex",
+        "status": "bid",
+        "vendorId": "vend_lumen",
+        "reviewRounds": 3,
+        "reviewsCompleted": 0,
+        "finalDueDate": "2026-08-26"
+      }
+    ],
+    "vfxVendors": [
+      {
+        "id": "vend_lumen",
+        "name": "Lumen Post",
+        "contact": "ops@lumen.example",
+        "city": "Toronto",
+        "assignedShots": [
+          "vfx_blackout",
+          "vfx_aerial",
+          "vfx_bloom"
+        ],
+        "onTimePercent": 90
+      },
+      {
+        "id": "vend_inhouse",
+        "name": "In-house Unit",
+        "contact": "wren@saltstatic.example",
+        "city": "Local",
+        "assignedShots": [
+          "vfx_meters",
+          "vfx_signal"
+        ],
+        "onTimePercent": 100
+      }
+    ],
+    "frequencyPlan": [
+      {
+        "id": "fp_1",
+        "shootDay": 1,
+        "location": "Coastal Radio Station",
+        "device": "Lav TX — Mara",
+        "frequencyMHz": 519.75,
+        "powerMW": 50,
+        "channel": "A1"
+      },
+      {
+        "id": "fp_2",
+        "shootDay": 1,
+        "location": "Coastal Radio Station",
+        "device": "Lav TX — Eli",
+        "frequencyMHz": 522.25,
+        "powerMW": 50,
+        "channel": "A2"
+      },
+      {
+        "id": "fp_3",
+        "shootDay": 3,
+        "location": "Cliff Road",
+        "device": "Boom hop TX",
+        "frequencyMHz": 536.5,
+        "powerMW": 100,
+        "channel": "B1",
+        "notes": "Coordinate with county repeater — check scan on arrival."
+      },
+      {
+        "id": "fp_4",
+        "shootDay": 3,
+        "location": "Cliff Road",
+        "device": "Comms — stunt channel",
+        "frequencyMHz": 464.5,
+        "powerMW": 500,
+        "channel": "C1",
+        "notes": "Dedicated stunt safety channel."
+      },
+      {
+        "id": "fp_5",
+        "shootDay": 4,
+        "location": "Transmitter Tower Base",
+        "device": "IFB — director",
+        "frequencyMHz": 217.25,
+        "powerMW": 25,
+        "channel": "IFB"
+      }
+    ],
+    "rfEquipment": [
+      {
+        "id": "rf_1",
+        "type": "Wireless TX",
+        "model": "Wisycom MTP61",
+        "serial": "WX-2201",
+        "status": "assigned",
+        "assignedShootDay": 1,
+        "manufacturer": "Wisycom"
+      },
+      {
+        "id": "rf_2",
+        "type": "Wireless RX",
+        "model": "Wisycom MCR54",
+        "serial": "WX-4410",
+        "status": "assigned",
+        "assignedShootDay": 1,
+        "manufacturer": "Wisycom"
+      },
+      {
+        "id": "rf_3",
+        "type": "Comms base",
+        "model": "Motorola SLR5500",
+        "serial": "MO-7781",
+        "status": "assigned",
+        "assignedShootDay": 3,
+        "manufacturer": "Motorola"
+      },
+      {
+        "id": "rf_4",
+        "type": "IFB",
+        "model": "Lectrosonics IFBT4",
+        "serial": "LE-0155",
+        "status": "available",
+        "manufacturer": "Lectrosonics"
+      }
+    ],
+    "cameraKits": [
+      {
+        "id": "kit_a",
+        "name": "A-Cam — ALEXA 35 + Signature Primes",
+        "items": [
+          "ALEXA 35 body",
+          "Signature Primes 25/35/50/75",
+          "Cinesaddle + head",
+          "2× 1TB drives"
+        ],
+        "assignedShootDay": 1,
+        "manufacturer": "ARRI"
+      },
+      {
+        "id": "kit_b",
+        "name": "B-Cam — ALEXA Mini LF + Ultra wides",
+        "items": [
+          "ALEXA Mini LF",
+          "Ultra wide 12/15",
+          "Easyrig",
+          "Steadicam vest"
+        ],
+        "assignedShootDay": 3,
+        "manufacturer": "ARRI"
+      },
+      {
+        "id": "kit_c",
+        "name": "Bike-cam — Ronin + long lens",
+        "items": [
+          "DJI Ronin 2",
+          "70–200 zoom",
+          "Chase vehicle mount"
+        ],
+        "assignedShootDay": 3,
+        "manufacturer": "DJI"
+      }
+    ],
+    "drones": [
+      {
+        "id": "drone_1",
+        "model": "Inspire 3",
+        "manufacturer": "DJI",
+        "serial": "DJI-INS3-771",
+        "weightGrams": 3995,
+        "regStatus": "registered",
+        "operatorName": "Priya Nair",
+        "operatorLicense": "UAS-44120",
+        "operatorRatePerDay": 2400,
+        "droneRatePerDay": 1600,
+        "assignedShootDay": 4,
+        "status": "assigned",
+        "notes": "Aerial reveal sc.5/5A. Night waiver filed with county."
+      },
+      {
+        "id": "drone_2",
+        "model": "Mavic 3 Cine",
+        "manufacturer": "DJI",
+        "serial": "DJI-M3C-902",
+        "weightGrams": 958,
+        "regStatus": "registered",
+        "operatorName": "Priya Nair",
+        "operatorLicense": "UAS-44120",
+        "operatorRatePerDay": 900,
+        "droneRatePerDay": 600,
+        "assignedShootDay": 3,
+        "status": "assigned",
+        "notes": "Bike chase B-plate, cliff road."
+      }
+    ],
+    "equipmentCheckouts": [
+      {
+        "id": "co_1",
+        "item": "ALEXA 35 body (A-Cam)",
+        "checkedOutBy": "crew_dp",
+        "checkoutAt": "2026-07-18T09:00:00.000Z",
+        "condition": "Prep — clean"
+      },
+      {
+        "id": "co_2",
+        "item": "DJI Ronin 2 (Bike-cam)",
+        "checkedOutBy": "crew_dp",
+        "checkoutAt": "2026-07-18T09:00:00.000Z",
+        "condition": "Balanced + tested"
+      }
+    ],
+    "checklists": [
+      {
+        "id": "cl_1",
+        "title": "Camera prep — Day 1",
+        "shootDay": 1,
+        "items": [
+          {
+            "id": "cli_1",
+            "label": "Sensor clean + back-focus",
+            "done": true,
+            "doneAt": "2026-07-18T09:00:00.000Z",
+            "doneBy": "crew_dp"
+          },
+          {
+            "id": "cli_2",
+            "label": "Build A-cam + follow focus",
+            "done": true,
+            "doneAt": "2026-07-18T09:00:00.000Z",
+            "doneBy": "crew_gaffer"
+          },
+          {
+            "id": "cli_3",
+            "label": "Media format + speed test",
+            "done": false
+          },
+          {
+            "id": "cli_4",
+            "label": "Batteries cycled",
+            "done": false
+          }
+        ]
+      },
+      {
+        "id": "cl_2",
+        "title": "Stunt safety — Cliff Road",
+        "shootDay": 3,
+        "items": [
+          {
+            "id": "cli_5",
+            "label": "Road closure confirmed",
+            "done": true,
+            "doneAt": "2026-07-18T09:00:00.000Z",
+            "doneBy": "crew_1ad"
+          },
+          {
+            "id": "cli_6",
+            "label": "Bike rehearsal at speed",
+            "done": false
+          },
+          {
+            "id": "cli_7",
+            "label": "Medic + safety boat on standby",
+            "done": false
+          }
+        ]
+      }
+    ],
+    "artElements": [
+      {
+        "id": "art_transmitter",
+        "name": "Practical transmitter wall",
+        "category": "prop",
+        "sceneIds": [
+          "sc_2",
+          "sc_4",
+          "sc_6"
+        ],
+        "status": "in_progress",
+        "cost": 4200,
+        "notes": "Working meters + programmable glow-up."
+      },
+      {
+        "id": "art_battery",
+        "name": "Marine battery jump rig",
+        "category": "prop",
+        "sceneIds": [
+          "sc_4"
+        ],
+        "status": "in_progress",
+        "cost": 650,
+        "notes": "Practical spark — pyro sign-off."
+      },
+      {
+        "id": "art_mic",
+        "name": "Broadcast mic (hero)",
+        "category": "prop",
+        "sceneIds": [
+          "sc_6"
+        ],
+        "status": "sourced",
+        "cost": 480
+      },
+      {
+        "id": "art_oilskin",
+        "name": "Mara's oilskin jacket",
+        "category": "wardrobe",
+        "sceneIds": [
+          "sc_1"
+        ],
+        "characterName": "Mara Chen",
+        "status": "ready",
+        "cost": 320,
+        "notes": "3× repeats for water work."
+      },
+      {
+        "id": "art_helmet",
+        "name": "Mara's bike helmet + leathers",
+        "category": "wardrobe",
+        "sceneIds": [
+          "sc_3"
+        ],
+        "characterName": "Mara Chen",
+        "status": "fitting",
+        "cost": 900,
+        "notes": "Matched set for stunt double."
+      },
+      {
+        "id": "art_bike",
+        "name": "Picture motorbike",
+        "category": "prop",
+        "sceneIds": [
+          "sc_3"
+        ],
+        "status": "sourced",
+        "cost": 2100,
+        "notes": "Plus mechanical backup."
+      },
+      {
+        "id": "art_torch",
+        "name": "Eli's torch + rigging",
+        "category": "prop",
+        "sceneIds": [
+          "sc_2"
+        ],
+        "characterName": "Eli Okoro",
+        "status": "ready",
+        "cost": 140
+      }
+    ],
+    "continuityPhotos": [],
+    "timesheet": [
+      {
+        "id": "ts_1",
+        "crewMemberId": "crew_dp",
+        "date": "2026-07-18",
+        "hours": 10,
+        "submitted": true,
+        "submittedAt": "2026-07-18T19:00:00.000Z",
+        "edits": []
+      },
+      {
+        "id": "ts_2",
+        "crewMemberId": "crew_gaffer",
+        "date": "2026-07-18",
+        "hours": 11,
+        "submitted": true,
+        "submittedAt": "2026-07-18T20:00:00.000Z",
+        "edits": [
+          {
+            "at": "2026-07-18T21:00:00.000Z",
+            "by": "user_admin",
+            "fromHours": 10.5,
+            "toHours": 11,
+            "isAdminOverride": true
+          }
+        ]
+      },
+      {
+        "id": "ts_3",
+        "crewMemberId": "crew_stunt",
+        "date": "2026-07-18",
+        "hours": 8.5,
+        "submitted": true,
+        "submittedAt": "2026-07-18T18:00:00.000Z",
+        "edits": []
+      },
+      {
+        "id": "ts_4",
+        "crewMemberId": "crew_art",
+        "date": "2026-07-18",
+        "hours": 9.5,
+        "submitted": true,
+        "submittedAt": "2026-07-18T19:00:00.000Z",
+        "edits": []
+      },
+      {
+        "id": "ts_5",
+        "crewMemberId": "crew_ward",
+        "date": "2026-07-18",
+        "hours": 7,
+        "submitted": false,
+        "edits": []
+      }
+    ],
+    "notifications": [
+      {
+        "id": "n_1",
+        "type": "approval_requested",
+        "title": "PO-0002 needs review",
+        "body": "SkyLine Aerial — drone day, AED 7,400. Awaiting accountant.",
+        "createdAt": "2026-07-18T09:00:00.000Z",
+        "read": false,
+        "linkTo": "/budget"
+      },
+      {
+        "id": "n_2",
+        "type": "task_overdue",
+        "title": "Cliff Road permit is blocked",
+        "body": "EXT night permit blocked on traffic-management confirmation.",
+        "createdAt": "2026-07-18T11:00:00.000Z",
+        "read": false,
+        "linkTo": "/tasks"
+      },
+      {
+        "id": "n_3",
+        "type": "po_rejected",
+        "title": "PO-0004 rejected",
+        "body": "TideWater Marine — safety boat to be re-bid separately.",
+        "createdAt": "2026-07-18T09:00:00.000Z",
+        "read": false,
+        "linkTo": "/budget"
+      },
+      {
+        "id": "n_4",
+        "type": "schedule_change",
+        "title": "Company move added — Day 3",
+        "body": "Cliff Road → Tower Base move at 22:30.",
+        "createdAt": "2026-07-17T09:00:00.000Z",
+        "read": true,
+        "linkTo": "/schedule"
+      },
+      {
+        "id": "n_5",
+        "type": "ai_digest",
+        "title": "Daily digest ready",
+        "body": "4 shoot days scheduled · 2 POs pending · stunt rig blocked.",
+        "createdAt": "2026-07-19T08:00:00.000Z",
+        "read": false,
+        "linkTo": "/dashboard"
+      }
+    ],
+    "activityLog": [
+      {
+        "id": "a_1",
+        "at": "2026-07-15T09:00:00.000Z",
+        "userId": "crew_gaffer",
+        "userLabel": "Theo Vance",
+        "action": "created",
+        "entity": "purchase_order",
+        "entityId": "po_1",
+        "description": "Submitted PO-0001 (Kessel Grip & Electric, AED 6,800)"
+      },
+      {
+        "id": "a_2",
+        "at": "2026-07-16T09:00:00.000Z",
+        "userId": "crew_acct",
+        "userLabel": "Dahlia Fenn",
+        "action": "approved",
+        "entity": "purchase_order",
+        "entityId": "po_1",
+        "description": "Accountant approved PO-0001"
+      },
+      {
+        "id": "a_3",
+        "at": "2026-07-16T14:00:00.000Z",
+        "userId": "user_admin",
+        "userLabel": "Administrator",
+        "action": "approved",
+        "entity": "purchase_order",
+        "entityId": "po_1",
+        "description": "Admin approved PO-0001"
+      },
+      {
+        "id": "a_4",
+        "at": "2026-07-17T09:00:00.000Z",
+        "userId": "crew_1ad",
+        "userLabel": "Salma Reyes",
+        "action": "updated",
+        "entity": "schedule",
+        "description": "Added company move to Day 3"
+      },
+      {
+        "id": "a_5",
+        "at": "2026-07-18T09:00:00.000Z",
+        "userId": "crew_acct",
+        "userLabel": "Dahlia Fenn",
+        "action": "rejected",
+        "entity": "purchase_order",
+        "entityId": "po_4",
+        "description": "Rejected PO-0004 — re-bid safety boat"
+      },
+      {
+        "id": "a_6",
+        "at": "2026-07-18T12:00:00.000Z",
+        "userId": "crew_1ad",
+        "userLabel": "Salma Reyes",
+        "action": "completed",
+        "entity": "task",
+        "entityId": "task_traffic",
+        "description": "Completed traffic-management confirmation"
+      },
+      {
+        "id": "a_7",
+        "at": "2026-07-18T15:00:00.000Z",
+        "userId": "crew_ward",
+        "userLabel": "June Park",
+        "action": "status_change",
+        "entity": "art_element",
+        "entityId": "art_oilskin",
+        "description": "Oilskin jacket moved to Ready"
+      }
+    ],
+    "aiDigest": {
+      "at": "2026-07-19T08:00:00.000Z",
+      "text": "Day 1 (station interiors) is locked and camera-prepped, with the 60kW genny PO approved. The critical path runs through the night exteriors: the Cliff Road / Tower permit is blocked on traffic-management, which in turn holds the tower height-rig safety sign-off and the Day-3/4 aerial reveal. Two POs sit pending — the drone day and the stunt rigging — and TideWater's marine PO was kicked back to re-bid the safety boat. Budget is tracking against a AED 322,000 plan with VFX (blackout, aerial extension, lights-return bloom) still to spend.",
+      "hash": "demo",
+      "model": "demo"
+    },
+    "healthHistory": [
+      {
+        "date": "2026-07-08",
+        "health": 55
+      },
+      {
+        "date": "2026-07-09",
+        "health": 57
+      },
+      {
+        "date": "2026-07-10",
+        "health": 60
+      },
+      {
+        "date": "2026-07-11",
+        "health": 59
+      },
+      {
+        "date": "2026-07-12",
+        "health": 63
+      },
+      {
+        "date": "2026-07-13",
+        "health": 66
+      },
+      {
+        "date": "2026-07-14",
+        "health": 65
+      },
+      {
+        "date": "2026-07-15",
+        "health": 69
+      },
+      {
+        "date": "2026-07-16",
+        "health": 70
+      },
+      {
+        "date": "2026-07-17",
+        "health": 73
+      },
+      {
+        "date": "2026-07-18",
+        "health": 72
+      },
+      {
+        "date": "2026-07-19",
+        "health": 75
+      }
+    ],
+    "users": [
+      {
+        "id": "user_admin",
+        "username": "Admin",
+        "displayName": "Administrator",
+        "password": "sha256$03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4",
+        "roleId": "admin",
+        "active": true,
+        "createdAt": "2026-06-09T09:00:00.000Z"
+      },
+      {
+        "id": "user_salma",
+        "username": "salma",
+        "displayName": "Salma Reyes",
+        "password": "",
+        "roleId": "scheduler",
+        "active": true,
+        "createdAt": "2026-06-24T09:00:00.000Z",
+        "inviteCode": "AD1STSLM"
+      },
+      {
+        "id": "user_dahlia",
+        "username": "dahlia",
+        "displayName": "Dahlia Fenn",
+        "password": "",
+        "roleId": "accountant",
+        "active": true,
+        "createdAt": "2026-06-24T09:00:00.000Z",
+        "inviteCode": "ACCTDHL9"
+      },
+      {
+        "id": "user_wren",
+        "username": "wren",
+        "displayName": "Wren Alvarez",
+        "password": "",
+        "roleId": "vfx",
+        "active": true,
+        "createdAt": "2026-06-27T09:00:00.000Z",
+        "inviteCode": "VFXWREN2"
+      },
+      {
+        "id": "user_marcus",
+        "username": "marcus",
+        "displayName": "Marcus Reed",
+        "password": "",
+        "roleId": "camera",
+        "active": true,
+        "createdAt": "2026-06-29T09:00:00.000Z",
+        "inviteCode": "STNTMRC5"
+      }
+    ],
+    "roles": [
+      {
+        "id": "admin",
+        "label": "Administrator",
+        "description": "Full oversight of every project, department, users, roles, and AI.",
+        "access": [
+          "all"
+        ],
+        "builtIn": true
+      },
+      {
+        "id": "scheduler",
+        "label": "1st AD / Scheduler",
+        "description": "Owns the shooting schedule, strip board, and DOOD.",
+        "access": [
+          "breakdown",
+          "schedule",
+          "locations",
+          "tasks",
+          "cast",
+          "reports"
+        ],
+        "permissions": {
+          "breakdown": "read",
+          "schedule": "write",
+          "locations": "write",
+          "tasks": "write",
+          "budget": "none",
+          "vfx": "none",
+          "rf": "none",
+          "camera": "none",
+          "drones": "none",
+          "art": "none",
+          "cast": "write",
+          "timesheet": "none",
+          "reports": "read"
+        },
+        "builtIn": true
+      },
+      {
+        "id": "accountant",
+        "label": "Accountant",
+        "description": "Manages the budget, POs, invoices, and petty cash.",
+        "department": "accounting",
+        "access": [
+          "budget",
+          "tasks",
+          "reports"
+        ],
+        "permissions": {
+          "breakdown": "none",
+          "schedule": "none",
+          "locations": "none",
+          "tasks": "write",
+          "budget": "write",
+          "vfx": "none",
+          "rf": "none",
+          "camera": "none",
+          "drones": "none",
+          "art": "none",
+          "cast": "none",
+          "timesheet": "none",
+          "reports": "read"
+        },
+        "builtIn": true
+      },
+      {
+        "id": "camera",
+        "label": "Camera / Technical",
+        "description": "Equipment manifests, kit builds, and prep checklists.",
+        "department": "camera",
+        "access": [
+          "camera",
+          "drones",
+          "breakdown",
+          "schedule",
+          "tasks"
+        ],
+        "permissions": {
+          "breakdown": "read",
+          "schedule": "read",
+          "locations": "none",
+          "tasks": "write",
+          "budget": "none",
+          "vfx": "none",
+          "rf": "none",
+          "camera": "write",
+          "drones": "write",
+          "art": "none",
+          "cast": "none",
+          "timesheet": "none",
+          "reports": "none"
+        },
+        "builtIn": true
+      },
+      {
+        "id": "vfx",
+        "label": "VFX Supervisor",
+        "description": "Shot pipeline, vendor management, plate delivery.",
+        "department": "vfx",
+        "access": [
+          "vfx",
+          "breakdown",
+          "tasks"
+        ],
+        "permissions": {
+          "breakdown": "read",
+          "schedule": "none",
+          "locations": "none",
+          "tasks": "write",
+          "budget": "none",
+          "vfx": "write",
+          "rf": "none",
+          "camera": "none",
+          "drones": "none",
+          "art": "none",
+          "cast": "none",
+          "timesheet": "none",
+          "reports": "none"
+        },
+        "builtIn": true
+      },
+      {
+        "id": "art",
+        "label": "Art / Wardrobe / Props",
+        "description": "Element tracking, continuity, and set dressing.",
+        "department": "art",
+        "access": [
+          "art",
+          "breakdown",
+          "tasks"
+        ],
+        "permissions": {
+          "breakdown": "read",
+          "schedule": "none",
+          "locations": "none",
+          "tasks": "write",
+          "budget": "none",
+          "vfx": "none",
+          "rf": "none",
+          "camera": "none",
+          "drones": "none",
+          "art": "write",
+          "cast": "none",
+          "timesheet": "none",
+          "reports": "none"
+        },
+        "builtIn": true
+      },
+      {
+        "id": "cast",
+        "label": "Cast Coordinator",
+        "description": "Cast schedules, DOOD, contracts, and call sheets.",
+        "department": "cast",
+        "access": [
+          "cast",
+          "schedule",
+          "tasks"
+        ],
+        "permissions": {
+          "breakdown": "none",
+          "schedule": "write",
+          "locations": "none",
+          "tasks": "write",
+          "budget": "none",
+          "vfx": "none",
+          "rf": "none",
+          "camera": "none",
+          "drones": "none",
+          "art": "none",
+          "cast": "write",
+          "timesheet": "none",
+          "reports": "none"
+        },
+        "builtIn": true
+      }
+    ],
+    "currentUserId": "user_admin",
+    "activeRole": "admin",
+    "tutorialSeen": true,
+    "sidebarPinned": true,
+    "projects": [
+      {
+        "id": "proj_saltstatic",
+        "name": "Salt & Static",
+        "logline": "A blackout swallows a coastal town; a radio engineer and a fisher's daughter fight through the night to keep one signal alive.",
+        "createdAt": "2026-06-09T09:00:00.000Z",
+        "updatedAt": "2026-07-19T09:00:00.000Z",
+        "currency": "AED",
+        "script": {
+          "fileName": "salt-and-static.pdf",
+          "rawText": "EXT. HARBOR BREAKWATER - DUSK\n\nMARA CHEN, 24, weather-beaten, drags crates up the slick concrete. The string of harbor lights STUTTERS — then the entire coastline blacks out at once.\n\nMARA\nThat's not a fuse.\n\nINT. COASTAL RADIO STATION - NIGHT\n\nELI OKORO, 39, sweeps a torch over a wall of dead meters. He slaps the generator. It COUGHS, catches, and one green light holds.\n\nELI\nCome on. Stay with me.\n\nEXT. CLIFF ROAD - NIGHT\n\nA single headlight carves the black. MARA leans her bike hard through the switchbacks, the dead town falling away below.\n\nINT. COASTAL RADIO STATION - NIGHT\n\nMARA drops a marine battery on the desk. Sparks. ELI stares.\n\nELI\nThat'll fry the whole board.\n\nMARA\nOr it'll talk. Pick one.\n\nEXT. TRANSMITTER TOWER BASE - NIGHT\n\nWind screams. ELI and MARA start up the gantry ladder. We rise with them — then keep rising, up past the dish, to reveal a coastline swallowed whole by the dark.\n\nEXT. COAST - NIGHT (AERIAL INSERT)\n\nFrom high above: one window glows. Then a dozen. Then a whole coastline of them, blooming back to life as the signal reaches home.\n\nINT. COASTAL RADIO STATION - DAWN\n\nGrey light. Both of them slumped, filthy, alive. ELI leans to the mic.\n\nELI\nThat's the night shift. Get some sleep, coast. We've got you.",
+          "uploadedAt": "2026-06-10T09:00:00.000Z",
+          "pageCount": 10,
+          "source": "pdf"
+        },
+        "sceneCount": 7,
+        "elementCount": 39
+      }
+    ],
+    "activeProjectId": "proj_saltstatic",
+    "projectData": {},
+    "aiUsage": [
+      {
+        "id": "u_1",
+        "feature": "character_bible",
+        "at": "2026-06-10T09:00:00.000Z",
+        "inputTokens": 7600,
+        "outputTokens": 1200,
+        "model": "demo",
+        "costUsd": 0
+      },
+      {
+        "id": "u_2",
+        "feature": "script_breakdown",
+        "at": "2026-06-10T09:00:00.000Z",
+        "inputTokens": 12800,
+        "outputTokens": 4800,
+        "model": "demo",
+        "costUsd": 0
+      },
+      {
+        "id": "u_3",
+        "feature": "daily_digest",
+        "at": "2026-07-19T08:00:00.000Z",
+        "inputTokens": 3400,
+        "outputTokens": 700,
+        "model": "demo",
+        "costUsd": 0
+      }
+    ],
+    "aiConfig": {
+      "alertThresholdPct": 80
+    }
+  },
+  "version": 5
+}

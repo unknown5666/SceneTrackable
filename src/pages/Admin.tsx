@@ -5,7 +5,7 @@ import { useStore } from "@/state/store";
 import { ACCESS_KEYS, PERMISSION_LEVELS, ROLE_PRESETS, permissionMap } from "@/data/roles";
 import { isAdminRole, permissionFor, accessFromPermissions } from "@/types";
 import { hashPassword } from "@/lib/utils";
-import { exportBackup, importBackup } from "@/lib/export";
+import { exportBackup, exportProject, importBackup, restoreFullBackup } from "@/lib/export";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -227,14 +227,34 @@ export function Admin() {
 
   // ---- Backup / restore ----
   const restoreInput = useRef<HTMLInputElement>(null);
+  const replaceInput = useRef<HTMLInputElement>(null);
+
+  // Additive restore: merge the file's project(s) into this workspace.
   const onRestoreFile = async (file: File) => {
     if (
       !confirm(
-        "Restoring a backup REPLACES all current data (projects, users, breakdowns). The app will reload. Continue?"
+        "Import the project(s) from this file into your workspace? A project with the same name is updated; the rest are added. Your other projects, users, and roles are left untouched. The app will reload."
       )
     )
       return;
     const err = await importBackup(file);
+    if (err) alert(err);
+  };
+
+  // Destructive: replace the entire workspace with a full backup.
+  const onReplaceFile = async (file: File) => {
+    if (
+      !confirm(
+        "REPLACE EVERYTHING? This wipes all current projects, users, and roles and swaps in the full backup. This cannot be undone. The app will reload."
+      )
+    )
+      return;
+    const err = await restoreFullBackup(file);
+    if (err) alert(err);
+  };
+
+  const onExportProject = () => {
+    const err = exportProject();
     if (err) alert(err);
   };
 
@@ -259,18 +279,21 @@ export function Admin() {
         <div className="space-y-6">
           {/* Data backup / restore */}
           <Card padding="none">
-            <div className="p-4 flex items-center justify-between">
+            <div className="p-4 flex flex-wrap items-center justify-between gap-3">
               <CardHeader
                 title={<span className="flex items-center gap-2"><Database size={13} /> Backup & restore</span>}
-                subtitle="Back up the entire workspace (all projects, users, breakdowns) to a file, or restore from one."
+                subtitle="Download the whole workspace or just the current project. Restoring MERGES a file's project(s) in — it doesn't wipe anything."
                 className="mb-0"
               />
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button size="sm" variant="secondary" onClick={exportBackup}>
-                  <Download size={13} /> Download backup
+                  <Download size={13} /> Download full backup
                 </Button>
-                <Button size="sm" variant="secondary" onClick={() => restoreInput.current?.click()}>
-                  <Upload size={13} /> Restore backup
+                <Button size="sm" variant="secondary" onClick={onExportProject}>
+                  <Download size={13} /> Download this project
+                </Button>
+                <Button size="sm" onClick={() => restoreInput.current?.click()}>
+                  <Upload size={13} /> Restore (merge)
                 </Button>
                 <input
                   ref={restoreInput}
@@ -284,6 +307,27 @@ export function Admin() {
                   }}
                 />
               </div>
+            </div>
+            {/* Danger: full-workspace replace, kept separate from the safe merge path */}
+            <div className="px-4 py-3 border-t border-[var(--border-default)] flex flex-wrap items-center justify-between gap-2">
+              <div className="text-xs text-[var(--text-secondary)]">
+                <span className="font-medium text-[var(--text-primary)]">Replace entire workspace</span> — swap
+                everything (projects, users, roles) for a full backup. Destructive.
+              </div>
+              <Button size="sm" variant="ghost" onClick={() => replaceInput.current?.click()}>
+                <Upload size={13} /> Replace everything…
+              </Button>
+              <input
+                ref={replaceInput}
+                type="file"
+                accept="application/json,.json"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) onReplaceFile(f);
+                  e.target.value = "";
+                }}
+              />
             </div>
           </Card>
 
