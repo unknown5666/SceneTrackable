@@ -547,7 +547,7 @@ export function Breakdown() {
                                 <select
                                   value={el.category}
                                   onChange={(e) => updateElement(scene.id, el.id, { category: e.target.value as ElementCategory })}
-                                  className="h-7 text-xs bg-transparent border-transparent hover:border-[var(--border-default)]"
+                                  className="h-7 text-xs leading-none px-1.5 py-0 bg-transparent border-transparent hover:border-[var(--border-default)]"
                                   disabled={!writable}
                                 >
                                   {CATEGORIES.map((c) => (
