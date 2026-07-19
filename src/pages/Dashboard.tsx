@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
+import { staggerContainer, staggerItem } from "@/lib/motion";
 import {
   Activity,
   Calendar,
@@ -173,51 +175,68 @@ function TopStats({ data }: { data: ProductionData }) {
       : "warning";
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-      <StatCard
-        icon={<Film size={20} />}
-        label="Scenes Shot"
-        value={`${shotScenes} / ${totalScenes || "—"}`}
-        hint={
-          m.sceneCompletion === undefined
-            ? "Nothing on the board yet"
-            : `${Math.round(m.sceneCompletion * 100)}% of the script`
-        }
-      />
-      <StatCard
-        icon={<Calendar size={20} />}
-        label="Days Remaining"
-        value={daysLeft ?? "—"}
-        hint={
-          daysLeft === undefined
-            ? "No shoot days scheduled"
-            : `Day ${m.daysShot} of ${m.totalDays}`
-        }
-        tone={daysLeft !== undefined && daysLeft === 0 ? "success" : "neutral"}
-      />
-      <StatCard
-        icon={<DollarSign size={20} />}
-        label="Budget Spent"
-        value={
-          m.totalBudgeted > 0
-            ? formatCurrency(m.totalSpent, data.production.currency)
-            : "—"
-        }
-        hint={
-          m.totalBudgeted > 0
-            ? `of ${formatCurrency(m.totalBudgeted, data.production.currency)} planned`
-            : "No budget lines loaded"
-        }
-        tone={burnTone}
-      />
-      <StatCard
-        icon={<AlertCircle size={20} />}
-        label="Overdue Tasks"
-        value={m.overdueTaskCount}
-        hint={m.overdueTaskCount > 0 ? "Attention required" : "All on track"}
-        tone={m.overdueTaskCount > 0 ? "danger" : "success"}
-      />
-    </div>
+    <motion.div
+      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3"
+      variants={staggerContainer}
+      initial="initial"
+      animate="animate"
+    >
+      <motion.div variants={staggerItem}>
+        <StatCard
+          glow
+          icon={<Film size={20} />}
+          label="Scenes Shot"
+          value={`${shotScenes} / ${totalScenes || "—"}`}
+          hint={
+            m.sceneCompletion === undefined
+              ? "Nothing on the board yet"
+              : `${Math.round(m.sceneCompletion * 100)}% of the script`
+          }
+        />
+      </motion.div>
+      <motion.div variants={staggerItem}>
+        <StatCard
+          glow
+          icon={<Calendar size={20} />}
+          label="Days Remaining"
+          value={daysLeft ?? "—"}
+          hint={
+            daysLeft === undefined
+              ? "No shoot days scheduled"
+              : `Day ${m.daysShot} of ${m.totalDays}`
+          }
+          tone={daysLeft !== undefined && daysLeft === 0 ? "success" : "neutral"}
+        />
+      </motion.div>
+      <motion.div variants={staggerItem}>
+        <StatCard
+          glow
+          icon={<DollarSign size={20} />}
+          label="Budget Spent"
+          value={
+            m.totalBudgeted > 0
+              ? formatCurrency(m.totalSpent, data.production.currency)
+              : "—"
+          }
+          hint={
+            m.totalBudgeted > 0
+              ? `of ${formatCurrency(m.totalBudgeted, data.production.currency)} planned`
+              : "No budget lines loaded"
+          }
+          tone={burnTone}
+        />
+      </motion.div>
+      <motion.div variants={staggerItem}>
+        <StatCard
+          glow
+          icon={<AlertCircle size={20} />}
+          label="Overdue Tasks"
+          value={m.overdueTaskCount}
+          hint={m.overdueTaskCount > 0 ? "Attention required" : "All on track"}
+          tone={m.overdueTaskCount > 0 ? "danger" : "success"}
+        />
+      </motion.div>
+    </motion.div>
   );
 }
 

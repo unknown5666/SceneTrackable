@@ -172,6 +172,7 @@ textarea:focus,
 select:focus {
   outline: none;
   border-color: var(--accent-blue);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-blue) 16%, transparent);
 }
 input::placeholder,
 textarea::placeholder {
@@ -241,6 +242,95 @@ textarea::placeholder {
 }
 .recharts-tooltip-wrapper .recharts-tooltip-item {
   color: var(--text-secondary) !important;
+}
+
+/* Cursor-glow card — radial highlight following the mouse via --x/--y.
+   The highlight sits above the background but below content (z-0 vs content). */
+.st-card-glow::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 200ms ease;
+  background: radial-gradient(
+    260px circle at var(--x, 50%) var(--y, 50%),
+    color-mix(in srgb, var(--accent-blue) 12%, transparent),
+    transparent 60%
+  );
+  z-index: 0;
+}
+.st-card-glow:hover::before {
+  opacity: 1;
+}
+.st-card-glow > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* View Transitions theme reveal: the new snapshot is clip-path animated in
+   (see state/theme.tsx), so suppress the default cross-fade and let the new
+   view sit on top while the circle expands. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+::view-transition-old(root) {
+  z-index: 0;
+}
+::view-transition-new(root) {
+  z-index: 1;
+}
+
+/* Login: slow animated gradient + film grain. */
+@keyframes gradient-drift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+.st-animated-gradient {
+  background: linear-gradient(
+    120deg,
+    color-mix(in srgb, var(--accent-blue) 22%, var(--bg-base)),
+    var(--bg-base) 40%,
+    color-mix(in srgb, var(--color-ai) 22%, var(--bg-base))
+  );
+  background-size: 220% 220%;
+  animation: gradient-drift 18s ease infinite;
+}
+.st-grain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.4'/%3E%3C/svg%3E");
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .st-animated-gradient { animation: none; }
+  .pulse-dot { animation: none; }
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* Compact density — tightens the base text/table rhythm app-wide. */
+:root[data-density="compact"] body {
+  font-size: 13px;
+  line-height: 1.45;
+}
+:root[data-density="compact"] .pos-table thead th,
+:root[data-density="compact"] .pos-table tbody td {
+  padding-top: 8px;
+  padding-bottom: 8px;
 }
 
 /* Skeleton */

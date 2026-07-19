@@ -1,6 +1,7 @@
 import React from "react";
 import { Card } from "./Card";
 import { cn } from "@/lib/utils";
+import { CountUp } from "./CountUp";
 import { LineChart, Line, ResponsiveContainer } from "recharts";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 
@@ -17,6 +18,7 @@ interface StatCardProps {
     upIsGood?: boolean;
   };
   sparklineData?: { v: number }[];
+  glow?: boolean;
   className?: string;
 }
 
@@ -35,6 +37,7 @@ export function StatCard({
   tone = "neutral",
   trend,
   sparklineData,
+  glow,
   className,
 }: StatCardProps) {
   const trendColor = trend
@@ -46,7 +49,7 @@ export function StatCard({
     : "";
 
   return (
-    <Card className={cn("flex flex-col justify-between min-h-[110px]", className)}>
+    <Card glow={glow} className={cn("flex flex-col justify-between min-h-[110px]", className)}>
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-2">
           {icon && (
@@ -60,7 +63,9 @@ export function StatCard({
 
       <div className="mt-2 flex items-end justify-between gap-3">
         <div className="min-w-0">
-          <div className="data-value truncate">{value}</div>
+          <div className="data-value truncate">
+            {typeof value === "number" ? <CountUp value={value} separator /> : value}
+          </div>
           {hint && (
             <div className="text-xs text-[var(--text-muted)] mt-0.5">{hint}</div>
           )}

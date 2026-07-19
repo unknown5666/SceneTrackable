@@ -103,8 +103,14 @@ const SHEET_CATEGORIES: { key: string; label: string }[] = [
 ];
 
 export function printBreakdownSheets(projectName: string, scenes: Scene[]): void {
+  const printedOn = new Date().toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+  const total = scenes.length;
   const pages = scenes
-    .map((sc) => {
+    .map((sc, i) => {
       const boxes = SHEET_CATEGORIES.map((cat) => {
         const els = sc.elements.filter((e) => e.category === cat.key);
         if (!els.length) return "";
@@ -119,7 +125,10 @@ export function printBreakdownSheets(projectName: string, scenes: Scene[]): void
       return `
       <section class="sheet">
         <header>
-          <div class="prod">${esc(projectName)} — Breakdown Sheet</div>
+          <div class="topline">
+            <span class="prod">${esc(projectName)} — Breakdown Sheet</span>
+            <span class="page">${printedOn} · Sheet ${i + 1} of ${total}</span>
+          </div>
           <h2>Scene ${esc(sc.number)} · ${esc(sc.intExt)}. ${esc(sc.location)} — ${esc(sc.timeOfDay)}</h2>
           <div class="meta">${sc.pages} pages · est. ${sc.estimatedShootMinutes} min${sc.synopsis ? ` · ${esc(sc.synopsis)}` : ""}</div>
         </header>
@@ -130,12 +139,15 @@ export function printBreakdownSheets(projectName: string, scenes: Scene[]): void
 
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(projectName)} — Breakdown Sheets</title>
   <style>
+    /* Standalone print document — light theme is inherent (no app CSS vars). */
     * { box-sizing: border-box; margin: 0; }
-    body { font-family: Georgia, 'Times New Roman', serif; color: #111; }
+    body { font-family: Georgia, 'Times New Roman', serif; color: #111; background: #fff; }
     .sheet { page-break-after: always; padding: 28px 32px; }
     header { border-bottom: 3px double #111; padding-bottom: 10px; margin-bottom: 16px; }
+    .topline { display: flex; justify-content: space-between; align-items: baseline; }
     .prod { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: #555; }
-    h2 { font-size: 19px; margin-top: 4px; }
+    .page { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: #888; }
+    h2 { font-size: 19px; margin-top: 6px; }
     .meta { font-size: 12px; color: #444; margin-top: 4px; }
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .box { border: 1px solid #999; padding: 8px 10px; break-inside: avoid; }
@@ -256,21 +268,42 @@ export function exportBackup(): void {
   downloadText(`scenetrackable-backup-${stamp}.json`, raw, "application/json");
 }
 
+/** Shared validation + apply for a persisted-store payload. */
+function applyBackupText(text: string): string | null {
+  const parsed = JSON.parse(text);
+  if (!parsed || typeof parsed !== "object" || !parsed.state || typeof parsed.version !== "number") {
+    return "This file doesn't look like a SceneTrackable backup.";
+  }
+  if (!Array.isArray(parsed.state.users) || !Array.isArray(parsed.state.projects)) {
+    return "Backup is missing core data (users/projects).";
+  }
+  localStorage.setItem(STORE_KEY, text);
+  window.location.reload();
+  return null;
+}
+
 /** Validates and restores a backup file, then reloads the app. */
 export async function importBackup(file: File): Promise<string | null> {
   try {
-    const text = await file.text();
-    const parsed = JSON.parse(text);
-    if (!parsed || typeof parsed !== "object" || !parsed.state || typeof parsed.version !== "number") {
-      return "This file doesn't look like a SceneTrackable backup.";
-    }
-    if (!Array.isArray(parsed.state.users) || !Array.isArray(parsed.state.projects)) {
-      return "Backup is missing core data (users/projects).";
-    }
-    localStorage.setItem(STORE_KEY, text);
-    window.location.reload();
-    return null;
+    return applyBackupText(await file.text());
   } catch {
     return "Could not read the backup file (invalid JSON).";
+  }
+}
+
+/**
+ * Loads the bundled showcase production (`public/sample-production.json`)
+ * through the same restore path as a backup — so it lands as real, editable,
+ * cloud-syncable data, not a special mode. Reloads on success.
+ */
+export async function loadSampleProduction(): Promise<string | null> {
+  try {
+    const res = await fetch(`${import.meta.env.BASE_URL}sample-production.json`, {
+      cache: "no-store",
+    });
+    if (!res.ok) return `Couldn't load the sample (HTTP ${res.status}).`;
+    return applyBackupText(await res.text());
+  } catch {
+    return "Couldn't load the sample production. Check your connection and try again.";
   }
 }

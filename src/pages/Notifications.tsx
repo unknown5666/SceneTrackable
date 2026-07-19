@@ -1,5 +1,6 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Bell,
   Calendar,
@@ -74,8 +75,8 @@ export function Notifications() {
             <div>
               <div className="section-header mb-3">Today</div>
               <div className="space-y-1.5">
-                {todayNotifs.map((n) => (
-                  <NotifRow key={n.id} n={n} onRead={markRead} onNav={nav} />
+                {todayNotifs.map((n, i) => (
+                  <NotifRow key={n.id} n={n} index={i} onRead={markRead} onNav={nav} />
                 ))}
               </div>
             </div>
@@ -84,8 +85,8 @@ export function Notifications() {
             <div>
               <div className="section-header mb-3">Earlier</div>
               <div className="space-y-1.5">
-                {earlierNotifs.map((n) => (
-                  <NotifRow key={n.id} n={n} onRead={markRead} onNav={nav} />
+                {earlierNotifs.map((n, i) => (
+                  <NotifRow key={n.id} n={n} index={i} onRead={markRead} onNav={nav} />
                 ))}
               </div>
             </div>
@@ -98,10 +99,12 @@ export function Notifications() {
 
 function NotifRow({
   n,
+  index,
   onRead,
   onNav,
 }: {
   n: ReturnType<typeof useStore.getState>["notifications"][number];
+  index: number;
   onRead: (id: string) => void;
   onNav: (to: string) => void;
 }) {
@@ -126,9 +129,16 @@ function NotifRow({
         <div className="text-xs text-[var(--text-secondary)] mt-0.5">{n.body}</div>
         <div className="text-[10px] text-[var(--text-muted)] mt-1.5">{formatDateTime(n.createdAt)}</div>
       </div>
-      {!n.read && (
-        <span className="w-2 h-2 rounded-full shrink-0 mt-1.5" style={{ background: "var(--accent-blue)" }} />
-      )}
+      <AnimatePresence>
+        {!n.read && (
+          <motion.span
+            className="w-2 h-2 rounded-full shrink-0 mt-1.5"
+            style={{ background: "var(--accent-blue)" }}
+            initial={false}
+            exit={{ opacity: 0, scale: 0, transition: { duration: 0.2, delay: index * 0.04 } }}
+          />
+        )}
+      </AnimatePresence>
     </button>
   );
 }

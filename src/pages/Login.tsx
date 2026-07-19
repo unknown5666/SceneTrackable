@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Clapperboard, Sun, Moon, ArrowRight, Lock, KeyRound } from "lucide-react";
+import { motion } from "framer-motion";
+import { Clapperboard, Sun, Moon, ArrowRight, Lock, KeyRound, Check } from "lucide-react";
 import { useStore, cloudRecoverAccount } from "@/state/store";
 import { cloudEnabled } from "@/lib/cloud";
 import { useTheme } from "@/state/theme";
 import { Button } from "@/components/ui/Button";
+import { LoadSampleButton } from "@/components/ui/LoadSampleButton";
 import { Footer } from "@/components/layout/Footer";
 
 type Mode = "signin" | "redeem";
@@ -27,6 +29,10 @@ export function Login() {
   const [busy, setBusy] = useState(false);
   /** Progress note for the slow path (fetching a workspace this device lacks). */
   const [statusText, setStatusText] = useState("");
+  /** Submit button morph: idle → loading → success (check) before navigating. */
+  const [submitState, setSubmitState] = useState<"idle" | "loading" | "success">("idle");
+  /** Bumped to replay the shake animation on a rejected sign-in. */
+  const [shake, setShake] = useState(0);
 
   useEffect(() => {
     if (userId) nav("/projects", { replace: true });
@@ -34,19 +40,32 @@ export function Login() {
 
   const clearError = () => setError("");
 
+  // Flash the success check, then route.
+  const succeed = () => {
+    setSubmitState("success");
+    setTimeout(() => nav("/projects", { replace: true }), 500);
+  };
+  const reject = (msg: string) => {
+    setError(msg);
+    setShake((n) => n + 1);
+    setSubmitState("idle");
+  };
+
   const submitSignin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (busy) return;
     setBusy(true);
+    setSubmitState("loading");
     try {
       // If this account is holding an invite, guide them to the redeem step.
       if (isInvitePending(username)) {
         setMode("redeem");
         setError("This account still needs a password. Enter your invite code and pick one.");
+        setSubmitState("idle");
         return;
       }
       if (await login(username, password)) {
-        nav("/projects", { replace: true });
+        succeed();
         return;
       }
 
@@ -57,11 +76,11 @@ export function Login() {
         const err = await cloudRecoverAccount(username, password);
         setStatusText("");
         if (!err && (await login(username, password))) {
-          nav("/projects", { replace: true });
+          succeed();
           return;
         }
       }
-      setError("Invalid username or password.");
+      reject("Invalid username or password.");
     } finally {
       setBusy(false);
       setStatusText("");
@@ -104,8 +123,8 @@ export function Login() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: "var(--bg-base)" }}>
-      <header className="flex items-center justify-between px-8 py-6">
+    <div className="st-animated-gradient st-grain relative min-h-screen flex flex-col">
+      <header className="relative flex items-center justify-between px-8 py-6 z-10">
         <div className="flex items-center gap-3">
           <div
             className="w-10 h-10 rounded-xl flex items-center justify-center"
@@ -117,12 +136,12 @@ export function Login() {
             Scene<span className="text-[var(--accent-blue)]">Trackable</span>
           </div>
         </div>
-        <Button variant="ghost" size="sm" onClick={toggle}>
+        <Button variant="ghost" size="sm" onClick={(e) => toggle({ x: e.clientX, y: e.clientY })}>
           {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
         </Button>
       </header>
 
-      <div className="flex-1 flex items-center justify-center px-6">
+      <div className="relative z-10 flex-1 flex items-center justify-center px-6">
         <div className="w-full max-w-4xl grid lg:grid-cols-2 gap-10 items-center">
           {/* Pitch */}
           <div className="hidden lg:block">
@@ -152,8 +171,11 @@ export function Login() {
           </div>
 
           {/* Card */}
-          <div
-            className="rounded-2xl border border-[var(--border-default)] p-8 relative overflow-hidden"
+          <motion.div
+            key={shake}
+            animate={shake > 0 ? { x: [0, -9, 8, -6, 4, 0] } : undefined}
+            transition={{ duration: 0.4, ease: "easeInOut" }}
+            className="rounded-2xl border border-[var(--border-default)] p-8 relative overflow-hidden shadow-2xl"
             style={{ background: "var(--bg-surface)" }}
           >
             <div
@@ -206,8 +228,30 @@ export function Login() {
                 {statusText && (
                   <div className="text-xs text-[var(--text-secondary)]">{statusText}</div>
                 )}
-                <Button type="submit" className="w-full justify-center" disabled={busy}>
-                  {busy ? "Signing in…" : "Sign in"} <ArrowRight size={14} />
+                <Button
+                  type="submit"
+                  className="w-full justify-center"
+                  disabled={busy}
+                  style={
+                    submitState === "success"
+                      ? { background: "var(--color-success)" }
+                      : undefined
+                  }
+                >
+                  {submitState === "success" ? (
+                    <>
+                      <Check size={15} /> Signed in
+                    </>
+                  ) : submitState === "loading" ? (
+                    <>
+                      <span className="w-3.5 h-3.5 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                      Signing in…
+                    </>
+                  ) : (
+                    <>
+                      Sign in <ArrowRight size={14} />
+                    </>
+                  )}
                 </Button>
                 <button
                   type="button"
@@ -316,7 +360,15 @@ export function Login() {
                 </>
               )}
             </div>
-          </div>
+
+            {/* One-click demo — loads a fully dressed production and signs in. */}
+            <div className="mt-5 pt-5 border-t border-[var(--border-default)] flex flex-col items-center gap-1.5">
+              <LoadSampleButton variant="secondary" size="sm" className="w-full justify-center" />
+              <span className="text-[10px] text-[var(--text-muted)]">
+                Explore every feature with a sample film — no sign-in needed.
+              </span>
+            </div>
+          </motion.div>
         </div>
       </div>
 

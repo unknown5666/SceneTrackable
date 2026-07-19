@@ -1,9 +1,11 @@
-import React from "react";
+import React, { useRef } from "react";
 import { cn } from "@/lib/utils";
 
 interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   variant?: "default" | "elevated" | "ai";
   padding?: "none" | "sm" | "md" | "lg";
+  /** Radial highlight that follows the cursor (Dashboard stats, project cards). */
+  glow?: boolean;
 }
 
 const paddingMap: Record<NonNullable<CardProps["padding"]>, string> = {
@@ -14,7 +16,9 @@ const paddingMap: Record<NonNullable<CardProps["padding"]>, string> = {
 };
 
 export const Card = React.forwardRef<HTMLDivElement, CardProps>(
-  ({ variant = "default", padding = "md", className, children, ...rest }, ref) => {
+  ({ variant = "default", padding = "md", glow, className, children, style, onMouseMove, ...rest }, ref) => {
+    const localRef = useRef<HTMLDivElement | null>(null);
+
     const variantClasses =
       variant === "ai"
         ? "border-[rgba(139,92,246,0.3)] bg-[rgba(139,92,246,0.04)]"
@@ -22,15 +26,33 @@ export const Card = React.forwardRef<HTMLDivElement, CardProps>(
         ? "bg-[var(--bg-elevated)]"
         : "bg-[var(--bg-surface)]";
 
+    const setRefs = (node: HTMLDivElement | null) => {
+      localRef.current = node;
+      if (typeof ref === "function") ref(node);
+      else if (ref) (ref as React.MutableRefObject<HTMLDivElement | null>).current = node;
+    };
+
+    const handleMove: React.MouseEventHandler<HTMLDivElement> = (e) => {
+      if (glow && localRef.current) {
+        const r = localRef.current.getBoundingClientRect();
+        localRef.current.style.setProperty("--x", `${e.clientX - r.left}px`);
+        localRef.current.style.setProperty("--y", `${e.clientY - r.top}px`);
+      }
+      onMouseMove?.(e);
+    };
+
     return (
       <div
-        ref={ref}
+        ref={setRefs}
+        onMouseMove={handleMove}
         className={cn(
           "rounded-card border border-[var(--border-default)] transition-colors hover:border-[var(--border-hover)]",
+          glow && "st-card-glow relative",
           paddingMap[padding],
           variantClasses,
           className
         )}
+        style={style}
         {...rest}
       >
         {children}

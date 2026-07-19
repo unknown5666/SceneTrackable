@@ -35,7 +35,7 @@ export function CloudIndicator() {
 
   const click = async () => {
     if (status.conflict) {
-      nav("/cloud");
+      nav("/admin?tab=cloud");
       return;
     }
     setSpinning(true);

@@ -15,6 +15,7 @@ import {
   printReport,
   type ReportId,
 } from "@/lib/reports";
+import { HelpButton } from "@/components/ui/HelpButton";
 
 interface Narration {
   /** The report this describes — it must never be shown above another. */
@@ -272,8 +273,10 @@ export function Reports() {
 
 function Header() {
   return (
-    <div className="mb-6">
-      <div className="section-header">Reports</div>
+    <div className="mb-6" data-tour="page-header">
+      <div className="section-header flex items-center gap-1.5">
+        Reports <HelpButton doc="reports" />
+      </div>
       <div className="page-title mt-1">Extract Reports</div>
       <div className="text-sm text-[var(--text-secondary)] mt-1 max-w-2xl">
         Preview and export production reports as CSV (for Excel / Google Sheets)

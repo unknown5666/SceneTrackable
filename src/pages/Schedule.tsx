@@ -51,6 +51,7 @@ import {
 } from "@/lib/claude";
 import { printCallSheet } from "@/lib/export";
 import { ProposalPicker, type ProposalItem } from "@/components/ui/ProposalPicker";
+import { HelpButton } from "@/components/ui/HelpButton";
 import {
   buildScheduleDigest,
   defaultStartDate,
@@ -93,9 +94,11 @@ export function Schedule() {
 
   return (
     <div className="max-w-[1400px] mx-auto">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4" data-tour="page-header">
         <div>
-          <div className="section-header">Schedule</div>
+          <div className="section-header flex items-center gap-1.5">
+            Schedule <HelpButton doc="schedule" />
+          </div>
           <div className="page-title mt-1">Strip Board & DOOD</div>
         </div>
         <PublishButton />

@@ -1,49 +1,18 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, Sun, Moon, ChevronDown, LogOut, FolderKanban, Plus, Menu, Check, Loader2, AlertTriangle } from "lucide-react";
-import { useStore, unreadCount, currentUser, currentRole, activeProject, activeAIJob } from "@/state/store";
-import { useTheme } from "@/state/theme";
+import { motion, AnimatePresence } from "framer-motion";
+import { Bell, ChevronDown, LogOut, FolderKanban, Plus, Menu, Check, BookOpen, Settings as SettingsIcon } from "lucide-react";
+import { useStore, unreadCount, currentUser, currentRole, activeProject } from "@/state/store";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { CountUp } from "@/components/ui/CountUp";
+import { ProjectPoster } from "@/components/ui/ProjectPoster";
+import { IdentityAvatar } from "@/components/ui/IdentityAvatar";
 import { CloudIndicator } from "./CloudIndicator";
+import { AIStatusPill } from "./AIStatusPill";
+import { PresenceAvatars } from "./PresenceAvatars";
+import { menuVariants } from "@/lib/motion";
 import { formatDateTime } from "@/lib/utils";
-
-/**
- * A slim global pill for the running (or allowance-paused) AI job. It lives
- * here so a long run shows from every page — the job state is in the store, so
- * navigating away never hides it — and a click lands on the tab that owns it.
- */
-function AIStatusPill() {
-  const nav = useNavigate();
-  const active = useStore(activeAIJob);
-  if (!active) return null;
-  const { job } = active;
-  const paused = job.status === "paused_limit";
-  const { done, total } = job.progress;
-
-  return (
-    <button
-      onClick={() => job.route && nav(job.route)}
-      title={paused ? job.error : `${job.label} — ${done}/${total}`}
-      className="hidden sm:flex items-center gap-1.5 h-8 px-2.5 rounded-full border text-xs max-w-[240px] transition-colors"
-      style={{
-        borderColor: paused ? "var(--color-warning)" : "rgba(139,92,246,0.4)",
-        background: paused ? "rgba(245,158,11,0.10)" : "rgba(139,92,246,0.12)",
-        color: paused ? "var(--color-warning)" : "var(--color-ai)",
-      }}
-    >
-      {paused ? (
-        <AlertTriangle size={13} className="shrink-0" />
-      ) : (
-        <Loader2 size={13} className="animate-spin shrink-0" />
-      )}
-      <span className="truncate font-medium">{job.label}</span>
-      <span className="tabular-nums opacity-80 shrink-0">
-        {paused ? "paused" : total > 0 ? `${done}/${total}` : ""}
-      </span>
-    </button>
-  );
-}
 
 interface TopBarProps {
   /** Opens the sidebar overlay below `lg`, where there is no rail to hover. */
@@ -52,7 +21,6 @@ interface TopBarProps {
 
 export function TopBar({ onOpenSidebar }: TopBarProps) {
   const nav = useNavigate();
-  const { theme, toggle } = useTheme();
   const user = useStore(currentUser);
   const role = useStore(currentRole);
   const project = useStore(activeProject);
@@ -65,9 +33,17 @@ export function TopBar({ onOpenSidebar }: TopBarProps) {
   const [notifOpen, setNotifOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
   const [projectOpen, setProjectOpen] = useState(false);
+  const [bellWiggle, setBellWiggle] = useState(0);
   const notifRef = useRef<HTMLDivElement>(null);
   const userRef = useRef<HTMLDivElement>(null);
   const projectRef = useRef<HTMLDivElement>(null);
+  const prevUnread = useRef(unread);
+
+  // A new notification wiggles the bell.
+  useEffect(() => {
+    if (unread > prevUnread.current) setBellWiggle((n) => n + 1);
+    prevUnread.current = unread;
+  }, [unread]);
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
@@ -98,107 +74,138 @@ export function TopBar({ onOpenSidebar }: TopBarProps) {
         </button>
 
         {/* Project switcher */}
-        <div className="relative min-w-0" ref={projectRef}>
+        <div className="relative min-w-0" ref={projectRef} data-tour="project-switcher">
           <button
             onClick={() => setProjectOpen((v) => !v)}
-            className="flex items-center gap-2 min-w-0 text-left hover:opacity-80 transition-opacity"
+            className="flex items-center gap-2.5 min-w-0 text-left hover:opacity-80 transition-opacity"
           >
-            <FolderKanban size={16} className="text-[var(--text-muted)] shrink-0" />
+            {project ? (
+              <ProjectPoster id={project.id} name={project.name} size={32} glyph />
+            ) : (
+              <FolderKanban size={16} className="text-[var(--text-muted)] shrink-0" />
+            )}
             <div className="min-w-0">
               <div className="text-sm font-medium text-[var(--text-primary)] truncate">
                 {project ? project.name : "No project selected"}
               </div>
-              <div className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider truncate">
-                {project
-                  ? `${project.sceneCount} scenes · ${project.elementCount} elements`
-                  : "Create one to begin"}
+              <div className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider truncate tabular-nums">
+                {project ? (
+                  <>
+                    <CountUp value={project.sceneCount} durationMs={500} /> scenes ·{" "}
+                    <CountUp value={project.elementCount} durationMs={500} /> elements
+                  </>
+                ) : (
+                  "Create one to begin"
+                )}
               </div>
             </div>
             <ChevronDown size={14} className="text-[var(--text-muted)] shrink-0" />
           </button>
-          {projectOpen && (
-            <div
-              className="absolute left-0 top-full mt-2 w-72 rounded-card border border-[var(--border-default)] z-50 animate-in overflow-hidden"
-              style={{ background: "var(--bg-elevated)" }}
-            >
-              <div className="p-3 border-b border-[var(--border-default)] section-header">
-                Switch project
-              </div>
-              <div className="max-h-72 overflow-y-auto">
-                {projects.length === 0 ? (
-                  <div className="p-4 text-sm text-[var(--text-muted)]">No projects yet.</div>
-                ) : (
-                  projects.map((p) => (
-                    <button
-                      key={p.id}
-                      onClick={() => {
-                        switchProject(p.id);
-                        setProjectOpen(false);
-                      }}
-                      className="w-full text-left p-3 hover:bg-[var(--bg-surface-hover)] flex items-center gap-2 border-b border-[var(--border-default)] last:border-b-0"
-                    >
-                      <span className="w-4 shrink-0">
+          <AnimatePresence>
+            {projectOpen && (
+              <motion.div
+                className="absolute left-0 top-full mt-2 w-72 rounded-card border border-[var(--border-default)] z-50 overflow-hidden origin-top-left"
+                style={{ background: "var(--bg-elevated)" }}
+                variants={menuVariants}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+              >
+                <div className="p-3 border-b border-[var(--border-default)] section-header">
+                  Switch project
+                </div>
+                <div className="max-h-72 overflow-y-auto">
+                  {projects.length === 0 ? (
+                    <div className="p-4 text-sm text-[var(--text-muted)]">No projects yet.</div>
+                  ) : (
+                    projects.map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => {
+                          switchProject(p.id);
+                          setProjectOpen(false);
+                        }}
+                        className="w-full text-left p-3 hover:bg-[var(--bg-surface-hover)] flex items-center gap-2.5 border-b border-[var(--border-default)] last:border-b-0"
+                      >
+                        <ProjectPoster id={p.id} name={p.name} size={30} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm text-[var(--text-primary)] truncate">
+                            {p.name}
+                          </span>
+                          <span className="block text-[10px] text-[var(--text-muted)] tabular-nums">
+                            {p.sceneCount} scenes · {p.elementCount} elements
+                          </span>
+                        </span>
                         {p.id === project?.id && (
-                          <Check size={14} className="text-[var(--accent-blue)]" />
+                          <Check size={14} className="text-[var(--accent-blue)] shrink-0" />
                         )}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-sm text-[var(--text-primary)] truncate">
-                          {p.name}
-                        </span>
-                        <span className="block text-[10px] text-[var(--text-muted)]">
-                          {p.sceneCount} scenes · {p.elementCount} elements
-                        </span>
-                      </span>
-                    </button>
-                  ))
-                )}
-              </div>
-              <div className="p-2 border-t border-[var(--border-default)]">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full"
-                  onClick={() => {
-                    nav("/projects");
-                    setProjectOpen(false);
-                  }}
-                >
-                  <Plus size={14} /> New project · manage
-                </Button>
-              </div>
-            </div>
-          )}
+                      </button>
+                    ))
+                  )}
+                </div>
+                <div className="p-2 border-t border-[var(--border-default)]">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => {
+                      nav("/projects");
+                      setProjectOpen(false);
+                    }}
+                  >
+                    <Plus size={14} /> New project · manage
+                  </Button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 
       <div className="flex items-center gap-2">
+        <PresenceAvatars />
         <AIStatusPill />
         <CloudIndicator />
-
-        <Button variant="ghost" size="sm" onClick={toggle} aria-label="Toggle theme">
-          {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
-        </Button>
 
         {/* Notifications */}
         <div className="relative" ref={notifRef}>
           <Button variant="ghost" size="sm" onClick={() => setNotifOpen((v) => !v)} aria-label="Notifications">
             <div className="relative">
-              <Bell size={16} />
-              {unread > 0 && (
-                <span
-                  className="absolute -top-2 -right-2 text-[9px] font-semibold leading-none px-1 py-0.5 rounded-full min-w-[14px] text-center"
-                  style={{ background: "var(--color-danger)", color: "white" }}
-                >
-                  {unread > 99 ? "99+" : unread}
-                </span>
-              )}
+              <motion.span
+                key={bellWiggle}
+                className="inline-block"
+                animate={bellWiggle > 0 ? { rotate: [0, -14, 11, -7, 4, 0] } : undefined}
+                transition={{ duration: 0.55, ease: "easeInOut" }}
+                style={{ transformOrigin: "50% 15%" }}
+              >
+                <Bell size={16} />
+              </motion.span>
+              <AnimatePresence>
+                {unread > 0 && (
+                  <motion.span
+                    key={unread}
+                    className="absolute -top-2 -right-2 text-[9px] font-semibold leading-none px-1 py-0.5 rounded-full min-w-[14px] text-center tabular-nums"
+                    style={{ background: "var(--color-danger)", color: "white" }}
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    exit={{ scale: 0 }}
+                    transition={{ type: "spring", stiffness: 500, damping: 18 }}
+                  >
+                    {unread > 99 ? "99+" : unread}
+                  </motion.span>
+                )}
+              </AnimatePresence>
             </div>
           </Button>
+          <AnimatePresence>
           {notifOpen && (
-            <div
-              className="absolute right-0 top-full mt-2 w-80 rounded-card border border-[var(--border-default)] z-50 animate-in"
+            <motion.div
+              className="absolute right-0 top-full mt-2 w-80 rounded-card border border-[var(--border-default)] z-50 origin-top-right"
               style={{ background: "var(--bg-elevated)" }}
+              variants={menuVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
             >
               <div className="p-3 border-b border-[var(--border-default)] flex items-center justify-between">
                 <div className="section-header">Notifications</div>
@@ -248,31 +255,59 @@ export function TopBar({ onOpenSidebar }: TopBarProps) {
                   View all
                 </Button>
               </div>
-            </div>
+            </motion.div>
           )}
+          </AnimatePresence>
         </div>
 
         {/* User menu */}
         <div className="relative" ref={userRef}>
           <Button variant="secondary" size="sm" onClick={() => setUserOpen((v) => !v)}>
-            <span
-              className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold"
-              style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-default)" }}
-            >
-              {initials}
-            </span>
+            {user ? (
+              <IdentityAvatar id={user.id} name={user.displayName} size={20} />
+            ) : (
+              <span
+                className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-semibold"
+                style={{ background: "var(--bg-elevated)", border: "1px solid var(--border-default)" }}
+              >
+                {initials}
+              </span>
+            )}
             <span className="max-w-[120px] truncate">{user?.displayName}</span>
             <ChevronDown size={14} />
           </Button>
+          <AnimatePresence>
           {userOpen && (
-            <div
-              className="absolute right-0 top-full mt-2 w-56 rounded-card border border-[var(--border-default)] z-50 animate-in overflow-hidden"
+            <motion.div
+              className="absolute right-0 top-full mt-2 w-56 rounded-card border border-[var(--border-default)] z-50 overflow-hidden origin-top-right"
               style={{ background: "var(--bg-elevated)" }}
+              variants={menuVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
             >
               <div className="p-3 border-b border-[var(--border-default)]">
                 <div className="text-sm font-medium text-[var(--text-primary)]">{user?.displayName}</div>
                 <div className="text-[11px] text-[var(--text-muted)]">{role?.label}</div>
               </div>
+              <button
+                onClick={() => {
+                  nav("/settings");
+                  setUserOpen(false);
+                }}
+                className="w-full flex items-center gap-2 p-3 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)]"
+              >
+                <SettingsIcon size={14} /> Settings
+              </button>
+              <button
+                onClick={() => {
+                  nav("/tutorial");
+                  setUserOpen(false);
+                }}
+                className="w-full flex items-center gap-2 p-3 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] border-b border-[var(--border-default)]"
+              >
+                <BookOpen size={14} /> Help &amp; tutorial
+              </button>
               <button
                 onClick={() => {
                   logout();
@@ -282,8 +317,9 @@ export function TopBar({ onOpenSidebar }: TopBarProps) {
               >
                 <LogOut size={14} /> Sign out
               </button>
-            </div>
+            </motion.div>
           )}
+          </AnimatePresence>
         </div>
       </div>
     </header>

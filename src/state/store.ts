@@ -60,6 +60,7 @@ import {
   reconcile,
   registerRehydrate,
 } from "@/lib/cloud";
+import { pushToast } from "@/lib/toast";
 
 /**
  * `access` is what every page guard reads, so it is never authored directly —
@@ -277,6 +278,9 @@ interface State extends ProductionData {
   activeRole: RoleId | null; // active viewing role (admin can "view as")
   tutorialSeen: boolean;
 
+  /** Guided-tour progress. `running` drives the spotlight overlay. */
+  tour: { running: boolean; stepIndex: number; completed: string[] };
+
   // ---- UI preferences ----
   /** Sidebar stays expanded instead of only widening on hover. */
   sidebarPinned: boolean;
@@ -320,6 +324,10 @@ interface State extends ProductionData {
 
   setActiveRole: (role: RoleId | null) => void;
   markTutorialSeen: () => void;
+  startTour: () => void;
+  stopTour: () => void;
+  setTourStep: (i: number) => void;
+  completeTourStep: (id: string) => void;
   setSidebarPinned: (pinned: boolean) => void;
 
   // ------------------------------------------------------------
@@ -447,6 +455,7 @@ export const useStore = create<State>()(
       currentUserId: "",
       activeRole: null,
       tutorialSeen: false,
+      tour: { running: false, stepIndex: 0, completed: [] },
 
       // ---- UI ----
       sidebarPinned: false,
@@ -673,6 +682,19 @@ export const useStore = create<State>()(
 
       setActiveRole: (role) => set({ activeRole: role }),
       markTutorialSeen: () => set({ tutorialSeen: true }),
+      startTour: () =>
+        set((s) => ({ tour: { ...s.tour, running: true, stepIndex: 0 } })),
+      stopTour: () => set((s) => ({ tour: { ...s.tour, running: false } })),
+      setTourStep: (i) => set((s) => ({ tour: { ...s.tour, stepIndex: Math.max(0, i) } })),
+      completeTourStep: (id) =>
+        set((s) => ({
+          tour: {
+            ...s.tour,
+            completed: s.tour.completed.includes(id)
+              ? s.tour.completed
+              : [...s.tour.completed, id],
+          },
+        })),
       setSidebarPinned: (pinned) => set({ sidebarPinned: pinned }),
 
       // ========================================================
@@ -1024,13 +1046,29 @@ export const useStore = create<State>()(
       },
 
       deleteTask: (tid) => {
-        const t = get().tasks.find((x) => x.id === tid);
+        const idx = get().tasks.findIndex((x) => x.id === tid);
+        const t = get().tasks[idx];
+        if (!t) return;
         set((s) => ({ tasks: s.tasks.filter((t) => t.id !== tid) }));
         get().logActivity({
           action: "deleted",
           entity: "task",
           entityId: tid,
-          description: `Deleted task “${t?.title ?? tid}”`,
+          description: `Deleted task “${t.title}”`,
+        });
+        pushToast({
+          title: "Task deleted",
+          description: t.title,
+          tone: "danger",
+          action: {
+            label: "Undo",
+            run: () =>
+              set((s) => {
+                const arr = s.tasks.slice();
+                arr.splice(Math.min(idx, arr.length), 0, t);
+                return { tasks: arr };
+              }),
+          },
         });
       },
 
@@ -1352,7 +1390,9 @@ export const useStore = create<State>()(
 
       deleteRecord: (collection, rid) => {
         const schema = SCHEMAS[collection];
-        const prev = (get()[collection] as { id: string }[]).find((r) => r.id === rid);
+        const list = get()[collection] as { id: string }[];
+        const index = list.findIndex((r) => r.id === rid);
+        const prev = list[index];
         if (!prev) return;
         set((s) => ({
           [collection]: (s[collection] as { id: string }[]).filter((r) => r.id !== rid),
@@ -1364,6 +1404,23 @@ export const useStore = create<State>()(
           description: `Deleted ${schema.singular.toLowerCase()}: ${schema.label(prev)}`,
         });
         if (collection === "locations") get().recomputeAllDeadlines();
+        pushToast({
+          title: `${schema.singular} deleted`,
+          description: schema.label(prev),
+          tone: "danger",
+          action: {
+            label: "Undo",
+            run: () => {
+              // Re-insert at its original position.
+              set((s) => {
+                const arr = (s[collection] as { id: string }[]).slice();
+                arr.splice(Math.min(index, arr.length), 0, prev);
+                return { [collection]: arr } as Partial<State>;
+              });
+              if (collection === "locations") get().recomputeAllDeadlines();
+            },
+          },
+        });
       },
 
       // ========================================================
@@ -1395,7 +1452,10 @@ export const useStore = create<State>()(
       },
 
       removeCastMember: (cid) => {
-        const c = get().cast.find((x) => x.id === cid);
+        const idx = get().cast.findIndex((x) => x.id === cid);
+        const c = get().cast[idx];
+        if (!c) return;
+        const prevDoodRow = get().dood[cid];
         set((s) => {
           const nextDood = { ...s.dood };
           delete nextDood[cid];
@@ -1405,7 +1465,24 @@ export const useStore = create<State>()(
           action: "deleted",
           entity: "cast",
           entityId: cid,
-          description: `Removed cast ${c?.name ?? cid}`,
+          description: `Removed cast ${c.name}`,
+        });
+        pushToast({
+          title: "Cast member removed",
+          description: `${c.name} — ${c.role}`,
+          tone: "danger",
+          action: {
+            label: "Undo",
+            run: () =>
+              set((s) => {
+                const arr = s.cast.slice();
+                arr.splice(Math.min(idx, arr.length), 0, c);
+                return {
+                  cast: arr,
+                  dood: prevDoodRow ? { ...s.dood, [cid]: prevDoodRow } : s.dood,
+                };
+              }),
+          },
         });
       },
 

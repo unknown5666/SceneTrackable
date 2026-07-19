@@ -32,7 +32,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { formatDateTime } from "@/lib/utils";
 
-export function CloudSync() {
+export function CloudSync({ embedded }: { embedded?: boolean } = {}) {
   const status = useCloudStatus();
   const user = useStore(currentUser);
   const [busy, setBusy] = useState(false);
@@ -50,14 +50,16 @@ export function CloudSync() {
   };
 
   return (
-    <div className="max-w-[800px] mx-auto space-y-6">
-      <div className="flex items-center gap-2">
-        <Cloud size={18} className="text-[var(--accent-blue)]" />
-        <div>
-          <div className="section-header">Cloud</div>
-          <div className="page-title">Cloud Sync</div>
+    <div className={embedded ? "space-y-6" : "max-w-[800px] mx-auto space-y-6"}>
+      {!embedded && (
+        <div className="flex items-center gap-2">
+          <Cloud size={18} className="text-[var(--accent-blue)]" />
+          <div>
+            <div className="section-header">Cloud</div>
+            <div className="page-title">Cloud Sync</div>
+          </div>
         </div>
-      </div>
+      )}
 
       {!cloudEnabled ? (
         <Card>

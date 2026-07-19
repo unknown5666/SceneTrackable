@@ -14,7 +14,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge, StatusBadge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
-import { EmptyState } from "@/components/ui/EmptyState";
+import { EmptyState, GhostRows } from "@/components/ui/EmptyState";
 import { ProposalPicker } from "@/components/ui/ProposalPicker";
 import { formatDate, isOverdue, cn } from "@/lib/utils";
 import { humanizeRule } from "@/lib/deadlines";
@@ -174,10 +174,11 @@ export function Tasks() {
 
       {tasks.length === 0 && (
         <EmptyState
+          preview={<GhostRows rows={4} />}
           title="No tasks yet"
           subtitle={
             tasksWritable
-              ? "Create your first task. Every task needs an owner and a deadline."
+              ? "Create your first task. Every task needs an owner and a deadline — deadlines can track shoot days and location locks automatically."
               : "Nothing has been assigned yet. Your role can view tasks but not create them."
           }
           cta={

@@ -1,5 +1,6 @@
 import React, { useState, useRef } from "react";
-import { Shield, Plus, Trash2, UserPlus, KeyRound, Users as UsersIcon, Lock, Database, Download, Upload, Mail, Copy, RefreshCw } from "lucide-react";
+import { useSearchParams, useNavigate } from "react-router-dom";
+import { Shield, Plus, Trash2, UserPlus, KeyRound, Users as UsersIcon, Lock, Database, Download, Upload, Mail, Copy, RefreshCw, History, Sparkle, Cloud } from "lucide-react";
 import { useStore } from "@/state/store";
 import { ACCESS_KEYS, PERMISSION_LEVELS, ROLE_PRESETS, permissionMap } from "@/data/roles";
 import { isAdminRole, permissionFor, accessFromPermissions } from "@/types";
@@ -9,7 +10,19 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
+import { Tabs } from "@/components/ui/Tabs";
+import { HelpButton } from "@/components/ui/HelpButton";
+import { AISettings } from "@/pages/AISettings";
+import { CloudSync } from "@/pages/CloudSync";
 import type { Role, PermissionLevel, RolePermissions } from "@/types";
+
+type AdminTab = "users" | "ai" | "cloud" | "data";
+const ADMIN_TABS = [
+  { id: "users", label: (<span className="flex items-center gap-1.5"><UsersIcon size={13} /> Users &amp; Roles</span>) },
+  { id: "ai", label: (<span className="flex items-center gap-1.5"><Sparkle size={13} /> AI</span>) },
+  { id: "cloud", label: (<span className="flex items-center gap-1.5"><Cloud size={13} /> Cloud</span>) },
+  { id: "data", label: (<span className="flex items-center gap-1.5"><Database size={13} /> Data</span>) },
+];
 
 /**
  * The levels to show in the editor for an existing role. Admin roles carry no
@@ -41,6 +54,17 @@ export function Admin() {
   const addRole = useStore((s) => s.addRole);
   const updateRole = useStore((s) => s.updateRole);
   const removeRole = useStore((s) => s.removeRole);
+
+  const nav = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const rawTab = params.get("tab");
+  const tab: AdminTab =
+    rawTab === "ai" || rawTab === "cloud" || rawTab === "data" ? rawTab : "users";
+  const setTab = (t: string) => {
+    const next = new URLSearchParams(params);
+    next.set("tab", t);
+    setParams(next, { replace: true });
+  };
 
   // Invite modal
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -219,11 +243,68 @@ export function Admin() {
       <div className="flex items-center gap-2">
         <Shield size={18} className="text-[var(--accent-blue)]" />
         <div>
-          <div className="section-header">Administration</div>
-          <div className="page-title">Users & Roles</div>
+          <div className="section-header flex items-center gap-1.5">
+            Administration <HelpButton doc="admin" />
+          </div>
+          <div className="page-title">Admin Console</div>
         </div>
       </div>
 
+      <Tabs active={tab} onChange={setTab} tabs={ADMIN_TABS} />
+
+      {tab === "ai" && <AISettings embedded />}
+      {tab === "cloud" && <CloudSync embedded />}
+
+      {tab === "data" && (
+        <div className="space-y-6">
+          {/* Data backup / restore */}
+          <Card padding="none">
+            <div className="p-4 flex items-center justify-between">
+              <CardHeader
+                title={<span className="flex items-center gap-2"><Database size={13} /> Backup & restore</span>}
+                subtitle="Back up the entire workspace (all projects, users, breakdowns) to a file, or restore from one."
+                className="mb-0"
+              />
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="secondary" onClick={exportBackup}>
+                  <Download size={13} /> Download backup
+                </Button>
+                <Button size="sm" variant="secondary" onClick={() => restoreInput.current?.click()}>
+                  <Upload size={13} /> Restore backup
+                </Button>
+                <input
+                  ref={restoreInput}
+                  type="file"
+                  accept="application/json,.json"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) onRestoreFile(f);
+                    e.target.value = "";
+                  }}
+                />
+              </div>
+            </div>
+          </Card>
+
+          {/* Activity log link */}
+          <Card>
+            <div className="flex items-center justify-between">
+              <CardHeader
+                title={<span className="flex items-center gap-2"><History size={13} /> Activity log</span>}
+                subtitle="Every change across the workspace — who did what, and when."
+                className="mb-0"
+              />
+              <Button size="sm" variant="secondary" onClick={() => nav("/activity")}>
+                Open activity log
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {tab === "users" && (
+      <div className="space-y-6">
       {/* Users */}
       <Card padding="none">
         <div className="p-4 flex items-center justify-between">
@@ -389,36 +470,8 @@ export function Admin() {
           ))}
         </div>
       </Card>
-
-      {/* Data backup / restore */}
-      <Card padding="none">
-        <div className="p-4 flex items-center justify-between">
-          <CardHeader
-            title={<span className="flex items-center gap-2"><Database size={13} /> Data</span>}
-            subtitle="Back up the entire workspace (all projects, users, breakdowns) to a file, or restore from one."
-            className="mb-0"
-          />
-          <div className="flex items-center gap-2">
-            <Button size="sm" variant="secondary" onClick={exportBackup}>
-              <Download size={13} /> Download backup
-            </Button>
-            <Button size="sm" variant="secondary" onClick={() => restoreInput.current?.click()}>
-              <Upload size={13} /> Restore backup
-            </Button>
-            <input
-              ref={restoreInput}
-              type="file"
-              accept="application/json,.json"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) onRestoreFile(f);
-                e.target.value = "";
-              }}
-            />
-          </div>
-        </div>
-      </Card>
+      </div>
+      )}
 
       {/* User modal */}
       <Modal

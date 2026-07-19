@@ -18,11 +18,10 @@ import { ArtPortal } from "@/pages/ArtPortal";
 import { CastPortal } from "@/pages/CastPortal";
 import { Timesheet } from "@/pages/Timesheet";
 import { Notifications } from "@/pages/Notifications";
-import { AISettings } from "@/pages/AISettings";
-import { CloudSync } from "@/pages/CloudSync";
 import { Admin } from "@/pages/Admin";
 import { ActivityLog } from "@/pages/ActivityLog";
 import { Tutorial } from "@/pages/Tutorial";
+import { Settings } from "@/pages/Settings";
 import { useStore, permissionLevel, isCurrentAdmin } from "@/state/store";
 import { Eye } from "lucide-react";
 
@@ -63,6 +62,7 @@ export default function App() {
         <Route path="/projects" element={<Projects />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/tutorial" element={<Tutorial />} />
+        <Route path="/settings" element={<Settings />} />
         <Route path="/notifications" element={<Notifications />} />
         <Route path="/breakdown" element={<AccessGuard page="breakdown"><Breakdown /></AccessGuard>} />
         <Route path="/schedule" element={<AccessGuard page="schedule"><Schedule /></AccessGuard>} />
@@ -77,10 +77,11 @@ export default function App() {
         <Route path="/art" element={<AccessGuard page="art"><ArtPortal /></AccessGuard>} />
         <Route path="/cast" element={<AccessGuard page="cast"><CastPortal /></AccessGuard>} />
         <Route path="/timesheet" element={<AccessGuard page="timesheet"><Timesheet /></AccessGuard>} />
-        <Route path="/ai" element={<AdminGuard><AISettings /></AdminGuard>} />
-        {/* Sync affects everyone's data, so everyone can see its state and
-            resolve their own conflicts — it is no longer an admin console. */}
-        <Route path="/cloud" element={<CloudSync />} />
+        {/* AI settings and Cloud sync now live as tabs inside the Admin
+            console. Their old routes redirect to the right tab so links and
+            the CloudIndicator deep-link keep working. */}
+        <Route path="/ai" element={<Navigate to="/admin?tab=ai" replace />} />
+        <Route path="/cloud" element={<Navigate to="/admin?tab=cloud" replace />} />
         <Route path="/admin" element={<AdminGuard><Admin /></AdminGuard>} />
         <Route path="/activity" element={<AdminGuard><ActivityLog /></AdminGuard>} />
       </Route>

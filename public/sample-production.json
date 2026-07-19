@@ -1,0 +1,1984 @@
+{
+  "state": {
+    "production": {
+      "id": "prod_magi",
+      "title": "The Gift of the Magi",
+      "currency": "AED",
+      "budget": 272000,
+      "totalShootDays": 3,
+      "currentShootDay": 0,
+      "plannedPagesPerDay": 4.1,
+      "script": {
+        "totalPages": 12.3,
+        "totalScenes": 10
+      }
+    },
+    "crew": [
+      {
+        "id": "crew_dp",
+        "name": "Ada Whitfield",
+        "role": "Director of Photography",
+        "department": "camera",
+        "email": "ada@overexposure.example",
+        "ratePerHour": 95,
+        "otRateMultiplier": 1.5
+      },
+      {
+        "id": "crew_gaffer",
+        "name": "Marco Ines",
+        "role": "Gaffer",
+        "department": "camera",
+        "email": "marco@overexposure.example",
+        "ratePerHour": 62,
+        "otRateMultiplier": 1.5
+      },
+      {
+        "id": "crew_1ad",
+        "name": "Priya Nadar",
+        "role": "1st Assistant Director",
+        "department": "production",
+        "email": "priya@overexposure.example",
+        "ratePerHour": 78
+      },
+      {
+        "id": "crew_art",
+        "name": "Lena Fisk",
+        "role": "Production Designer",
+        "department": "art",
+        "email": "lena@overexposure.example",
+        "ratePerHour": 70
+      },
+      {
+        "id": "crew_ward",
+        "name": "Yuki Tanaka",
+        "role": "Costume Designer",
+        "department": "wardrobe",
+        "email": "yuki@overexposure.example",
+        "ratePerHour": 58
+      },
+      {
+        "id": "crew_sound",
+        "name": "Dev Okafor",
+        "role": "Production Sound Mixer",
+        "department": "sound",
+        "email": "dev@overexposure.example",
+        "ratePerHour": 64
+      },
+      {
+        "id": "crew_vfx",
+        "name": "Rosa Klein",
+        "role": "VFX Supervisor",
+        "department": "vfx",
+        "email": "rosa@overexposure.example",
+        "ratePerHour": 88
+      },
+      {
+        "id": "crew_acct",
+        "name": "George Amaro",
+        "role": "Production Accountant",
+        "department": "accounting",
+        "email": "george@overexposure.example",
+        "ratePerHour": 60
+      }
+    ],
+    "cast": [
+      {
+        "id": "cast_della",
+        "name": "Eleanor Vance",
+        "role": "Della Young",
+        "category": "lead",
+        "scenes": [
+          "sc_1",
+          "sc_2",
+          "sc_3",
+          "sc_4",
+          "sc_5",
+          "sc_6",
+          "sc_7",
+          "sc_8",
+          "sc_9"
+        ],
+        "ratePerDay": 3200,
+        "agent": "Meyer Talent",
+        "contact": "eleanor@example.com",
+        "gender": "F"
+      },
+      {
+        "id": "cast_jim",
+        "name": "Thomas Reyes",
+        "role": "Jim Young",
+        "category": "lead",
+        "scenes": [
+          "sc_1",
+          "sc_7",
+          "sc_8",
+          "sc_9"
+        ],
+        "ratePerDay": 3000,
+        "agent": "Meyer Talent",
+        "contact": "thomas@example.com",
+        "gender": "M"
+      },
+      {
+        "id": "cast_sofronie",
+        "name": "Marguerite Bell",
+        "role": "Madame Sofronie",
+        "category": "supporting",
+        "scenes": [
+          "sc_4"
+        ],
+        "ratePerDay": 1400,
+        "agent": "Cornerstone Artists",
+        "gender": "F"
+      },
+      {
+        "id": "cast_jeweler",
+        "name": "Harold Pike",
+        "role": "Jeweler",
+        "category": "day_player",
+        "scenes": [
+          "sc_5"
+        ],
+        "ratePerDay": 850,
+        "gender": "M"
+      },
+      {
+        "id": "cast_newsboy",
+        "name": "Sam O'Dell",
+        "role": "Newsboy",
+        "category": "day_player",
+        "scenes": [],
+        "ratePerDay": 600,
+        "gender": "M"
+      }
+    ],
+    "scenes": [
+      {
+        "id": "sc_1",
+        "number": "1",
+        "intExt": "INT",
+        "location": "Della & Jim's Flat",
+        "timeOfDay": "DAY",
+        "synopsis": "Della counts the $1.87 she has saved — pennies at a time — and weeps at how little it buys for Jim's gift.",
+        "scriptText": "INT. DELLA & JIM'S FLAT - DAY\n\nA shabby eight-dollar-a-week furnished flat. DELLA YOUNG, 22, counts a small hoard of coins on a worn coverlet.\n\nDELLA\nOne dollar and eighty-seven cents. And the next day would be Christmas.\n\nShe flops onto the shabby little couch and howls.",
+        "pages": 1.5,
+        "estimatedShootMinutes": 83,
+        "elements": [
+          {
+            "id": "el_cast_della_young",
+            "name": "Della Young",
+            "category": "cast",
+            "subCategory": "Lead",
+            "description": "On camera the whole scene"
+          },
+          {
+            "id": "el_cast_jim_young",
+            "name": "Jim Young",
+            "category": "cast",
+            "subCategory": "Lead",
+            "description": "Photograph on the mantel only"
+          },
+          {
+            "id": "el_props_1_87_in_coins",
+            "name": "$1.87 in coins",
+            "category": "props",
+            "subCategory": "Hero",
+            "description": "Pennies + silver, aged"
+          },
+          {
+            "id": "el_props_worn_coverlet",
+            "name": "Worn coverlet",
+            "category": "props",
+            "subCategory": "Set dressing"
+          },
+          {
+            "id": "el_props_shabby_couch",
+            "name": "Shabby couch",
+            "category": "props",
+            "subCategory": "Set dressing"
+          },
+          {
+            "id": "el_wardrobe_della_s_day_dress",
+            "name": "Della's day dress",
+            "category": "wardrobe",
+            "subCategory": "Period 1905",
+            "description": "Faded, mended cuffs"
+          },
+          {
+            "id": "el_sfx_gas_mantle_glow",
+            "name": "Gas mantle glow",
+            "category": "sfx",
+            "subCategory": "Practical",
+            "description": "Warm flicker on wall"
+          }
+        ],
+        "vfxFlags": false,
+        "sfxFlags": true
+      },
+      {
+        "id": "sc_2",
+        "number": "2",
+        "intExt": "INT",
+        "location": "Della & Jim's Flat",
+        "timeOfDay": "DAY",
+        "synopsis": "Della lets down her famous knee-length hair before the pier glass and resolves to sell it.",
+        "scriptText": "INT. FLAT - BEDROOM ALCOVE - DAY\n\nDella stands before a cheap pier glass and lets down her hair — a shimmering cascade to below her knee.\n\nDELLA (V.O.)\nHer hair was her one glory.",
+        "pages": 1,
+        "estimatedShootMinutes": 55,
+        "elements": [
+          {
+            "id": "el_cast_della_young",
+            "name": "Della Young",
+            "category": "cast",
+            "subCategory": "Lead"
+          },
+          {
+            "id": "el_props_pier_glass_mirror",
+            "name": "Pier glass mirror",
+            "category": "props",
+            "subCategory": "Hero",
+            "description": "Full-length, tarnished"
+          },
+          {
+            "id": "el_makeup_della_s_hair_wig_rig_",
+            "name": "Della's hair (wig rig)",
+            "category": "makeup",
+            "subCategory": "Hair",
+            "description": "Knee-length fall — continuity critical"
+          },
+          {
+            "id": "el_vfx_hair_fall_reveal",
+            "name": "Hair-fall reveal",
+            "category": "vfx",
+            "subCategory": "Invisible",
+            "description": "Blend practical fall to actor's line"
+          }
+        ],
+        "vfxFlags": true,
+        "sfxFlags": false
+      },
+      {
+        "id": "sc_3",
+        "number": "3",
+        "intExt": "EXT",
+        "location": "Tenement Street",
+        "timeOfDay": "DAY",
+        "synopsis": "Della hurries out into the grey winter street, coat clutched, toward the hair shop.",
+        "scriptText": "EXT. TENEMENT STREET - DAY\n\nDella hurries down a slush-grey street, cheeks bright. A NEWSBOY hawks papers. She turns a corner beneath a swinging sign.",
+        "pages": 0.5,
+        "estimatedShootMinutes": 28,
+        "elements": [
+          {
+            "id": "el_cast_della_young",
+            "name": "Della Young",
+            "category": "cast",
+            "subCategory": "Lead"
+          },
+          {
+            "id": "el_extras_newsboy",
+            "name": "Newsboy",
+            "category": "extras",
+            "subCategory": "Featured",
+            "description": "Hawks papers, 1 line"
+          },
+          {
+            "id": "el_extras_street_crowd",
+            "name": "Street crowd",
+            "category": "extras",
+            "subCategory": "Background",
+            "description": "12 period pedestrians"
+          },
+          {
+            "id": "el_wardrobe_della_s_winter_coat",
+            "name": "Della's winter coat",
+            "category": "wardrobe",
+            "subCategory": "Period 1905",
+            "description": "Brown, old, worn thin"
+          },
+          {
+            "id": "el_sfx_falling_snow",
+            "name": "Falling snow",
+            "category": "sfx",
+            "subCategory": "Atmos",
+            "description": "Snow machine, wide"
+          },
+          {
+            "id": "el_props_period_signage",
+            "name": "Period signage",
+            "category": "props",
+            "subCategory": "Set dressing",
+            "description": "Swinging shop sign"
+          },
+          {
+            "id": "el_vehicles_horse_cart",
+            "name": "Horse & cart",
+            "category": "vehicles",
+            "subCategory": "Period",
+            "description": "Background dressing"
+          }
+        ],
+        "vfxFlags": false,
+        "sfxFlags": true
+      },
+      {
+        "id": "sc_4",
+        "number": "4",
+        "intExt": "INT",
+        "location": "Mme. Sofronie's Hair Emporium",
+        "timeOfDay": "DAY",
+        "synopsis": "Madame Sofronie appraises and buys Della's hair for twenty dollars. The shears fall.",
+        "scriptText": "INT. MME. SOFRONIE'S HAIR EMPORIUM - DAY\n\nMADAME SOFRONIE, large, cold, weighs Della's loosened hair in one hand.\n\nSOFRONIE\nTwenty dollars.\n\nDELLA\nGive it to me quick.\n\nSNIP. The shears close.",
+        "pages": 1.75,
+        "estimatedShootMinutes": 96,
+        "elements": [
+          {
+            "id": "el_cast_della_young",
+            "name": "Della Young",
+            "category": "cast",
+            "subCategory": "Lead"
+          },
+          {
+            "id": "el_cast_madame_sofronie",
+            "name": "Madame Sofronie",
+            "category": "cast",
+            "subCategory": "Supporting",
+            "description": "Cold, businesslike"
+          },
+          {
+            "id": "el_props_barber_shears",
+            "name": "Barber shears",
+            "category": "props",
+            "subCategory": "Hero",
+            "description": "Period, sprung steel — SFX for the snip"
+          },
+          {
+            "id": "el_props_20_gold_note",
+            "name": "$20 gold note",
+            "category": "props",
+            "subCategory": "Hero"
+          },
+          {
+            "id": "el_vfx_hair_cut_effect",
+            "name": "Hair-cut effect",
+            "category": "vfx",
+            "subCategory": "Invisible",
+            "description": "Actor keeps hair; sell the cut"
+          },
+          {
+            "id": "el_wardrobe_sofronie_s_shop_coat",
+            "name": "Sofronie's shop coat",
+            "category": "wardrobe",
+            "subCategory": "Period 1905"
+          },
+          {
+            "id": "el_props_wall_of_switches_wigs",
+            "name": "Wall of switches & wigs",
+            "category": "props",
+            "subCategory": "Set dressing",
+            "description": "Period hairpieces"
+          }
+        ],
+        "vfxFlags": true,
+        "sfxFlags": false
+      },
+      {
+        "id": "sc_5",
+        "number": "5",
+        "intExt": "INT",
+        "location": "Jeweler's Shop",
+        "timeOfDay": "DAY",
+        "synopsis": "Della finds THE gift — a simple platinum fob chain for Jim's heirloom watch.",
+        "scriptText": "INT. JEWELER'S SHOP - DAY\n\nA quiet, gleaming counter. The JEWELER lays out a platinum fob chain, simple and chaste.\n\nDELLA\nThat one. For his watch.",
+        "pages": 1,
+        "estimatedShootMinutes": 55,
+        "elements": [
+          {
+            "id": "el_cast_della_young",
+            "name": "Della Young",
+            "category": "cast",
+            "subCategory": "Lead"
+          },
+          {
+            "id": "el_cast_jeweler",
+            "name": "Jeweler",
+            "category": "cast",
+            "subCategory": "Day Player",
+            "description": "1 line"
+          },
+          {
+            "id": "el_props_platinum_fob_chain",
+            "name": "Platinum fob chain",
+            "category": "props",
+            "subCategory": "Hero",
+            "description": "The gift — $21"
+          },
+          {
+            "id": "el_props_glass_jewel_counter",
+            "name": "Glass jewel counter",
+            "category": "props",
+            "subCategory": "Set dressing"
+          },
+          {
+            "id": "el_props_jeweler_s_loupe",
+            "name": "Jeweler's loupe",
+            "category": "props",
+            "subCategory": "Hand prop"
+          }
+        ],
+        "vfxFlags": false,
+        "sfxFlags": false
+      },
+      {
+        "id": "sc_6",
+        "number": "6",
+        "intExt": "INT",
+        "location": "Della & Jim's Flat",
+        "timeOfDay": "DAY",
+        "synopsis": "Home again, Della curls her cropped hair into tiny ringlets and starts the coffee.",
+        "scriptText": "INT. FLAT - DAY (LATER)\n\nDella wields the curling irons on her cropped head, making close-lying little curls. She sets coffee to boil.\n\nDELLA\nPlease God, make him think I am still pretty.",
+        "pages": 1.25,
+        "estimatedShootMinutes": 69,
+        "elements": [
+          {
+            "id": "el_cast_della_young",
+            "name": "Della Young",
+            "category": "cast",
+            "subCategory": "Lead"
+          },
+          {
+            "id": "el_props_curling_irons",
+            "name": "Curling irons",
+            "category": "props",
+            "subCategory": "Hero",
+            "description": "Heated on the gas ring"
+          },
+          {
+            "id": "el_makeup_cropped_hair_look",
+            "name": "Cropped-hair look",
+            "category": "makeup",
+            "subCategory": "Hair",
+            "description": "Continuity: matches sc. 4 onward"
+          },
+          {
+            "id": "el_props_coffee_pot_ring",
+            "name": "Coffee pot & ring",
+            "category": "props",
+            "subCategory": "Set dressing"
+          },
+          {
+            "id": "el_sfx_gas_ring_flame",
+            "name": "Gas ring flame",
+            "category": "sfx",
+            "subCategory": "Practical"
+          }
+        ],
+        "vfxFlags": false,
+        "sfxFlags": true
+      },
+      {
+        "id": "sc_7",
+        "number": "7",
+        "intExt": "INT",
+        "location": "Della & Jim's Flat",
+        "timeOfDay": "DUSK",
+        "synopsis": "Jim comes home, freezes in the doorway at the sight of Della's shorn hair.",
+        "scriptText": "INT. FLAT - DUSK\n\nThe door opens. JIM YOUNG, 22, thin and burdened in a coat that needs replacing, stops still. His eyes fix on Della — an expression she cannot read.\n\nDELLA\nJim, darling, don't look at me that way.",
+        "pages": 1.5,
+        "estimatedShootMinutes": 83,
+        "elements": [
+          {
+            "id": "el_cast_della_young",
+            "name": "Della Young",
+            "category": "cast",
+            "subCategory": "Lead"
+          },
+          {
+            "id": "el_cast_jim_young",
+            "name": "Jim Young",
+            "category": "cast",
+            "subCategory": "Lead",
+            "description": "First full appearance"
+          },
+          {
+            "id": "el_wardrobe_jim_s_overcoat",
+            "name": "Jim's overcoat",
+            "category": "wardrobe",
+            "subCategory": "Period 1905",
+            "description": "Needs replacing — no gloves"
+          },
+          {
+            "id": "el_sfx_doorway_key_light",
+            "name": "Doorway key light",
+            "category": "sfx",
+            "subCategory": "Lighting",
+            "description": "Cold hallway spill"
+          },
+          {
+            "id": "el_vfx_golden_hour_push",
+            "name": "Golden-hour push",
+            "category": "vfx",
+            "subCategory": "Invisible",
+            "description": "Warm the dusk window"
+          }
+        ],
+        "vfxFlags": true,
+        "sfxFlags": true
+      },
+      {
+        "id": "sc_8",
+        "number": "8",
+        "intExt": "INT",
+        "location": "Della & Jim's Flat",
+        "timeOfDay": "NIGHT",
+        "synopsis": "The gifts are exchanged: Jim's tortoise-shell combs for hair now gone; Della's fob for the watch Jim has sold to buy the combs.",
+        "scriptText": "INT. FLAT - NIGHT\n\nJim tosses a package on the table. Inside: THE COMBS — pure tortoise shell, jeweled rims — the set Della worshipped in a Broadway window.\n\nDELLA\nMy hair grows so fast, Jim!\n\nShe presses the fob into his palm. Jim smiles, and sinks onto the couch.\n\nJIM\nI sold the watch to get your combs.",
+        "pages": 2.25,
+        "estimatedShootMinutes": 124,
+        "elements": [
+          {
+            "id": "el_cast_della_young",
+            "name": "Della Young",
+            "category": "cast",
+            "subCategory": "Lead"
+          },
+          {
+            "id": "el_cast_jim_young",
+            "name": "Jim Young",
+            "category": "cast",
+            "subCategory": "Lead"
+          },
+          {
+            "id": "el_props_tortoise_shell_combs",
+            "name": "Tortoise-shell combs",
+            "category": "props",
+            "subCategory": "Hero",
+            "description": "Jeweled rims — matched pair"
+          },
+          {
+            "id": "el_props_platinum_fob_chain",
+            "name": "Platinum fob chain",
+            "category": "props",
+            "subCategory": "Hero",
+            "description": "Payoff of sc. 5"
+          },
+          {
+            "id": "el_props_jim_s_heirloom_watch",
+            "name": "Jim's heirloom watch",
+            "category": "props",
+            "subCategory": "Hero",
+            "description": "Referenced; sold off-screen"
+          },
+          {
+            "id": "el_props_wrapped_parcels",
+            "name": "Wrapped parcels",
+            "category": "props",
+            "subCategory": "Set dressing"
+          },
+          {
+            "id": "el_sfx_practical_table_lamp",
+            "name": "Practical table lamp",
+            "category": "sfx",
+            "subCategory": "Lighting"
+          }
+        ],
+        "vfxFlags": false,
+        "sfxFlags": true
+      },
+      {
+        "id": "sc_8A",
+        "number": "8A",
+        "intExt": "EXT",
+        "location": "Tenement Street",
+        "timeOfDay": "NIGHT",
+        "synopsis": "INSERT — snow settles over the gas-lit street as the flat's window glows. Aerial pull-up.",
+        "scriptText": "EXT. TENEMENT STREET - NIGHT (INSERT)\n\nSnow settling. Gas lamps haloed. We rise — an aerial pull-up — from the one warm window in a cold city.",
+        "pages": 0.5,
+        "estimatedShootMinutes": 28,
+        "elements": [
+          {
+            "id": "el_sfx_gas_lamp_haloes",
+            "name": "Gas lamp haloes",
+            "category": "sfx",
+            "subCategory": "Atmos",
+            "description": "Practical flame + haze"
+          },
+          {
+            "id": "el_sfx_falling_snow",
+            "name": "Falling snow",
+            "category": "sfx",
+            "subCategory": "Atmos",
+            "description": "Overhead snow rig"
+          },
+          {
+            "id": "el_vfx_aerial_pull_up",
+            "name": "Aerial pull-up",
+            "category": "vfx",
+            "subCategory": "Drone plate",
+            "description": "Stabilize + sky replace"
+          },
+          {
+            "id": "el_vfx_city_skyline_extension",
+            "name": "City skyline extension",
+            "category": "vfx",
+            "subCategory": "Environment",
+            "description": "1905 rooftops matte"
+          },
+          {
+            "id": "el_props_snow_covered_street",
+            "name": "Snow-covered street",
+            "category": "props",
+            "subCategory": "Set dressing"
+          }
+        ],
+        "vfxFlags": true,
+        "sfxFlags": true
+      },
+      {
+        "id": "sc_9",
+        "number": "9",
+        "intExt": "INT",
+        "location": "Della & Jim's Flat",
+        "timeOfDay": "NIGHT",
+        "synopsis": "They put their gifts away and sit to supper. NARRATOR closes on the wisdom of the magi.",
+        "scriptText": "INT. FLAT - NIGHT\n\nThey put their presents away and Jim starts the chops on the fire.\n\nNARRATOR (V.O.)\nOf all who give gifts, these two were wisest. They are the magi.",
+        "pages": 1,
+        "estimatedShootMinutes": 55,
+        "elements": [
+          {
+            "id": "el_cast_della_young",
+            "name": "Della Young",
+            "category": "cast",
+            "subCategory": "Lead"
+          },
+          {
+            "id": "el_cast_jim_young",
+            "name": "Jim Young",
+            "category": "cast",
+            "subCategory": "Lead"
+          },
+          {
+            "id": "el_props_chops_skillet",
+            "name": "Chops & skillet",
+            "category": "props",
+            "subCategory": "Set dressing",
+            "description": "Steam — food stylist"
+          },
+          {
+            "id": "el_sfx_firelight_glow",
+            "name": "Firelight glow",
+            "category": "sfx",
+            "subCategory": "Lighting",
+            "description": "Practical grate"
+          }
+        ],
+        "vfxFlags": false,
+        "sfxFlags": true
+      }
+    ],
+    "characterBible": [
+      {
+        "name": "Della Young",
+        "speaking": true,
+        "importance": "lead",
+        "description": "The wife. Sells her hair to buy Jim a gift.",
+        "firstSceneNumber": "1"
+      },
+      {
+        "name": "Jim Young",
+        "aliases": [
+          "James Dillingham Young"
+        ],
+        "speaking": true,
+        "importance": "lead",
+        "description": "The husband. Sells his watch to buy Della's combs.",
+        "firstSceneNumber": "7"
+      },
+      {
+        "name": "Madame Sofronie",
+        "speaking": true,
+        "importance": "supporting",
+        "description": "Hair-goods dealer, cold and quick.",
+        "firstSceneNumber": "4"
+      },
+      {
+        "name": "Jeweler",
+        "speaking": true,
+        "importance": "minor",
+        "description": "Sells Della the fob chain.",
+        "firstSceneNumber": "5"
+      },
+      {
+        "name": "Newsboy",
+        "speaking": true,
+        "importance": "background",
+        "description": "Street atmosphere.",
+        "firstSceneNumber": "3"
+      }
+    ],
+    "locations": [
+      {
+        "id": "loc_flat",
+        "name": "Della & Jim's Flat",
+        "type": "INT",
+        "address": "Stage 3, OverExposure Lot",
+        "contactName": "Studio Ops",
+        "contactPhone": "+1 555 0100",
+        "permitStatus": "locked",
+        "lockDate": "2026-07-25",
+        "parkingNotes": "Crew lot B",
+        "powerNotes": "House power + genny backup",
+        "costPerDay": 1800,
+        "notes": "Standing set — dressed for period 1905."
+      },
+      {
+        "id": "loc_hair",
+        "name": "Mme. Sofronie's Hair Emporium",
+        "type": "INT",
+        "address": "41 Cannery Row (practical)",
+        "contactName": "R. Mendez",
+        "contactPhone": "+1 555 0142",
+        "permitStatus": "permit_pending",
+        "parkingNotes": "Street parking, permits pulled",
+        "costPerDay": 1200
+      },
+      {
+        "id": "loc_street",
+        "name": "Tenement Street",
+        "type": "EXT",
+        "address": "Heritage Alley, Old Town",
+        "contactName": "City Film Office",
+        "contactPhone": "+1 555 0170",
+        "permitStatus": "optioned",
+        "parkingNotes": "Rolling road closure 6a–2p",
+        "powerNotes": "Tie-in + 2× 6kW genny for snow rig",
+        "costPerDay": 2400,
+        "notes": "Night work — neighbour notice filed."
+      },
+      {
+        "id": "loc_jewel",
+        "name": "Jeweler's Shop",
+        "type": "INT",
+        "address": "Heritage Alley, Old Town (adjacent)",
+        "contactName": "City Film Office",
+        "permitStatus": "scouting",
+        "costPerDay": 900
+      }
+    ],
+    "shootDays": [
+      {
+        "id": "day_1",
+        "dayNumber": 1,
+        "date": "2026-07-25",
+        "location": "Della & Jim's Flat",
+        "locations": [
+          "Della & Jim's Flat"
+        ],
+        "estimatedHours": 11,
+        "callTime": "07:00",
+        "wrapTime": "18:00",
+        "weather": "Clear, 4°C",
+        "scenes": [
+          "sc_1",
+          "sc_2",
+          "sc_6"
+        ],
+        "banners": [
+          {
+            "type": "meal",
+            "label": "Lunch 12:30 (30 crew)"
+          }
+        ]
+      },
+      {
+        "id": "day_2",
+        "dayNumber": 2,
+        "date": "2026-07-26",
+        "location": "Tenement Street",
+        "locations": [
+          "Tenement Street",
+          "Mme. Sofronie's Hair Emporium",
+          "Jeweler's Shop"
+        ],
+        "estimatedHours": 12,
+        "callTime": "06:30",
+        "wrapTime": "18:30",
+        "weather": "Overcast, snow FX",
+        "scenes": [
+          "sc_3",
+          "sc_4",
+          "sc_5"
+        ],
+        "banners": [
+          {
+            "type": "company_move",
+            "label": "Company move → Hair Emporium 11:00"
+          },
+          {
+            "type": "meal",
+            "label": "Lunch 13:00"
+          }
+        ]
+      },
+      {
+        "id": "day_3",
+        "dayNumber": 3,
+        "date": "2026-07-27",
+        "location": "Della & Jim's Flat",
+        "locations": [
+          "Della & Jim's Flat",
+          "Tenement Street"
+        ],
+        "estimatedHours": 12,
+        "callTime": "13:00",
+        "wrapTime": "01:00",
+        "weather": "Night — clear",
+        "scenes": [
+          "sc_7",
+          "sc_8",
+          "sc_8A",
+          "sc_9"
+        ],
+        "banners": [
+          {
+            "type": "meal",
+            "label": "Second meal 19:30"
+          },
+          {
+            "type": "company_move",
+            "label": "Split company: aerial unit on street"
+          }
+        ]
+      }
+    ],
+    "dood": {
+      "cast_della": {
+        "1": "SW",
+        "2": "W",
+        "3": "WF"
+      },
+      "cast_jim": {
+        "1": "H",
+        "2": "OFF",
+        "3": "SWF"
+      },
+      "cast_sofronie": {
+        "1": "OFF",
+        "2": "SWF",
+        "3": "OFF"
+      },
+      "cast_jeweler": {
+        "1": "OFF",
+        "2": "SWF",
+        "3": "OFF"
+      },
+      "cast_newsboy": {
+        "1": "OFF",
+        "2": "SWF",
+        "3": "OFF"
+      }
+    },
+    "publishedSchedule": {
+      "version": 2,
+      "publishedAt": "2026-07-17T09:00:00.000Z",
+      "lastChanges": [
+        {
+          "sceneId": "sc_5",
+          "fromDay": 1,
+          "toDay": 2
+        }
+      ]
+    },
+    "locationLockDates": {},
+    "tasks": [
+      {
+        "id": "task_combs",
+        "title": "Source hero tortoise-shell combs (matched pair)",
+        "owner": "crew_art",
+        "department": "art",
+        "deadlineRule": "manual(2026-07-23)",
+        "computedDeadline": "2026-07-23T18:00:00.000Z",
+        "status": "in_progress",
+        "priority": "high",
+        "createdAt": "2026-07-15T09:00:00.000Z",
+        "updatedAt": "2026-07-18T09:00:00.000Z",
+        "linkedScene": "sc_8",
+        "description": "Jeweled rims. Two identical for continuity + backup."
+      },
+      {
+        "id": "task_fob",
+        "title": "Fabricate platinum fob chain + backup",
+        "owner": "crew_art",
+        "department": "props",
+        "deadlineRule": "manual(2026-07-23)",
+        "computedDeadline": "2026-07-23T18:00:00.000Z",
+        "status": "in_progress",
+        "priority": "high",
+        "createdAt": "2026-07-15T09:00:00.000Z",
+        "updatedAt": "2026-07-18T09:00:00.000Z",
+        "linkedScene": "sc_5"
+      },
+      {
+        "id": "task_wig",
+        "title": "Della knee-length hair fall — fitting & test",
+        "owner": "crew_ward",
+        "department": "wardrobe",
+        "deadlineRule": "manual(2026-07-22)",
+        "computedDeadline": "2026-07-22T18:00:00.000Z",
+        "status": "review",
+        "priority": "critical",
+        "createdAt": "2026-07-15T09:00:00.000Z",
+        "updatedAt": "2026-07-18T09:00:00.000Z",
+        "linkedScene": "sc_2",
+        "description": "Wig rig for the cut; blends to actor."
+      },
+      {
+        "id": "task_snow",
+        "title": "Confirm snow rig + 2× genny for street night",
+        "owner": "crew_gaffer",
+        "department": "camera",
+        "deadlineRule": "manual(2026-07-25)",
+        "computedDeadline": "2026-07-25T18:00:00.000Z",
+        "status": "not_started",
+        "priority": "high",
+        "createdAt": "2026-07-15T09:00:00.000Z",
+        "updatedAt": "2026-07-18T09:00:00.000Z",
+        "linkedShootDay": 3,
+        "linkedScene": "sc_8A"
+      },
+      {
+        "id": "task_permit",
+        "title": "Pull EXT night permit — Tenement Street",
+        "owner": "crew_1ad",
+        "department": "production",
+        "deadlineRule": "manual(2026-07-21)",
+        "computedDeadline": "2026-07-21T18:00:00.000Z",
+        "status": "blocked",
+        "priority": "critical",
+        "createdAt": "2026-07-15T09:00:00.000Z",
+        "updatedAt": "2026-07-18T09:00:00.000Z",
+        "blockedBy": [
+          "task_neighbour"
+        ],
+        "description": "Waiting on neighbour sign-off."
+      },
+      {
+        "id": "task_neighbour",
+        "title": "Neighbour notice — night shoot",
+        "owner": "crew_1ad",
+        "department": "production",
+        "deadlineRule": "manual(2026-07-20)",
+        "computedDeadline": "2026-07-20T18:00:00.000Z",
+        "status": "completed",
+        "priority": "medium",
+        "createdAt": "2026-07-15T09:00:00.000Z",
+        "updatedAt": "2026-07-18T09:00:00.000Z"
+      },
+      {
+        "id": "task_drone",
+        "title": "Drone aerial pull-up — flight plan + waiver",
+        "owner": "crew_dp",
+        "department": "camera",
+        "deadlineRule": "manual(2026-07-25)",
+        "computedDeadline": "2026-07-25T18:00:00.000Z",
+        "status": "not_started",
+        "priority": "medium",
+        "createdAt": "2026-07-15T09:00:00.000Z",
+        "updatedAt": "2026-07-18T09:00:00.000Z",
+        "linkedScene": "sc_8A",
+        "linkedShootDay": 3
+      },
+      {
+        "id": "task_watch",
+        "title": "Age & dress Jim's heirloom watch",
+        "owner": "crew_art",
+        "department": "props",
+        "deadlineRule": "manual(2026-07-24)",
+        "computedDeadline": "2026-07-24T18:00:00.000Z",
+        "status": "not_started",
+        "priority": "medium",
+        "createdAt": "2026-07-15T09:00:00.000Z",
+        "updatedAt": "2026-07-18T09:00:00.000Z",
+        "linkedScene": "sc_8"
+      },
+      {
+        "id": "task_call1",
+        "title": "Distribute Day 1 call sheet",
+        "owner": "crew_1ad",
+        "department": "production",
+        "deadlineRule": "manual(2026-07-24)",
+        "computedDeadline": "2026-07-24T18:00:00.000Z",
+        "status": "not_started",
+        "priority": "medium",
+        "createdAt": "2026-07-15T09:00:00.000Z",
+        "updatedAt": "2026-07-18T09:00:00.000Z",
+        "linkedShootDay": 1
+      }
+    ],
+    "budgetLines": [
+      {
+        "id": "bl_atl_1",
+        "code": "1100",
+        "category": "Above the Line",
+        "subcategory": "Cast",
+        "department": "cast",
+        "description": "Principal cast",
+        "budgeted": 42000,
+        "committed": 38000,
+        "spent": 12800
+      },
+      {
+        "id": "bl_atl_2",
+        "code": "1200",
+        "category": "Above the Line",
+        "subcategory": "Director/Producer",
+        "department": "production",
+        "description": "Director & producer fees",
+        "budgeted": 55000,
+        "committed": 55000,
+        "spent": 27500
+      },
+      {
+        "id": "bl_cam",
+        "code": "2100",
+        "category": "Production",
+        "subcategory": "Camera",
+        "department": "camera",
+        "description": "Camera package + grip/electric",
+        "budgeted": 48000,
+        "committed": 41000,
+        "spent": 9200
+      },
+      {
+        "id": "bl_art",
+        "code": "2200",
+        "category": "Production",
+        "subcategory": "Art/Set",
+        "department": "art",
+        "description": "Period set dressing & props",
+        "budgeted": 36000,
+        "committed": 22000,
+        "spent": 14300
+      },
+      {
+        "id": "bl_ward",
+        "code": "2300",
+        "category": "Production",
+        "subcategory": "Wardrobe",
+        "department": "wardrobe",
+        "description": "Period costume & hair",
+        "budgeted": 24000,
+        "committed": 18500,
+        "spent": 8900
+      },
+      {
+        "id": "bl_loc",
+        "code": "2400",
+        "category": "Production",
+        "subcategory": "Locations",
+        "department": "production",
+        "description": "Location fees & permits",
+        "budgeted": 21000,
+        "committed": 12300,
+        "spent": 4100
+      },
+      {
+        "id": "bl_vfx",
+        "code": "3100",
+        "category": "Post",
+        "subcategory": "VFX",
+        "department": "vfx",
+        "description": "Snow, cut, aerial cleanup",
+        "budgeted": 30000,
+        "committed": 15000,
+        "spent": 0
+      },
+      {
+        "id": "bl_sound",
+        "code": "3200",
+        "category": "Post",
+        "subcategory": "Sound",
+        "department": "sound",
+        "description": "Production sound + mix",
+        "budgeted": 16000,
+        "committed": 9000,
+        "spent": 3200
+      }
+    ],
+    "purchaseOrders": [
+      {
+        "id": "po_1",
+        "number": "PO-0001",
+        "vendor": "Heritage Prop House",
+        "description": "Tortoise-shell combs (2) + platinum fob stock",
+        "amount": 4200,
+        "currency": "AED",
+        "accountCode": "2200",
+        "department": "art",
+        "linkedScene": "sc_8",
+        "requestedBy": "crew_art",
+        "requestedAt": "2026-07-16T09:00:00.000Z",
+        "status": "approved",
+        "approvals": [
+          {
+            "step": "accountant",
+            "by": "crew_acct",
+            "at": "2026-07-17T09:00:00.000Z",
+            "decision": "approved",
+            "note": "Within art line."
+          },
+          {
+            "step": "admin",
+            "by": "user_admin",
+            "at": "2026-07-17T14:00:00.000Z",
+            "decision": "approved"
+          }
+        ],
+        "auditLog": [
+          {
+            "at": "2026-07-16T09:00:00.000Z",
+            "by": "crew_art",
+            "action": "submitted"
+          },
+          {
+            "at": "2026-07-17T09:00:00.000Z",
+            "by": "crew_acct",
+            "action": "accountant_approved"
+          },
+          {
+            "at": "2026-07-17T14:00:00.000Z",
+            "by": "user_admin",
+            "action": "admin_approved"
+          }
+        ]
+      },
+      {
+        "id": "po_2",
+        "number": "PO-0002",
+        "vendor": "NorthStar Aerial",
+        "description": "Drone day + operator — street aerial",
+        "amount": 5600,
+        "currency": "AED",
+        "accountCode": "2100",
+        "department": "camera",
+        "linkedShootDay": 3,
+        "requestedBy": "crew_dp",
+        "requestedAt": "2026-07-18T09:00:00.000Z",
+        "status": "accountant_review",
+        "approvals": [],
+        "auditLog": [
+          {
+            "at": "2026-07-18T09:00:00.000Z",
+            "by": "crew_dp",
+            "action": "submitted"
+          }
+        ]
+      },
+      {
+        "id": "po_3",
+        "number": "PO-0003",
+        "vendor": "SnowFX Rentals",
+        "description": "Snow machines ×2 + haze, 1 night",
+        "amount": 3100,
+        "currency": "AED",
+        "accountCode": "2100",
+        "department": "camera",
+        "linkedShootDay": 3,
+        "requestedBy": "crew_gaffer",
+        "requestedAt": "2026-07-19T09:00:00.000Z",
+        "status": "submitted",
+        "approvals": [],
+        "auditLog": [
+          {
+            "at": "2026-07-19T09:00:00.000Z",
+            "by": "crew_gaffer",
+            "action": "submitted"
+          }
+        ]
+      }
+    ],
+    "pettyCash": [
+      {
+        "id": "pc_1",
+        "date": "2026-07-17T09:00:00.000Z",
+        "amount": 180,
+        "currency": "AED",
+        "description": "Aging supplies — watch & fob",
+        "department": "art",
+        "loggedBy": "crew_art"
+      },
+      {
+        "id": "pc_2",
+        "date": "2026-07-18T09:00:00.000Z",
+        "amount": 95,
+        "currency": "AED",
+        "description": "Coffee & craft — fitting day",
+        "department": "production",
+        "loggedBy": "crew_1ad"
+      }
+    ],
+    "vfxShots": [
+      {
+        "id": "vfx_haircut",
+        "shotNumber": "004_010",
+        "sceneId": "sc_4",
+        "description": "Sell the hair cut without cutting actor's hair",
+        "complexity": "moderate",
+        "status": "in_progress",
+        "vendorId": "vend_inhouse",
+        "reviewRounds": 3,
+        "reviewsCompleted": 1,
+        "plateDeliveryDate": "2026-07-29",
+        "finalDueDate": "2026-08-12"
+      },
+      {
+        "id": "vfx_snow",
+        "shotNumber": "008A_020",
+        "sceneId": "sc_8A",
+        "description": "Snow enhancement + gas-lamp haze",
+        "complexity": "moderate",
+        "status": "awarded",
+        "vendorId": "vend_aurora",
+        "reviewRounds": 2,
+        "reviewsCompleted": 0,
+        "plateDeliveryDate": "2026-07-31",
+        "finalDueDate": "2026-08-18"
+      },
+      {
+        "id": "vfx_aerial",
+        "shotNumber": "008A_030",
+        "sceneId": "sc_8A",
+        "description": "Aerial pull-up: stabilize, sky replace, 1905 skyline extension",
+        "complexity": "complex",
+        "status": "bid",
+        "vendorId": "vend_aurora",
+        "reviewRounds": 3,
+        "reviewsCompleted": 0,
+        "finalDueDate": "2026-08-22"
+      }
+    ],
+    "vfxVendors": [
+      {
+        "id": "vend_aurora",
+        "name": "Aurora Post",
+        "contact": "ops@aurora.example",
+        "city": "Vancouver",
+        "assignedShots": [
+          "vfx_snow",
+          "vfx_aerial"
+        ],
+        "onTimePercent": 92
+      },
+      {
+        "id": "vend_inhouse",
+        "name": "In-house Unit",
+        "contact": "rosa@overexposure.example",
+        "city": "Local",
+        "assignedShots": [
+          "vfx_haircut"
+        ],
+        "onTimePercent": 100
+      }
+    ],
+    "frequencyPlan": [
+      {
+        "id": "fp_1",
+        "shootDay": 1,
+        "location": "Della & Jim's Flat",
+        "device": "Lav TX — Della",
+        "frequencyMHz": 518.25,
+        "powerMW": 50,
+        "channel": "A1"
+      },
+      {
+        "id": "fp_2",
+        "shootDay": 1,
+        "location": "Della & Jim's Flat",
+        "device": "Lav TX — Jim",
+        "frequencyMHz": 521.5,
+        "powerMW": 50,
+        "channel": "A2"
+      },
+      {
+        "id": "fp_3",
+        "shootDay": 2,
+        "location": "Tenement Street",
+        "device": "Boom hop TX",
+        "frequencyMHz": 537,
+        "powerMW": 100,
+        "channel": "B1",
+        "notes": "Coordinate with city — congested band."
+      },
+      {
+        "id": "fp_4",
+        "shootDay": 3,
+        "location": "Tenement Street",
+        "device": "IFB — director",
+        "frequencyMHz": 216.5,
+        "powerMW": 25,
+        "channel": "IFB"
+      }
+    ],
+    "rfEquipment": [
+      {
+        "id": "rf_1",
+        "type": "Wireless TX",
+        "model": "Wisycom MTP61",
+        "serial": "WX-1187",
+        "status": "assigned",
+        "assignedShootDay": 1,
+        "manufacturer": "Wisycom"
+      },
+      {
+        "id": "rf_2",
+        "type": "Wireless RX",
+        "model": "Wisycom MCR54",
+        "serial": "WX-3320",
+        "status": "assigned",
+        "assignedShootDay": 1,
+        "manufacturer": "Wisycom"
+      },
+      {
+        "id": "rf_3",
+        "type": "IFB",
+        "model": "Lectrosonics IFBT4",
+        "serial": "LE-0091",
+        "status": "available",
+        "manufacturer": "Lectrosonics"
+      }
+    ],
+    "cameraKits": [
+      {
+        "id": "kit_a",
+        "name": "A-Cam — ALEXA 35 + Cooke S4",
+        "items": [
+          "ALEXA 35 body",
+          "Cooke S4/i 18–100 set",
+          "Cinesaddle + head",
+          "2× 1TB drives"
+        ],
+        "assignedShootDay": 1,
+        "manufacturer": "ARRI"
+      },
+      {
+        "id": "kit_b",
+        "name": "B-Cam — ALEXA Mini LF",
+        "items": [
+          "ALEXA Mini LF",
+          "Signature Primes 35/50/75",
+          "Easyrig"
+        ],
+        "assignedShootDay": 3,
+        "manufacturer": "ARRI"
+      }
+    ],
+    "drones": [
+      {
+        "id": "drone_1",
+        "model": "Inspire 3",
+        "manufacturer": "DJI",
+        "serial": "DJI-INS3-441",
+        "weightGrams": 3995,
+        "regStatus": "registered",
+        "operatorName": "Kit Alvarez",
+        "operatorLicense": "UAS-88213",
+        "operatorRatePerDay": 2200,
+        "droneRatePerDay": 1400,
+        "assignedShootDay": 3,
+        "status": "assigned",
+        "notes": "Street aerial pull-up, sc. 8A. Night waiver filed."
+      }
+    ],
+    "equipmentCheckouts": [
+      {
+        "id": "co_1",
+        "item": "ALEXA 35 body (A-Cam)",
+        "checkedOutBy": "crew_dp",
+        "checkoutAt": "2026-07-18T09:00:00.000Z",
+        "condition": "Prep — clean"
+      }
+    ],
+    "checklists": [
+      {
+        "id": "cl_1",
+        "title": "Camera prep — Day 1",
+        "shootDay": 1,
+        "items": [
+          {
+            "id": "cli_1",
+            "label": "Sensor clean + back-focus",
+            "done": true,
+            "doneAt": "2026-07-18T09:00:00.000Z",
+            "doneBy": "crew_dp"
+          },
+          {
+            "id": "cli_2",
+            "label": "Build A-cam + follow focus",
+            "done": true,
+            "doneAt": "2026-07-18T09:00:00.000Z",
+            "doneBy": "crew_gaffer"
+          },
+          {
+            "id": "cli_3",
+            "label": "Media format + speed test",
+            "done": false
+          },
+          {
+            "id": "cli_4",
+            "label": "Batteries cycled",
+            "done": false
+          }
+        ]
+      }
+    ],
+    "artElements": [
+      {
+        "id": "art_combs",
+        "name": "Tortoise-shell combs (hero pair)",
+        "category": "prop",
+        "sceneIds": [
+          "sc_8"
+        ],
+        "characterName": "Della Young",
+        "status": "in_progress",
+        "cost": 2600,
+        "notes": "Jeweled rims; backup identical."
+      },
+      {
+        "id": "art_fob",
+        "name": "Platinum fob chain",
+        "category": "prop",
+        "sceneIds": [
+          "sc_5",
+          "sc_8"
+        ],
+        "status": "sourced",
+        "cost": 900
+      },
+      {
+        "id": "art_watch",
+        "name": "Jim's heirloom watch",
+        "category": "prop",
+        "sceneIds": [
+          "sc_8"
+        ],
+        "characterName": "Jim Young",
+        "status": "needed",
+        "cost": 1200
+      },
+      {
+        "id": "art_coat_della",
+        "name": "Della's winter coat",
+        "category": "wardrobe",
+        "sceneIds": [
+          "sc_3"
+        ],
+        "characterName": "Della Young",
+        "status": "fitting",
+        "cost": 700
+      },
+      {
+        "id": "art_coat_jim",
+        "name": "Jim's overcoat (worn)",
+        "category": "wardrobe",
+        "sceneIds": [
+          "sc_7",
+          "sc_8"
+        ],
+        "characterName": "Jim Young",
+        "status": "sourced",
+        "cost": 640
+      },
+      {
+        "id": "art_wig",
+        "name": "Della knee-length hair fall",
+        "category": "makeup",
+        "sceneIds": [
+          "sc_2",
+          "sc_4"
+        ],
+        "characterName": "Della Young",
+        "status": "ready",
+        "cost": 1500,
+        "notes": "Continuity-critical."
+      },
+      {
+        "id": "art_shears",
+        "name": "Period barber shears",
+        "category": "prop",
+        "sceneIds": [
+          "sc_4"
+        ],
+        "status": "ready",
+        "cost": 220
+      }
+    ],
+    "continuityPhotos": [],
+    "timesheet": [
+      {
+        "id": "ts_1",
+        "crewMemberId": "crew_dp",
+        "date": "2026-07-18",
+        "hours": 10,
+        "submitted": true,
+        "submittedAt": "2026-07-18T19:00:00.000Z",
+        "edits": []
+      },
+      {
+        "id": "ts_2",
+        "crewMemberId": "crew_gaffer",
+        "date": "2026-07-18",
+        "hours": 10.5,
+        "submitted": true,
+        "submittedAt": "2026-07-18T19:00:00.000Z",
+        "edits": [
+          {
+            "at": "2026-07-18T20:00:00.000Z",
+            "by": "user_admin",
+            "fromHours": 10,
+            "toHours": 10.5,
+            "isAdminOverride": true
+          }
+        ]
+      },
+      {
+        "id": "ts_3",
+        "crewMemberId": "crew_art",
+        "date": "2026-07-18",
+        "hours": 9,
+        "submitted": true,
+        "submittedAt": "2026-07-18T18:00:00.000Z",
+        "edits": []
+      },
+      {
+        "id": "ts_4",
+        "crewMemberId": "crew_ward",
+        "date": "2026-07-18",
+        "hours": 8,
+        "submitted": false,
+        "edits": []
+      }
+    ],
+    "notifications": [
+      {
+        "id": "n_1",
+        "type": "approval_requested",
+        "title": "PO-0002 needs review",
+        "body": "NorthStar Aerial — drone day, AED 5,600. Awaiting accountant.",
+        "createdAt": "2026-07-18T09:00:00.000Z",
+        "read": false,
+        "linkTo": "/budget"
+      },
+      {
+        "id": "n_2",
+        "type": "task_overdue",
+        "title": "EXT night permit is blocked",
+        "body": "Tenement Street permit is blocked by neighbour sign-off.",
+        "createdAt": "2026-07-18T11:00:00.000Z",
+        "read": false,
+        "linkTo": "/tasks"
+      },
+      {
+        "id": "n_3",
+        "type": "schedule_change",
+        "title": "Company move added — Day 2",
+        "body": "Hair Emporium → Jeweler's Shop move at 11:00.",
+        "createdAt": "2026-07-17T09:00:00.000Z",
+        "read": true,
+        "linkTo": "/schedule"
+      },
+      {
+        "id": "n_4",
+        "type": "ai_digest",
+        "title": "Daily digest ready",
+        "body": "3 shoot days scheduled · 2 POs pending · wig fitting in review.",
+        "createdAt": "2026-07-19T08:00:00.000Z",
+        "read": false,
+        "linkTo": "/dashboard"
+      }
+    ],
+    "activityLog": [
+      {
+        "id": "a_1",
+        "at": "2026-07-16T09:00:00.000Z",
+        "userId": "crew_art",
+        "userLabel": "Lena Fisk",
+        "action": "created",
+        "entity": "purchase_order",
+        "entityId": "po_1",
+        "description": "Submitted PO-0001 (Heritage Prop House, AED 4,200)"
+      },
+      {
+        "id": "a_2",
+        "at": "2026-07-17T09:00:00.000Z",
+        "userId": "crew_acct",
+        "userLabel": "George Amaro",
+        "action": "approved",
+        "entity": "purchase_order",
+        "entityId": "po_1",
+        "description": "Accountant approved PO-0001"
+      },
+      {
+        "id": "a_3",
+        "at": "2026-07-17T14:00:00.000Z",
+        "userId": "user_admin",
+        "userLabel": "Administrator",
+        "action": "approved",
+        "entity": "purchase_order",
+        "entityId": "po_1",
+        "description": "Admin approved PO-0001"
+      },
+      {
+        "id": "a_4",
+        "at": "2026-07-17T09:00:00.000Z",
+        "userId": "crew_1ad",
+        "userLabel": "Priya Nadar",
+        "action": "updated",
+        "entity": "schedule",
+        "description": "Added company move to Day 2"
+      },
+      {
+        "id": "a_5",
+        "at": "2026-07-18T09:00:00.000Z",
+        "userId": "crew_ward",
+        "userLabel": "Yuki Tanaka",
+        "action": "status_change",
+        "entity": "art_element",
+        "entityId": "art_wig",
+        "description": "Hair fall moved to Ready"
+      },
+      {
+        "id": "a_6",
+        "at": "2026-07-18T12:00:00.000Z",
+        "userId": "crew_1ad",
+        "userLabel": "Priya Nadar",
+        "action": "completed",
+        "entity": "task",
+        "entityId": "task_neighbour",
+        "description": "Completed neighbour notice"
+      }
+    ],
+    "aiDigest": {
+      "at": "2026-07-19T08:00:00.000Z",
+      "text": "Day 1 (flat interiors) is locked and camera-prepped. Two POs are pending — the aerial day and the snow package — both tied to the Day-3 night. The knee-length hair fall cleared to Ready, but the EXT night permit is blocked on a neighbour sign-off; clearing it is the critical path to the aerial pull-up (sc. 8A). Budget is tracking at 100% committed against a AED 272,000 plan.",
+      "hash": "sample",
+      "model": "demo"
+    },
+    "healthHistory": [
+      {
+        "date": "2026-07-08",
+        "health": 58
+      },
+      {
+        "date": "2026-07-09",
+        "health": 61
+      },
+      {
+        "date": "2026-07-10",
+        "health": 60
+      },
+      {
+        "date": "2026-07-11",
+        "health": 64
+      },
+      {
+        "date": "2026-07-12",
+        "health": 67
+      },
+      {
+        "date": "2026-07-13",
+        "health": 66
+      },
+      {
+        "date": "2026-07-14",
+        "health": 70
+      },
+      {
+        "date": "2026-07-15",
+        "health": 72
+      },
+      {
+        "date": "2026-07-16",
+        "health": 71
+      },
+      {
+        "date": "2026-07-17",
+        "health": 74
+      },
+      {
+        "date": "2026-07-18",
+        "health": 76
+      },
+      {
+        "date": "2026-07-19",
+        "health": 78
+      }
+    ],
+    "users": [
+      {
+        "id": "user_admin",
+        "username": "Admin",
+        "displayName": "Administrator",
+        "password": "sha256$03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4",
+        "roleId": "admin",
+        "active": true,
+        "createdAt": "2026-06-19T09:00:00.000Z"
+      },
+      {
+        "id": "user_priya",
+        "username": "priya",
+        "displayName": "Priya Nadar",
+        "password": "",
+        "roleId": "scheduler",
+        "active": true,
+        "createdAt": "2026-06-29T09:00:00.000Z",
+        "inviteCode": "AD1STXYZ"
+      },
+      {
+        "id": "user_george",
+        "username": "george",
+        "displayName": "George Amaro",
+        "password": "",
+        "roleId": "accountant",
+        "active": true,
+        "createdAt": "2026-06-29T09:00:00.000Z",
+        "inviteCode": "ACCT4421"
+      },
+      {
+        "id": "user_rosa",
+        "username": "rosa",
+        "displayName": "Rosa Klein",
+        "password": "",
+        "roleId": "vfx",
+        "active": true,
+        "createdAt": "2026-07-01T09:00:00.000Z",
+        "inviteCode": "VFX99KLN"
+      }
+    ],
+    "roles": [
+      {
+        "id": "admin",
+        "label": "Administrator",
+        "description": "Full oversight of every project, department, users, roles, and AI.",
+        "access": [
+          "all"
+        ],
+        "builtIn": true
+      },
+      {
+        "id": "scheduler",
+        "label": "1st AD / Scheduler",
+        "description": "Owns the shooting schedule, strip board, and DOOD.",
+        "access": [
+          "breakdown",
+          "schedule",
+          "locations",
+          "tasks",
+          "cast",
+          "reports"
+        ],
+        "permissions": {
+          "breakdown": "read",
+          "schedule": "write",
+          "locations": "write",
+          "tasks": "write",
+          "budget": "none",
+          "vfx": "none",
+          "rf": "none",
+          "camera": "none",
+          "drones": "none",
+          "art": "none",
+          "cast": "write",
+          "timesheet": "none",
+          "reports": "read"
+        },
+        "builtIn": true
+      },
+      {
+        "id": "accountant",
+        "label": "Accountant",
+        "description": "Manages the budget, POs, invoices, and petty cash.",
+        "department": "accounting",
+        "access": [
+          "budget",
+          "tasks",
+          "reports"
+        ],
+        "permissions": {
+          "breakdown": "none",
+          "schedule": "none",
+          "locations": "none",
+          "tasks": "write",
+          "budget": "write",
+          "vfx": "none",
+          "rf": "none",
+          "camera": "none",
+          "drones": "none",
+          "art": "none",
+          "cast": "none",
+          "timesheet": "none",
+          "reports": "read"
+        },
+        "builtIn": true
+      },
+      {
+        "id": "camera",
+        "label": "Camera / Technical",
+        "description": "Equipment manifests, kit builds, and prep checklists.",
+        "department": "camera",
+        "access": [
+          "camera",
+          "drones",
+          "breakdown",
+          "schedule",
+          "tasks"
+        ],
+        "permissions": {
+          "breakdown": "read",
+          "schedule": "read",
+          "locations": "none",
+          "tasks": "write",
+          "budget": "none",
+          "vfx": "none",
+          "rf": "none",
+          "camera": "write",
+          "drones": "write",
+          "art": "none",
+          "cast": "none",
+          "timesheet": "none",
+          "reports": "none"
+        },
+        "builtIn": true
+      },
+      {
+        "id": "vfx",
+        "label": "VFX Supervisor",
+        "description": "Shot pipeline, vendor management, plate delivery.",
+        "department": "vfx",
+        "access": [
+          "vfx",
+          "breakdown",
+          "tasks"
+        ],
+        "permissions": {
+          "breakdown": "read",
+          "schedule": "none",
+          "locations": "none",
+          "tasks": "write",
+          "budget": "none",
+          "vfx": "write",
+          "rf": "none",
+          "camera": "none",
+          "drones": "none",
+          "art": "none",
+          "cast": "none",
+          "timesheet": "none",
+          "reports": "none"
+        },
+        "builtIn": true
+      },
+      {
+        "id": "art",
+        "label": "Art / Wardrobe / Props",
+        "description": "Element tracking, continuity, and set dressing.",
+        "department": "art",
+        "access": [
+          "art",
+          "breakdown",
+          "tasks"
+        ],
+        "permissions": {
+          "breakdown": "read",
+          "schedule": "none",
+          "locations": "none",
+          "tasks": "write",
+          "budget": "none",
+          "vfx": "none",
+          "rf": "none",
+          "camera": "none",
+          "drones": "none",
+          "art": "write",
+          "cast": "none",
+          "timesheet": "none",
+          "reports": "none"
+        },
+        "builtIn": true
+      },
+      {
+        "id": "cast",
+        "label": "Cast Coordinator",
+        "description": "Cast schedules, DOOD, contracts, and call sheets.",
+        "department": "cast",
+        "access": [
+          "cast",
+          "schedule",
+          "tasks"
+        ],
+        "permissions": {
+          "breakdown": "none",
+          "schedule": "write",
+          "locations": "none",
+          "tasks": "write",
+          "budget": "none",
+          "vfx": "none",
+          "rf": "none",
+          "camera": "none",
+          "drones": "none",
+          "art": "none",
+          "cast": "write",
+          "timesheet": "none",
+          "reports": "none"
+        },
+        "builtIn": true
+      }
+    ],
+    "currentUserId": "user_admin",
+    "activeRole": "admin",
+    "tutorialSeen": true,
+    "sidebarPinned": true,
+    "projects": [
+      {
+        "id": "proj_magi",
+        "name": "The Gift of the Magi",
+        "logline": "A young couple, too poor for Christmas, each sell their dearest possession to gift the other — O. Henry, 1905.",
+        "createdAt": "2026-06-19T09:00:00.000Z",
+        "updatedAt": "2026-07-19T09:00:00.000Z",
+        "currency": "AED",
+        "script": {
+          "fileName": "gift-of-the-magi.pdf",
+          "rawText": "INT. DELLA & JIM'S FLAT - DAY\n\nA shabby eight-dollar-a-week furnished flat. DELLA YOUNG, 22, counts a small hoard of coins on a worn coverlet.\n\nDELLA\nOne dollar and eighty-seven cents. And the next day would be Christmas.\n\nShe flops onto the shabby little couch and howls.\n\nINT. FLAT - BEDROOM ALCOVE - DAY\n\nDella stands before a cheap pier glass and lets down her hair — a shimmering cascade to below her knee.\n\nDELLA (V.O.)\nHer hair was her one glory.\n\nEXT. TENEMENT STREET - DAY\n\nDella hurries down a slush-grey street, cheeks bright. A NEWSBOY hawks papers. She turns a corner beneath a swinging sign.\n\nINT. MME. SOFRONIE'S HAIR EMPORIUM - DAY\n\nMADAME SOFRONIE, large, cold, weighs Della's loosened hair in one hand.\n\nSOFRONIE\nTwenty dollars.\n\nDELLA\nGive it to me quick.\n\nSNIP. The shears close.\n\nINT. JEWELER'S SHOP - DAY\n\nA quiet, gleaming counter. The JEWELER lays out a platinum fob chain, simple and chaste.\n\nDELLA\nThat one. For his watch.\n\nINT. FLAT - DAY (LATER)\n\nDella wields the curling irons on her cropped head, making close-lying little curls. She sets coffee to boil.\n\nDELLA\nPlease God, make him think I am still pretty.\n\nINT. FLAT - DUSK\n\nThe door opens. JIM YOUNG, 22, thin and burdened in a coat that needs replacing, stops still. His eyes fix on Della — an expression she cannot read.\n\nDELLA\nJim, darling, don't look at me that way.\n\nINT. FLAT - NIGHT\n\nJim tosses a package on the table. Inside: THE COMBS — pure tortoise shell, jeweled rims — the set Della worshipped in a Broadway window.\n\nDELLA\nMy hair grows so fast, Jim!\n\nShe presses the fob into his palm. Jim smiles, and sinks onto the couch.\n\nJIM\nI sold the watch to get your combs.\n\nEXT. TENEMENT STREET - NIGHT (INSERT)\n\nSnow settling. Gas lamps haloed. We rise — an aerial pull-up — from the one warm window in a cold city.\n\nINT. FLAT - NIGHT\n\nThey put their presents away and Jim starts the chops on the fire.\n\nNARRATOR (V.O.)\nOf all who give gifts, these two were wisest. They are the magi.",
+          "uploadedAt": "2026-06-20T09:00:00.000Z",
+          "pageCount": 13,
+          "source": "pdf"
+        },
+        "sceneCount": 10,
+        "elementCount": 56
+      }
+    ],
+    "activeProjectId": "proj_magi",
+    "projectData": {},
+    "aiUsage": [
+      {
+        "id": "u_1",
+        "feature": "character_bible",
+        "at": "2026-06-20T09:00:00.000Z",
+        "inputTokens": 8200,
+        "outputTokens": 1400,
+        "model": "demo",
+        "costUsd": 0
+      },
+      {
+        "id": "u_2",
+        "feature": "script_breakdown",
+        "at": "2026-06-20T09:00:00.000Z",
+        "inputTokens": 14100,
+        "outputTokens": 5200,
+        "model": "demo",
+        "costUsd": 0
+      }
+    ],
+    "aiConfig": {
+      "alertThresholdPct": 80
+    }
+  },
+  "version": 5
+}

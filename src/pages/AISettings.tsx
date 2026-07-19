@@ -51,7 +51,7 @@ const FEATURE_EST: Record<AIFeature, { avgIn: number; avgOut: number; perUnit: s
   location_scout: { avgIn: 2500, avgOut: 500, perUnit: "per location" },
 };
 
-export function AISettings() {
+export function AISettings({ embedded }: { embedded?: boolean } = {}) {
   const aiUsage = useStore((s) => s.aiUsage);
   const aiConfig = useStore((s) => s.aiConfig);
   const setConfig = useStore((s) => s.setAIConfig);
@@ -101,11 +101,13 @@ export function AISettings() {
   }, [aiUsage]);
 
   return (
-    <div className="max-w-[1400px] mx-auto space-y-6">
-      <div>
-        <div className="section-header">AI Integration</div>
-        <div className="page-title mt-1">Token Usage & Settings</div>
-      </div>
+    <div className={embedded ? "space-y-6" : "max-w-[1400px] mx-auto space-y-6"}>
+      {!embedded && (
+        <div>
+          <div className="section-header">AI Integration</div>
+          <div className="page-title mt-1">Token Usage & Settings</div>
+        </div>
+      )}
 
       {/* Provider — fixed, nothing to configure */}
       <Card variant="ai">

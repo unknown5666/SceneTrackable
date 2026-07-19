@@ -8,21 +8,28 @@ import {
   Trash2,
   ArrowRight,
   Loader2,
-  Check,
   Film,
   Pencil,
   X,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 import { useStore } from "@/state/store";
+import { staggerContainer, staggerItem } from "@/lib/motion";
+import { ProjectPoster } from "@/components/ui/ProjectPoster";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { ProgressBar } from "@/components/ui/ProgressBar";
+import { LoadSampleButton } from "@/components/ui/LoadSampleButton";
 import { formatDate } from "@/lib/utils";
 import { parseScreenplay, runBreakdown, type BreakdownProgress } from "@/lib/script";
+import {
+  BreakdownTheater,
+  TheaterSummary,
+  type TheaterResult,
+} from "@/components/breakdown/BreakdownTheater";
 import { extractPdfText } from "@/lib/pdf";
 import type { ProposedLocation, ScriptCharacter } from "@/lib/claude";
 import {
@@ -82,6 +89,10 @@ export function Projects() {
   const [parsed, setParsed] = useState<Scene[]>([]);
   const [pageCount, setPageCount] = useState<number | undefined>(undefined);
   const [progress, setProgress] = useState<BreakdownProgress | null>(null);
+  // Live per-scene results for the breakdown theater, and the run clock.
+  const [theaterResults, setTheaterResults] = useState<Record<string, TheaterResult>>({});
+  const [runSeconds, setRunSeconds] = useState(0);
+  const runStartRef = useRef(0);
   const [errorMsg, setErrorMsg] = useState("");
   const [usedDemo, setUsedDemo] = useState(false);
   const [failedScenes, setFailedScenes] = useState<{ sceneNumber: string; error: string }[]>([]);
@@ -190,6 +201,8 @@ export function Projects() {
   const run = async () => {
     setStage("running");
     setProgress({ done: 0, total: parsed.length, currentSceneNumber: "", stage: "characters" });
+    setTheaterResults({});
+    runStartRef.current = Date.now();
     // Track in the store so the TopBar pill shows this long run from any page.
     aiJobBegin("script_breakdown", {
       label: "Script breakdown",
@@ -211,8 +224,16 @@ export function Projects() {
           setProgress(p);
           aiJobProgress("script_breakdown", p.done, p.total);
         },
-        projectName
+        projectName,
+        (e) => {
+          // Feed the theater as each scene lands.
+          setTheaterResults((prev) => ({
+            ...prev,
+            [e.sceneId]: { elements: e.elements, fallback: e.fallback },
+          }));
+        }
       );
+      setRunSeconds(Math.max(1, Math.round((Date.now() - runStartRef.current) / 1000)));
       aiJobDone("script_breakdown");
       replaceScenes(scenes);
       setFailedScenes(failed);
@@ -278,18 +299,27 @@ export function Projects() {
           <EmptyState
             icon={<FolderKanban size={48} />}
             title="Create your first production"
-            subtitle="A project holds one script and its full breakdown. Create one, then upload a screenplay to generate scenes, cast, locations, props and more — automatically."
+            subtitle="A project holds one script and its full breakdown. Create one, then upload a screenplay to generate scenes, cast, locations, props and more — automatically. Or load a fully dressed sample to explore every feature."
             cta={
-              <Button onClick={openCreate}>
-                <Plus size={14} /> New project
-              </Button>
+              <div className="flex flex-col sm:flex-row items-center gap-2">
+                <Button onClick={openCreate}>
+                  <Plus size={14} /> New project
+                </Button>
+                <LoadSampleButton />
+              </div>
             }
           />
         </Card>
       ) : (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <motion.div
+          className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4"
+          variants={staggerContainer}
+          initial="initial"
+          animate="animate"
+        >
           {projects.map((p) => (
-            <Card key={p.id} className="relative flex flex-col">
+            <motion.div key={p.id} variants={staggerItem}>
+            <Card glow className="relative flex flex-col h-full">
               <div
                 className="absolute inset-x-0 top-0 h-0.5 rounded-t-card"
                 style={{
@@ -300,6 +330,7 @@ export function Projects() {
                 }}
               />
               <div className="flex items-start justify-between gap-2">
+                <ProjectPoster id={p.id} name={p.name} size={40} glyph className="mt-0.5" />
                 <div className="min-w-0 flex-1">
                   {renaming === p.id ? (
                     <div className="flex items-center gap-1">
@@ -379,8 +410,9 @@ export function Projects() {
                 </button>
               </div>
             </Card>
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
       )}
 
       {/* Create modal */}
@@ -553,54 +585,34 @@ export function Projects() {
           </div>
         )}
 
-        {stage === "running" && progress && (
-          <div className="py-8 space-y-4">
-            <div className="flex flex-col items-center gap-2">
-              <Sparkles size={28} className="text-[var(--color-ai)] animate-pulse" />
-              <div className="text-sm font-medium text-[var(--text-primary)]">
-                {progress.stage === "characters"
-                  ? "Reading the script for characters and locations"
-                  : `Analyzing scene ${Math.min(progress.done + 1, progress.total)} of ${progress.total}`}
-              </div>
-              <div className="text-xs text-[var(--text-muted)]">
-                {progress.waitingSeconds
-                  ? `Waiting ${progress.waitingSeconds}s for the model's rate limit…`
-                  : progress.stage === "characters"
-                    ? "Two passes over the whole screenplay, so cast and locations stay consistent"
-                    : progress.currentSceneNumber
-                      ? `Scene ${progress.currentSceneNumber}`
-                      : ""}
-              </div>
-            </div>
-            {/* The character pass has no per-scene progress, so show it as a
-                small definite slice rather than a bar that sits at zero. */}
-            <ProgressBar
-              value={
-                progress.stage === "characters"
-                  ? 6
-                  : progress.total
-                    ? 6 + (progress.done / progress.total) * 94
-                    : 6
-              }
-            />
-            <div className="text-center text-xs text-[var(--text-muted)]">
-              Keep this open — larger scripts take a moment.
-            </div>
-          </div>
+        {stage === "running" && (
+          <BreakdownTheater scenes={parsed} results={theaterResults} progress={progress} />
         )}
 
         {stage === "done" && (
-          <BreakdownResults
-            sceneCount={parsed.length}
-            characters={foundCharacters}
-            locations={foundLocations}
-            usedDemo={usedDemo}
-            failedScenes={failedScenes}
-            castSelection={castSel}
-            onCastSelection={setCastSel}
-            locationSelection={locSel}
-            onLocationSelection={setLocSel}
-          />
+          <div className="space-y-5">
+            <TheaterSummary
+              sceneCount={parsed.length}
+              elementCount={Object.values(theaterResults).reduce(
+                (n, r) => n + r.elements.length,
+                0
+              )}
+              characterCount={foundCharacters.length}
+              locationCount={foundLocations.length}
+              seconds={runSeconds}
+            />
+            <BreakdownResults
+              sceneCount={parsed.length}
+              characters={foundCharacters}
+              locations={foundLocations}
+              usedDemo={usedDemo}
+              failedScenes={failedScenes}
+              castSelection={castSel}
+              onCastSelection={setCastSel}
+              locationSelection={locSel}
+              onLocationSelection={setLocSel}
+            />
+          </div>
         )}
 
         {stage === "error" && (
@@ -699,16 +711,8 @@ function BreakdownResults({
   return (
     <div className="space-y-5">
       <div className="flex flex-col items-center gap-2 text-center">
-        <div
-          className="w-12 h-12 rounded-full flex items-center justify-center"
-          style={{ background: "rgba(34,197,94,0.12)" }}
-        >
-          <Check size={24} className="text-[var(--color-success)]" />
-        </div>
-        <div className="text-lg font-semibold text-[var(--text-primary)]">Breakdown complete</div>
         <div className="text-sm text-[var(--text-secondary)] max-w-md">
-          {sceneCount} scene{sceneCount === 1 ? "" : "s"} analyzed. Pick what to add to the
-          production — everything here is editable afterwards.
+          Pick what to add to the production — everything here is editable afterwards.
         </div>
         {usedDemo && (
           <Badge tone="ai">

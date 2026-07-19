@@ -1,9 +1,13 @@
 import React, { useEffect, useState } from "react";
-import { Outlet, Navigate } from "react-router-dom";
+import { Outlet, Navigate, useLocation } from "react-router-dom";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { Footer } from "./Footer";
 import { CloudConflictBanner, useUnsavedCloudGuard } from "./CloudIndicator";
+import { CommandPalette } from "@/components/CommandPalette";
+import { TourOverlay } from "@/components/TourOverlay";
+import { Toaster } from "@/components/ui/Toaster";
 import { useStore } from "@/state/store";
 import { useIsDesktop } from "@/lib/useMediaQuery";
 import { resumeCloud } from "@/lib/cloud";
@@ -12,6 +16,8 @@ export function MainLayout() {
   const userId = useStore((s) => s.currentUserId);
   const pinned = useStore((s) => s.sidebarPinned);
   const desktop = useIsDesktop();
+  const location = useLocation();
+  const reduce = useReducedMotion();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   // Growing past `lg` turns the overlay back into the rail; leaving it open
@@ -24,6 +30,15 @@ export function MainLayout() {
   // a returning user reconnects here rather than being asked to sign in again.
   useEffect(() => {
     if (userId) void resumeCloud();
+  }, [userId]);
+
+  // The guided tour loads the sample production first, which reloads the page.
+  // This resumes the tour once the fresh workspace is up.
+  useEffect(() => {
+    if (userId && localStorage.getItem("st-resume-tour")) {
+      localStorage.removeItem("st-resume-tour");
+      useStore.getState().startTour();
+    }
   }, [userId]);
 
   useUnsavedCloudGuard();
@@ -39,11 +54,23 @@ export function MainLayout() {
       >
         <TopBar onOpenSidebar={() => setMobileOpen(true)} />
         <CloudConflictBanner />
-        <main className="flex-1 p-6 animate-in">
-          <Outlet />
+        <main className="flex-1 p-6">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={location.pathname}
+              initial={reduce ? { opacity: 0 } : { opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0, transition: { duration: 0.2, ease: [0.22, 1, 0.36, 1] } }}
+              exit={reduce ? { opacity: 0 } : { opacity: 0, y: -6, transition: { duration: 0.13 } }}
+            >
+              <Outlet />
+            </motion.div>
+          </AnimatePresence>
         </main>
         <Footer className="pb-4 pt-2" />
       </div>
+      <CommandPalette />
+      <TourOverlay />
+      <Toaster />
     </div>
   );
 }

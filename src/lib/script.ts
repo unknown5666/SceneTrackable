@@ -305,6 +305,19 @@ export interface BreakdownProgress {
   waitingSeconds?: number;
 }
 
+/**
+ * Fired as each scene's breakdown lands, so a live UI (the breakdown theater)
+ * can flip its card to "done" and reveal the real extracted elements instead of
+ * only counting. Purely observational — it never affects the run.
+ */
+export interface SceneBreakdownEvent {
+  sceneId: string;
+  number: string;
+  elements: BreakdownElement[];
+  /** True when this scene fell back to the offline heuristic. */
+  fallback: boolean;
+}
+
 export interface BreakdownRunResult {
   scenes: Scene[];
   usage: Omit<AIUsageEntry, "id" | "at">[];
@@ -383,7 +396,8 @@ function chunk<T>(items: T[], size: number): T[][] {
 export async function runBreakdown(
   scenes: Scene[],
   onProgress?: (p: BreakdownProgress) => void,
-  projectName?: string
+  projectName?: string,
+  onSceneDone?: (e: SceneBreakdownEvent) => void
 ): Promise<BreakdownRunResult> {
   const usage: Omit<AIUsageEntry, "id" | "at">[] = [];
   const failedScenes: { sceneNumber: string; error: string }[] = [];
@@ -471,6 +485,7 @@ export async function runBreakdown(
 
       for (const scene of batch) {
         const p = got.get(scene.number);
+        let fallback = false;
         if (p) {
           proposals.set(scene.id, {
             elements: toElements(p.elements),
@@ -485,10 +500,17 @@ export async function runBreakdown(
           });
           const fb = demoBreakdown(scene);
           proposals.set(scene.id, { elements: toElements(fb.elements), duration: fb.estimated_duration_minutes });
+          fallback = true;
         }
         done += 1;
         currentSceneNumber = scene.number;
         report();
+        onSceneDone?.({
+          sceneId: scene.id,
+          number: scene.number,
+          elements: proposals.get(scene.id)!.elements,
+          fallback,
+        });
       }
     } catch (err) {
       // The whole batch failed after retries. Report every scene in it and
@@ -501,6 +523,12 @@ export async function runBreakdown(
         done += 1;
         currentSceneNumber = scene.number;
         report();
+        onSceneDone?.({
+          sceneId: scene.id,
+          number: scene.number,
+          elements: proposals.get(scene.id)!.elements,
+          fallback: true,
+        });
       }
     }
   });

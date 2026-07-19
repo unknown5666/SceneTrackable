@@ -15,7 +15,7 @@ import {
   Search,
   X,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useStore, activeProject, canWrite } from "@/state/store";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -28,23 +28,10 @@ import { extractCharacters } from "@/lib/script";
 import { useLocationNames } from "@/lib/locations";
 import { sceneLanguage, intExtLabel, timeOfDayLabel, FILTER_STRINGS } from "@/lib/lang";
 import { exportBreakdownCSV, printBreakdownSheets } from "@/lib/export";
+import { CATEGORY_META, CATEGORY_ORDER as CATEGORIES } from "@/lib/breakdownVisuals";
+import { HelpButton } from "@/components/ui/HelpButton";
+import { SceneHeading } from "@/components/ui/SceneHeading";
 import type { ElementCategory, BreakdownElement } from "@/types";
-
-const CATEGORY_META: Record<ElementCategory, { label: string; color: string }> = {
-  cast: { label: "Cast", color: "#4F7BF7" },
-  extras: { label: "Extras", color: "#38BDF8" },
-  props: { label: "Props", color: "#22C55E" },
-  wardrobe: { label: "Wardrobe", color: "#EC4899" },
-  sfx: { label: "SFX", color: "#EF4444" },
-  vfx: { label: "VFX", color: "#8B5CF6" },
-  vehicles: { label: "Vehicles", color: "#F59E0B" },
-  animals: { label: "Animals", color: "#84CC16" },
-  locations: { label: "Locations", color: "#14B8A6" },
-  makeup: { label: "Makeup", color: "#F97316" },
-  stunts: { label: "Stunts", color: "#DC2626" },
-  production: { label: "Production Req.", color: "#94A3B8" },
-};
-const CATEGORIES = Object.keys(CATEGORY_META) as ElementCategory[];
 const INT_EXT: ("INT" | "EXT" | "INT/EXT")[] = ["INT", "EXT", "INT/EXT"];
 const TIMES: ("DAY" | "NIGHT" | "DAWN" | "DUSK")[] = ["DAY", "NIGHT", "DAWN", "DUSK"];
 
@@ -53,6 +40,7 @@ const cellCls =
 
 export function Breakdown() {
   const nav = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const project = useStore(activeProject);
   const scenes = useStore((s) => s.scenes);
   const characterBible = useStore((s) => s.characterBible);
@@ -205,14 +193,15 @@ export function Breakdown() {
     }
   }, [filteredScenes, selectedSceneId]);
 
-  const runAI = async () => {
-    if (!scene) return;
+  const runAI = async (target?: typeof scene) => {
+    const sc = target ?? scene;
+    if (!sc) return;
     setAiLoading(true);
     setAiModalOpen(true);
     setAiProposal(null);
     setAiError("");
     try {
-      const { proposal, result } = await aiBreakdownScene(scene, {
+      const { proposal, result } = await aiBreakdownScene(sc, {
         // The stored bible knows aliases and non-speaking roles; the cue regex
         // is only reached when no breakdown run has produced one yet.
         characterBible: characterBible.length ? characterBible : undefined,
@@ -262,6 +251,41 @@ export function Breakdown() {
     setAiProposal(null);
   };
 
+  // Deep links from the command palette: ?scene=<id> selects the scene,
+  // &action=rerun immediately re-analyzes it. Params are consumed once.
+  useEffect(() => {
+    const sceneParam = searchParams.get("scene");
+    if (!sceneParam) return;
+    const target = scenes.find((s) => s.id === sceneParam);
+    if (!target) return;
+    setSelectedSceneId(sceneParam);
+    if (searchParams.get("action") === "rerun" && writable) void runAI(target);
+    setSearchParams({}, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, scenes]);
+
+  // J / K jump between scenes (Vim-style), unless typing in a field.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "j" && e.key !== "k") return;
+      const el = document.activeElement;
+      const typing =
+        el instanceof HTMLElement &&
+        (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
+      if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+      const list = filteredScenes;
+      const idx = list.findIndex((s) => s.id === selectedSceneId);
+      if (idx === -1) return;
+      const nextIdx = e.key === "j" ? Math.min(idx + 1, list.length - 1) : Math.max(idx - 1, 0);
+      if (nextIdx !== idx) {
+        e.preventDefault();
+        setSelectedSceneId(list[nextIdx].id);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [filteredScenes, selectedSceneId]);
+
   if (!project || scenes.length === 0) {
     return (
       <div className="max-w-[1000px] mx-auto">
@@ -291,9 +315,12 @@ export function Breakdown() {
 
   return (
     <div className="max-w-[1500px] mx-auto">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6" data-tour="page-header">
         <div>
-          <div className="section-header">Script Breakdown · {project.name}</div>
+          <div className="section-header flex items-center gap-1.5">
+            Script Breakdown · {project.name}
+            <HelpButton doc="breakdown" />
+          </div>
           <div className="page-title mt-1">
             {scenes.length} scenes · {totalElements} elements
           </div>
@@ -314,7 +341,7 @@ export function Breakdown() {
             <Printer size={14} /> Breakdown sheets
           </Button>
           {writable && (
-            <Button variant="ai" onClick={runAI} disabled={!scene}>
+            <Button variant="ai" onClick={() => runAI()} disabled={!scene}>
               <Sparkles size={14} /> Re-analyze scene
             </Button>
           )}
@@ -381,7 +408,9 @@ export function Breakdown() {
             <CardHeader
               title="Scenes"
               subtitle={
-                activeFilterCount > 0 ? `${filteredScenes.length} of ${scenes.length} shown` : undefined
+                activeFilterCount > 0
+                  ? `${filteredScenes.length} of ${scenes.length} shown · J / K to move`
+                  : "J / K to move"
               }
               className="mb-2"
             />
@@ -434,6 +463,9 @@ export function Breakdown() {
             <>
               {/* Scene header (editable) */}
               <Card>
+                <div className="mb-3 pb-3 border-b border-[var(--border-default)]">
+                  <SceneHeading scene={scene} showNumber className="text-sm" />
+                </div>
                 <div className="flex flex-wrap items-center gap-3 mb-3">
                   <span className="text-xl font-semibold font-mono text-[var(--text-primary)]">
                     {scene.number}
@@ -678,8 +710,23 @@ export function Breakdown() {
         ) : (
           <EmptyState
             icon={<AlertTriangle size={40} />}
-            title="Analysis failed"
-            subtitle={aiError || "Something went wrong. Try again."}
+            title={
+              /rate|limit|429|1113/i.test(aiError)
+                ? "The model is rate-limited right now"
+                : "Analysis didn't complete"
+            }
+            subtitle={
+              aiError
+                ? `${aiError} — your existing breakdown is untouched.`
+                : "Something interrupted the run. Your existing breakdown is untouched."
+            }
+            cta={
+              writable && scene ? (
+                <Button variant="ai" onClick={() => runAI(scene)}>
+                  <Sparkles size={14} /> Retry scene {scene.number}
+                </Button>
+              ) : undefined
+            }
           />
         )}
       </Modal>

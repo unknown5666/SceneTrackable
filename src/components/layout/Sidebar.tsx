@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { NavLink } from "react-router-dom";
+import { motion } from "framer-motion";
 import {
   Home,
   FolderKanban,
@@ -17,12 +18,10 @@ import {
   Clock,
   FileBarChart,
   Bell,
-  Sparkle,
   Shield,
-  Cloud,
   Clapperboard,
   GraduationCap,
-  History,
+  Settings as SettingsIcon,
   ChevronsLeft,
   ChevronsRight,
 } from "lucide-react";
@@ -80,12 +79,12 @@ const SECTIONS: NavSection[] = [
 ];
 
 const BOTTOM: NavSection = {
+  // Cloud sync and AI settings now live as tabs inside the Admin console, so the
+  // crew's rail stays short — admin lands one place.
   items: [
     { to: "/notifications", label: "Notifications", icon: <Bell size={18} />, badge: true },
-    { to: "/cloud", label: "Cloud Sync", icon: <Cloud size={18} /> },
-    { to: "/tutorial", label: "Tutorial", icon: <GraduationCap size={18} /> },
-    { to: "/ai", label: "AI Settings", icon: <Sparkle size={18} />, admin: true },
-    { to: "/activity", label: "Activity Log", icon: <History size={18} />, admin: true },
+    { to: "/tutorial", label: "Help", icon: <GraduationCap size={18} /> },
+    { to: "/settings", label: "Settings", icon: <SettingsIcon size={18} /> },
     { to: "/admin", label: "Admin", icon: <Shield size={18} />, admin: true },
   ],
 };
@@ -147,6 +146,7 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
       )}
 
       <aside
+        data-tour="sidebar"
         onMouseEnter={() => desktop && setHovered(true)}
         onMouseLeave={() => desktop && setHovered(false)}
         className={cn(
@@ -261,27 +261,34 @@ function Item({
             : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)]"
         )
       }
-      style={({ isActive }) =>
-        isActive
-          ? { background: "var(--active-tint)", boxShadow: "inset 3px 0 0 0 var(--accent-blue)" }
-          : undefined
-      }
     >
-      <span className="shrink-0 flex items-center justify-center w-5">{item.icon}</span>
-      {expanded && <span className="truncate flex-1">{item.label}</span>}
-      {expanded && item.badge && unread > 0 && (
-        <span
-          className="ml-auto text-[10px] font-semibold px-1.5 rounded-full min-w-[18px] text-center"
-          style={{ background: "var(--color-danger)", color: "white" }}
-        >
-          {unread}
-        </span>
-      )}
-      {!expanded && item.badge && unread > 0 && (
-        <span
-          className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full"
-          style={{ background: "var(--color-danger)" }}
-        />
+      {({ isActive }) => (
+        <>
+          {isActive && (
+            <motion.span
+              layoutId="sidebar-active-pill"
+              className="absolute inset-0 rounded-lg"
+              style={{ background: "var(--active-tint)", boxShadow: "inset 3px 0 0 0 var(--accent-blue)" }}
+              transition={{ type: "spring", stiffness: 550, damping: 40 }}
+            />
+          )}
+          <span className="relative shrink-0 flex items-center justify-center w-5">{item.icon}</span>
+          {expanded && <span className="relative truncate flex-1">{item.label}</span>}
+          {expanded && item.badge && unread > 0 && (
+            <span
+              className="relative ml-auto text-[10px] font-semibold px-1.5 rounded-full min-w-[18px] text-center"
+              style={{ background: "var(--color-danger)", color: "white" }}
+            >
+              {unread}
+            </span>
+          )}
+          {!expanded && item.badge && unread > 0 && (
+            <span
+              className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full z-10"
+              style={{ background: "var(--color-danger)" }}
+            />
+          )}
+        </>
       )}
     </NavLink>
   );
