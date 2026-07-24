@@ -285,15 +285,23 @@ export const HANDBOOK: HandbookDoc[] = [
     summary: "Track budgeted vs committed vs spent, POs and petty cash.",
     iconKey: "dollar-sign",
     route: "/budget",
-    keywords: "budget purchase order po petty cash approval account code",
+    keywords:
+      "budget purchase order po petty cash approval account code import pdf csv arabic top sheet ميزانية",
     body: [
       "Budget holds your account lines (budgeted / committed / spent), the purchase-order approval flow, and petty-cash logging.",
       "POs route through accountant then admin approval, with a full audit log.",
+      "You don't have to type the top sheet in. Import budget file reads the sheet your accountant sent — PDF, CSV, TSV or plain text, in Arabic or English — and matches every row to a section, keeping its account code and head count.",
     ],
     steps: [
-      "Set up budget lines by account code and department.",
-      "Submit a PO against a line; it routes for approval.",
-      "Log petty cash against a department as it's spent.",
+      "Click Import budget file and drop the sheet in.",
+      "Review what was read: rows it couldn't place are highlighted, and it asks which section they belong to or what they cost. Nothing is written until you've answered.",
+      "Check the reconciliation — the parsed total against the total the file states.",
+      "Choose Replace or Append, then import. Submit POs against the lines and log petty cash as it's spent.",
+    ],
+    tips: [
+      "A mismatch between the parsed total and the file's own total usually means a row was added after the total was typed — worth checking before importing, but not an error.",
+      "Rows that aren't budget lines at all (stray page furniture) can be dropped from the review table.",
+      "An import replaces the production's headline budget figure with the sum of the sheet, and adopts the file's currency if it names one.",
     ],
   },
   {

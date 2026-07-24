@@ -442,6 +442,17 @@ interface State extends ProductionData {
   submitPO: (po: Omit<PurchaseOrder, "id" | "requestedAt" | "status" | "approvals" | "auditLog" | "number">) => void;
   advancePO: (id: string, decision: "approve" | "reject", byUserId: string, note?: string) => void;
   addPettyCash: (entry: Omit<PettyCashEntry, "id">) => void;
+  /**
+   * Land a parsed budget file on the top sheet. "replace" swaps the whole
+   * sheet, "append" adds to it; `currency` is written to the production when
+   * the file named one, so the numbers display in the money they were budgeted
+   * in rather than the workspace default.
+   */
+  importBudgetLines: (
+    lines: BudgetLine[],
+    mode: "replace" | "append",
+    meta?: { fileName?: string; currency?: string }
+  ) => void;
 
   updateShotStatus: (id: string, status: VFXShot["status"]) => void;
   assignShotVendor: (shotId: string, vendorId: string) => void;
@@ -1205,6 +1216,44 @@ export const useStore = create<State>()(
         set((s) => ({
           pettyCash: [{ ...entry, id: id("pc") }, ...s.pettyCash],
         })),
+
+      importBudgetLines: (lines, mode, meta) => {
+        const replaced = mode === "replace" ? get().budgetLines : [];
+        set((s) => {
+          const budgetLines = mode === "replace" ? lines : [...s.budgetLines, ...lines];
+          return {
+            budgetLines,
+            // The top sheet is the production's budget, so the headline figure
+            // follows it — otherwise the dashboard keeps reporting a number the
+            // imported sheet no longer supports.
+            production: {
+              ...s.production,
+              budget: budgetLines.reduce((sum, l) => sum + l.budgeted, 0),
+              currency: meta?.currency ?? s.production.currency,
+            },
+          };
+        });
+        get().logActivity({
+          action: "imported",
+          entity: "budget",
+          description:
+            `Imported ${lines.length} budget ${lines.length === 1 ? "line" : "lines"}` +
+            (meta?.fileName ? ` from ${meta.fileName}` : "") +
+            (mode === "replace" ? ` (replaced ${replaced.length})` : ""),
+          meta: { mode, count: lines.length, fileName: meta?.fileName },
+        });
+        if (mode === "replace" && replaced.length > 0) {
+          pushToast({
+            title: "Budget replaced",
+            description: `${replaced.length} previous ${replaced.length === 1 ? "line" : "lines"} removed`,
+            tone: "danger",
+            action: {
+              label: "Undo",
+              run: () => set({ budgetLines: replaced }),
+            },
+          });
+        }
+      },
 
       // ---- VFX ----
       updateShotStatus: (sid, status) =>

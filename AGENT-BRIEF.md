@@ -76,6 +76,24 @@ DOOD, budget, tasks, departments, reports. Rebranded from an earlier "Production
   **never touching other projects/users/roles**. `exportProject(pid?)` downloads one project; `exportBackup()` the whole
   workspace. `restoreFullBackup(file)` is the DESTRUCTIVE replace (the old behaviour), behind the "Replace everything…"
   danger control only. `mergeProjects` keeps the store's active-at-top-level / inactive-in-`projectData` invariant.
+- **Bundled production «مزرعة يدو ٣»** (Emirati feature, Arabic, 91 scenes, AED) — `scripts/build-yadoo.ts`
+  (tsx, not .mjs) reads the committed extracted text in `scripts/data/mazraat-yadoo-3{,-budget}.txt` and runs it through
+  **the app's own** `parseScreenplay` + `parseBudgetText`, so the generator doubles as a regression check on both
+  (regenerate: `npx tsx scripts/build-yadoo.ts` → `public/mazraat-yadoo-3.json`; expect 91 scenes / 23 budget lines /
+  AED 902,000). Loaded **additively** via `loadBundledProduction(id)` + `BUNDLED_PRODUCTIONS` (`lib/export.ts`) and the
+  `LoadBundledButton` on Projects (header + empty state) — it merges, so it never costs the user their current project.
+- **Budget file import** (`src/lib/budgetImport.ts` + `components/budget/BudgetImportModal.tsx`, button on Budget page
+  header + empty state). Parses PDF/CSV/TSV/TXT top sheets in Arabic or English → `BudgetLine`s via the store's
+  `importBudgetLines(lines, mode, meta)`. Key ideas: `BUDGET_SECTIONS` (13 bilingual sections), ordered `SECTION_RULES`
+  (post before sound; crew roles before the bare مخرج), and `foldArabic` — Arabic is matched on a *fold* that is blind to
+  hamza, final ya/ta and **lam-alef order**, because this PDF stores that ligature reversed (الإنتاج → اإلنتاج) and no
+  safe text substitution can undo it. Rows it can't place carry `issues: no_section | no_amount`; the modal blocks the
+  import until every one is answered. Exercise it from Node: `npx tsx scripts/budget-test.ts <file.pdf|csv>`.
+- **Arabic PDF extraction** — `lib/pdf-lines.ts` now also handles: embedded LTR runs (a number laid out left-to-right
+  inside an RTL line arrives one digit per run — without `ltrGroups` scene 10 imports as "01" and 20,000 as "000,20"),
+  the reversed Allah ligature, and tatweel (kept as an empty *positioned* run so removing it can't fake a word gap).
+  `lib/script.ts` gained `HEADING_AR_SLASH` for the «م 10 / الطريق . خارجي – نهار» house style (location first,
+  INT/EXT last, time either side of it). Fixtures for all of it in `scripts/pdf-lines-test.ts` (`npx tsx` it).
 - **Showcase file** — `scripts/build-showcase.mjs` composes `scenetrackable-showcase.json` (repo root): a MULTI-project
   workspace (Salt & Static + Gift of the Magi) unioning both user sets. Push it, then Admin → Data → Restore. Regenerate
   after editing either source: `node scripts/build-showcase.mjs` (reads `scenetrackable-demo-showcase.json` +
