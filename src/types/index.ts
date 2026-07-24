@@ -598,6 +598,7 @@ export type ActivityEntity =
   | "shoot_day"
   | "schedule"
   | "purchase_order"
+  | "budget"
   | "auth"
   | "project"
   | "art_element"

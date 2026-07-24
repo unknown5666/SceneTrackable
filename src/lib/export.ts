@@ -541,20 +541,77 @@ export async function restoreFullBackup(file: File): Promise<string | null> {
  * cloud-syncable data, not a special mode. Reloads on success.
  */
 export async function loadSampleProduction(): Promise<string | null> {
+  const got = await fetchBundled("sample-production.json");
+  if (typeof got !== "string") return got.error;
+  // Loaded from the logged-out landing screen too, so route home on success.
+  return applyBackupText(got, "home");
+}
+
+/**
+ * The productions that ship with the app, for the "load a demo" pickers.
+ *
+ * `sample` is the workspace starter and lands through the destructive replace,
+ * because it is offered on an empty workspace and on the login screen where
+ * there is nothing to preserve. Everything else merges, so bringing a bundled
+ * production in never costs the user the project they were working on.
+ */
+export interface BundledProduction {
+  id: string;
+  file: string;
+  name: string;
+  subtitle: string;
+  language: "ar" | "en";
+}
+
+export const BUNDLED_PRODUCTIONS: BundledProduction[] = [
+  {
+    id: "yadoo3",
+    file: "mazraat-yadoo-3.json",
+    name: "مزرعة يدو ٣",
+    subtitle: "Emirati feature · 91 scenes · AED budget imported from the production's own sheet",
+    language: "ar",
+  },
+];
+
+/**
+ * Load one of the bundled productions ADDITIVELY, through the same merge path
+ * as an uploaded project file — so it arrives as real, editable, cloud-syncable
+ * data alongside whatever is already in the workspace, not as a demo mode.
+ */
+export async function loadBundledProduction(id: string): Promise<string | null> {
+  const entry = BUNDLED_PRODUCTIONS.find((p) => p.id === id);
+  if (!entry) return `Unknown bundled production "${id}".`;
+  const got = await fetchBundled(entry.file);
+  if (typeof got !== "string") return got.error;
+
+  let parsed: unknown;
   try {
-    const res = await fetch(`${import.meta.env.BASE_URL}sample-production.json`, {
-      cache: "no-store",
-    });
-    if (!res.ok) return `Couldn't load the sample (HTTP ${res.status}).`;
+    parsed = JSON.parse(got);
+  } catch {
+    return `${entry.name} is bundled but unreadable (invalid JSON).`;
+  }
+  const state = (parsed as Record<string, unknown>)?.state;
+  if (!state || typeof state !== "object") {
+    return `${entry.name} isn't in the expected workspace shape.`;
+  }
+  const bundles = projectsFromState(state as Record<string, unknown>);
+  if (!bundles.length) return `${entry.name} has no projects in it.`;
+  return mergeProjects(bundles);
+}
+
+/** Fetch a JSON file from the deploy's public root, or an error to show. */
+async function fetchBundled(file: string): Promise<string | { error: string }> {
+  try {
+    const res = await fetch(`${import.meta.env.BASE_URL}${file}`, { cache: "no-store" });
+    if (!res.ok) return { error: `Couldn't load ${file} (HTTP ${res.status}).` };
     const text = await res.text();
     // On a static host a missing file often 200s with the SPA's index.html
     // instead of a 404 — guard so that reads as a clear error, not a crash.
     if (text.trimStart().startsWith("<")) {
-      return "The sample file wasn't found (sample-production.json is missing from the deploy).";
+      return { error: `${file} is missing from the deploy.` };
     }
-    // Loaded from the logged-out landing screen too, so route home on success.
-    return applyBackupText(text, "home");
+    return text;
   } catch {
-    return "Couldn't load the sample production. Check your connection and try again.";
+    return { error: "Couldn't load that production. Check your connection and try again." };
   }
 }

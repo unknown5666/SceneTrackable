@@ -39,7 +39,12 @@ const HEADING_RE =
 // of them opens the line, after nothing but a label and separators.
 const AR_DIGITS = "0-9٠-٩۰-۹";
 const AR_NUMBER = `[${AR_DIGITS}]+`;
-const AR_INT_EXT = "داخلي\\s*/\\s*خارجي|خارجي\\s*/\\s*داخلي|داخلي|خارجي";
+// Both spellings of the final ya. Arabic drops the dots on a word-final ي as a
+// matter of house style, and this series writes «داخلى – نهار» on one heading
+// and «داخلي – نهار» on the next — one file, both spellings, same word.
+const AR_INT = "داخل[يى]";
+const AR_EXT = "خارج[يى]";
+const AR_INT_EXT = `${AR_INT}\\s*/\\s*${AR_EXT}|${AR_EXT}\\s*/\\s*${AR_INT}|${AR_INT}|${AR_EXT}`;
 const AR_MASTER = "(?:[★☆*]\\s*)?ماسرت(?:\\s*[★☆*])?";
 const AR_SEP = "[.\\-–—:|]";
 /**
@@ -73,6 +78,28 @@ const HEADING_AR_LABELLED = new RegExp(
  */
 const HEADING_AR_BARE = new RegExp(
   `^\\s*()(${AR_INT_EXT})\\s*(?:${AR_SEP}\\s*)+(.+)$`
+);
+
+/**
+ * A slash slugline: «م 10 / الطريق السريع – سيارة خالد . خارجي – نهار».
+ *
+ * The Emirati house style this series uses puts the location first and the
+ * interior/exterior last, which is the reverse of every form above — so there
+ * is nothing to anchor on after the number except the slash. That slash is
+ * enough on its own: no line of action opens "م 10 /".
+ *
+ * Where the interior/exterior sits within the tail is not fixed either
+ * («ليل – خارجي» ends one heading, «خارجي – ليل» the next), so it is found and
+ * lifted out of the tail rather than matched in place, and what remains is
+ * split by `splitSlashHeading`.
+ */
+const HEADING_AR_SLASH = new RegExp(
+  `^\\s*(?:مشهد|م)\\s*(${AR_NUMBER})\\s*/\\s*(.+)$`
+);
+
+/** The interior/exterior word anywhere in a tail, as its own field. */
+const AR_INT_EXT_IN_TAIL = new RegExp(
+  `(?:^|[\\s.\\-–—:|،])(${AR_INT_EXT})(?=$|[\\s.\\-–—:|،])`
 );
 
 /** Arabic-Indic and Persian digits → ASCII, so scene numbers stay sortable. */
@@ -156,6 +183,66 @@ function splitHeading(rest: string): { location: string; time: Scene["timeOfDay"
   return { location: rest.trim(), time: normTime(rest) };
 }
 
+/**
+ * The tail of a slash slugline — «الطريق السريع – سيارة خالد . – نهار», once the
+ * interior/exterior has been lifted out — into a location and a time.
+ *
+ * `splitHeading` divides on dashes and pipes only, which is right for the forms
+ * it serves but loses most of this one: the field separator here is usually a
+ * full stop («بيت ياسر . غرفة نوم ياسر . داخلي – ليل»), and dashes appear both
+ * as separators and inside a field. So this splits on either, then reads the
+ * time the same way `splitHeading` does — the field that names a time, wherever
+ * it sits — because this style puts it last on most headings and second-to-last
+ * on «مزرعة يدو – فناء المزرعة . ليل – خارجي».
+ */
+function splitSlashHeading(rest: string): { location: string; time: Scene["timeOfDay"] } {
+  const parts = rest
+    .split(/\s*[.،]\s*|\s*[-–—]\s*|\s*\|\s*/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const time = matchTime(parts[i]);
+    if (time) {
+      const location = parts.filter((_, j) => j !== i).join(" - ").trim();
+      return { location: location || rest.trim(), time };
+    }
+  }
+  return { location: parts.join(" - ").trim() || rest.trim(), time: "DAY" };
+}
+
+/** What a slugline of any supported form yields, before it becomes a scene. */
+interface HeadingMatch {
+  sceneNo?: string;
+  intExt: string;
+  /** Everything else — location and time, still together. */
+  rest: string;
+  /** Slash sluglines need `splitSlashHeading`; the rest need `splitHeading`. */
+  slash?: boolean;
+}
+
+/** One line → the slugline it is, or null. */
+function matchHeading(line: string): HeadingMatch | null {
+  const m =
+    line.match(HEADING_RE) ??
+    line.match(HEADING_AR_LABELLED) ??
+    line.match(HEADING_AR_BARE);
+  if (m) return { sceneNo: m[1]?.trim(), intExt: m[2], rest: m[3] };
+
+  const s = line.match(HEADING_AR_SLASH);
+  if (!s) return null;
+  // The slash alone doesn't make a heading — «م 3 / 4» is a fraction in action.
+  // Naming an interior or an exterior is what does.
+  const ie = s[2].match(AR_INT_EXT_IN_TAIL);
+  if (!ie) return null;
+  return {
+    sceneNo: s[1].trim(),
+    intExt: ie[1],
+    rest: s[2].slice(0, ie.index) + " " + s[2].slice((ie.index ?? 0) + ie[0].length),
+    slash: true,
+  };
+}
+
 function estimatePages(body: string): number {
   const words = body.split(/\s+/).filter(Boolean).length;
   const pages = words / 180; // ~180 words per screenplay page
@@ -182,14 +269,16 @@ function estimatePages(body: string): number {
 export function parseScreenplay(raw: string): Scene[] {
   const lines = raw.replace(/\r\n/g, "\n").split("\n");
   const scenes: Scene[] = [];
-  let current: { headingRest: string; intExt: string; sceneNo?: string; body: string[] } | null = null;
+  let current: (HeadingMatch & { body: string[] }) | null = null;
   let autoNum = 0;
   let episode = 1;
   const usedNumbers = new Set<string>();
 
   const flush = () => {
     if (!current) return;
-    const { location, time } = splitHeading(current.headingRest);
+    const { location, time } = current.slash
+      ? splitSlashHeading(current.rest)
+      : splitHeading(current.rest);
     const body = current.body.join("\n").trim();
     // An index row, not a scene. Real scenes always carry action or dialogue.
     if (body.length === 0 && current.sceneNo) {
@@ -223,18 +312,10 @@ export function parseScreenplay(raw: string): Scene[] {
   };
 
   for (const line of lines) {
-    const m =
-      line.match(HEADING_RE) ??
-      line.match(HEADING_AR_LABELLED) ??
-      line.match(HEADING_AR_BARE);
+    const m = matchHeading(line);
     if (m) {
       flush();
-      current = {
-        sceneNo: m[1]?.trim(),
-        intExt: m[2],
-        headingRest: m[3],
-        body: [],
-      };
+      current = { ...m, body: [] };
     } else if (current) {
       current.body.push(line);
     }

@@ -7,6 +7,7 @@ import {
   Check,
   X,
   FileText,
+  Upload,
 } from "lucide-react";
 import {
   LineChart,
@@ -29,16 +30,22 @@ import { Modal } from "@/components/ui/Modal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { useRecordEditor } from "@/components/ui/RecordEditor";
+import { BudgetImportModal, BudgetImportButton } from "@/components/budget/BudgetImportModal";
 import { formatCurrency, formatCompact, formatDate, formatDateTime, cn } from "@/lib/utils";
 
 export function Budget() {
   const [tab, setTab] = useState("topsheet");
+  const [importing, setImporting] = useState(false);
+  const canEdit = useStore((s) => canWrite(s, "budget"));
 
   return (
     <div className="max-w-[1400px] mx-auto">
-      <div className="mb-4" data-tour="page-header">
-        <div className="section-header">Budget & Accounting</div>
-        <div className="page-title mt-1">Financial Overview</div>
+      <div className="mb-4 flex items-start justify-between gap-4" data-tour="page-header">
+        <div>
+          <div className="section-header">Budget & Accounting</div>
+          <div className="page-title mt-1">Financial Overview</div>
+        </div>
+        {canEdit && <BudgetImportButton onClick={() => setImporting(true)} />}
       </div>
 
       <Tabs
@@ -53,15 +60,17 @@ export function Budget() {
         className="mb-6"
       />
 
-      {tab === "topsheet" && <TopSheet />}
+      {tab === "topsheet" && <TopSheet onImport={() => setImporting(true)} />}
       {tab === "charts" && <BudgetCharts />}
       {tab === "pos" && <POList />}
       {tab === "petty" && <PettyCashList />}
+
+      <BudgetImportModal open={importing} onClose={() => setImporting(false)} />
     </div>
   );
 }
 
-function TopSheet() {
+function TopSheet({ onImport }: { onImport: () => void }) {
   const budgetLines = useStore((s) => s.budgetLines);
   const production = useStore((s) => s.production);
   const [expanded, setExpanded] = useState<string[]>([]);
@@ -94,8 +103,15 @@ function TopSheet() {
           <EmptyState
             icon={<DollarSign size={48} />}
             title="No budget lines yet"
-            subtitle="Add account codes to build your top sheet and track committed vs. spent."
-            cta={<ed.AddButton size="md" label="Add First Line" />}
+            subtitle="Import the budget your accountant sent — PDF or CSV, Arabic or English — or start the top sheet by hand."
+            cta={
+              <div className="flex items-center gap-2">
+                <Button size="md" leftIcon={<Upload size={14} />} onClick={onImport}>
+                  Import Budget File
+                </Button>
+                <ed.AddButton size="md" variant="secondary" label="Add First Line" />
+              </div>
+            }
           />
         </Card>
         {ed.modal}

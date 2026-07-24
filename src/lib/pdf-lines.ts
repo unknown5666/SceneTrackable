@@ -61,6 +61,33 @@ const ARABIC_CHARS = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/g;
 const LATIN_CHARS = /[A-Za-z]/g;
 
 /**
+ * الله written backwards, as one run.
+ *
+ * The lam-lam-ha ligature is stored as a single glyph, and the Emirati PDF
+ * emits its four characters in visual order *inside* the run — so they arrive
+ * as هللا. Run reordering can't reach this: it orders runs and never reverses a
+ * string, which is what keeps it from scrambling text that is already correct.
+ *
+ * Fixed here by name rather than by a general rule because this ligature is the
+ * only one that has to be, and because the substitution is unambiguous: هللا is
+ * not a word, while الله is one of the commonest in the language and sits
+ * inside عبدالله — a lead character in this script, whose name would otherwise
+ * reach the cast list, the DOOD and the call sheets misspelled.
+ */
+const ALLAH_VISUAL = /هللا/g;
+
+/**
+ * Tatweel — the kashida, U+0640.
+ *
+ * A stretching character with no phonetic value, used to justify a line or to
+ * decorate a heading. The budget PDF sets its column titles with it, so «المجموع»
+ * arrives as «الـمجـمـــــوع» and «الملاحظات» as «الـمـالحـظات». Nothing downstream
+ * expects it and everything downstream matches words, so a decorated total row
+ * would go unrecognized and a decorated label unmatched.
+ */
+const TATWEEL = /ـ/g;
+
+/**
  * NFKC folds the Arabic presentation forms (U+FB50–U+FDFF, U+FE70–U+FEFC) that
  * some extractors emit back to base letters. This PDF happens to use base
  * letters already, but `HEADING_AR_RE` and `ARABIC_LETTER` are written against
@@ -68,7 +95,12 @@ const LATIN_CHARS = /[A-Za-z]/g;
  * from parsing to zero scenes.
  */
 function clean(str: string): string {
-  return str.normalize("NFKC").replace(CONTROL_CHARS, "").replace(ARABIC_HARAKAT, "");
+  return str
+    .normalize("NFKC")
+    .replace(CONTROL_CHARS, "")
+    .replace(ARABIC_HARAKAT, "")
+    .replace(TATWEEL, "")
+    .replace(ALLAH_VISUAL, "الله");
 }
 
 type Item = PdfTextItemLike & { str: string };
@@ -107,12 +139,100 @@ function isRtlLine(items: Item[]): boolean {
 }
 
 /**
+ * A run's own reading direction: R for Arabic, L for digits and Latin, N for
+ * runs that are only punctuation and so take their direction from whatever
+ * surrounds them.
+ */
+type RunDir = "R" | "L" | "N";
+
+/**
+ * Whether two runs on the same line have visible space between them.
+ *
+ * Measured from whichever edge faces the other, so it holds in both directions
+ * — a reversed LTR group reads its runs in ascending x inside a line whose runs
+ * otherwise descend.
+ */
+function spaced(a: Item, b: Item): boolean {
+  const gap = Math.max(
+    a.transform[4] - (b.transform[4] + widthOf(b)),
+    b.transform[4] - (a.transform[4] + widthOf(a))
+  );
+  const size = Math.abs(b.transform[3]) || b.height || 10;
+  return gap > size * SPACE_RATIO;
+}
+
+// Non-global twin of ARABIC_CHARS: `test` on a /g regex carries `lastIndex`
+// between calls, so reusing that one here would classify every other run wrong.
+const ARABIC_CHAR = new RegExp(ARABIC_CHARS.source);
+
+function runDir(str: string): RunDir {
+  if (ARABIC_CHAR.test(str)) return "R";
+  return /[0-9A-Za-z]/.test(str) ? "L" : "N";
+}
+
+/**
+ * Embedded left-to-right stretches inside an RTL line, as index ranges into
+ * the already-RTL-ordered run list.
+ *
+ * This is the one rule an x-sort alone cannot express. A number is laid out
+ * left to right *inside* a right-to-left line, and this PDF emits its digits as
+ * separate runs — "1" at x=497.9 and "0" at x=506.1 for scene 10 — so ordering
+ * the whole line by descending x reads that number backwards and scene 10
+ * becomes scene "01". Every multi-run number in the file is affected: 20,000
+ * arrives as "000,20", and the scene numbers land so scrambled that the parser
+ * sees duplicates and splits one script into phantom episodes.
+ *
+ * Punctuation between two LTR runs is part of the number, not a boundary —
+ * without that the thousands comma would cut "20,000" into two groups that each
+ * reverse to themselves and nothing would be fixed. Punctuation anywhere else
+ * belongs to the surrounding Arabic and stays put.
+ *
+ * A visible gap ends the group even between two LTR runs, because two numbers
+ * with space between them are two embeddings, not one. The budget table is the
+ * case that proves it: its count column sits to the right of its amount column,
+ * so "1" and "50,000" already arrive in reading order, and merging them would
+ * swap every row's count with its money.
+ */
+function ltrGroups(items: Item[], dirs: RunDir[]): [number, number][] {
+  const groups: [number, number][] = [];
+  let start = -1;
+  let pendingNeutrals = 0;
+
+  const flush = (end: number) => {
+    if (start >= 0 && end - pendingNeutrals > start) {
+      groups.push([start, end - pendingNeutrals]);
+    }
+    start = -1;
+    pendingNeutrals = 0;
+  };
+
+  for (let i = 0; i < items.length; i++) {
+    const d = dirs[i];
+    if (d === "R") {
+      flush(i - 1);
+      continue;
+    }
+    if (start >= 0 && spaced(items[i - 1], items[i])) flush(i - 1);
+    if (d === "L") {
+      if (start < 0) start = i;
+      pendingNeutrals = 0;
+    } else if (start >= 0) {
+      // A neutral tail (a full stop after a number) isn't part of the number.
+      pendingNeutrals += 1;
+    }
+  }
+  flush(items.length - 1);
+  return groups;
+}
+
+/**
  * One line of runs → text in logical order.
  *
  * Characters within a run are already logical; only the runs are out of order.
  * So this reorders runs and never reverses a string: sorting by left edge —
  * descending for RTL, where the rightmost run is read first — restores the
- * reading order without touching the runs themselves.
+ * reading order, and `ltrGroups` then puts back the stretches that read the
+ * other way.
  */
 function renderLine(items: Item[]): string {
   const rtl = isRtlLine(items);
@@ -120,19 +240,19 @@ function renderLine(items: Item[]): string {
     rtl ? b.transform[4] - a.transform[4] : a.transform[4] - b.transform[4]
   );
 
+  if (rtl) {
+    const dirs = ordered.map((it) => runDir(it.str));
+    for (const [from, to] of ltrGroups(ordered, dirs)) {
+      const slice = ordered.slice(from, to + 1).reverse();
+      for (let i = 0; i < slice.length; i++) ordered[from + i] = slice[i];
+    }
+  }
+
   let out = "";
   let prev: Item | null = null;
   for (const it of ordered) {
-    if (prev) {
-      // Measure the empty space between the runs as laid out, which means
-      // subtracting from whichever edge faces the other run.
-      const gap = rtl
-        ? prev.transform[4] - (it.transform[4] + widthOf(it))
-        : it.transform[4] - (prev.transform[4] + widthOf(prev));
-      const size = Math.abs(it.transform[3]) || it.height || 10;
-      if (gap > size * SPACE_RATIO && !/\s$/.test(out) && !/^\s/.test(it.str)) {
-        out += " ";
-      }
+    if (prev && spaced(prev, it) && !/\s$/.test(out) && !/^\s/.test(it.str)) {
+      out += " ";
     }
     out += it.str;
     prev = it;
@@ -144,12 +264,21 @@ function renderLine(items: Item[]): string {
 export function reconstructLines(rawItems: PdfTextItemLike[]): string[] {
   const items: Item[] = [];
   for (const it of rawItems) {
-    const str = clean(it.str);
     // Drop pdf.js's own whitespace items. It synthesizes them by guessing at
     // the run *stream*, which is the very thing that can't be trusted here —
     // in this PDF they land mid-word (السي ارات) because the stream is in
     // visual order. Spacing is decided below, from position alone.
-    if (str.trim().length > 0) items.push({ ...it, str });
+    if (it.str.trim().length === 0) continue;
+    const str = clean(it.str);
+    // A run `clean` empties is kept, empty, when it occupies real width on the
+    // page. It contributes no text, but removing it opens a gap wide enough to
+    // read as a space — the budget's «الـمجـمـــــوع» sets its tatweel as its
+    // own 2.7-wide run, and dropping that imports the total row as «المج موع»,
+    // which no longer reads as a total. A width-0 run (the unmapped U+0002
+    // glyphs) takes up nothing, so it goes: keeping it would fake the gap
+    // instead of preserving it.
+    if (str.length === 0 && !(it.width && it.width > 0)) continue;
+    items.push({ ...it, str });
   }
 
   const lines: { y: number; items: Item[] }[] = [];

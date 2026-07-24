@@ -27,6 +27,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { LoadSampleButton } from "@/components/ui/LoadSampleButton";
+import { LoadBundledButton } from "@/components/ui/LoadBundledButton";
 import { formatDate } from "@/lib/utils";
 import { parseScreenplay } from "@/lib/script";
 import {
@@ -268,9 +269,16 @@ export function Projects() {
           <div className="section-header">Productions</div>
           <div className="page-title mt-1">Projects</div>
         </div>
-        <Button onClick={openCreate}>
-          <Plus size={14} /> New project
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* Merges rather than replaces, so it's safe to offer even once the
+              workspace has projects in it. */}
+          {projects.length > 0 && !projects.some((p) => p.id === "proj_yadoo3") && (
+            <LoadBundledButton id="yadoo3" size="md" />
+          )}
+          <Button onClick={openCreate}>
+            <Plus size={14} /> New project
+          </Button>
+        </div>
       </div>
 
       {/* Resume bar for a run happening in the background */}
@@ -287,13 +295,14 @@ export function Projects() {
           <EmptyState
             icon={<FolderKanban size={48} />}
             title="Create your first production"
-            subtitle="A project holds one script and its full breakdown. Create one, then upload a screenplay to generate scenes, cast, locations, props and more — automatically. Or load a fully dressed sample to explore every feature."
+            subtitle="A project holds one script and its full breakdown. Create one, then upload a screenplay to generate scenes, cast, locations, props and more — automatically. Or open a fully dressed production to explore every feature."
             cta={
               <div className="flex flex-col sm:flex-row items-center gap-2">
                 <Button onClick={openCreate}>
                   <Plus size={14} /> New project
                 </Button>
                 <LoadSampleButton />
+                <LoadBundledButton id="yadoo3" />
               </div>
             }
           />

@@ -130,6 +130,51 @@ check(
   "للاك"
 );
 
+console.log("\nEMBEDDED LTR (real geometry from the Emirati farm PDF)");
+
+// p11 — a number laid out left to right inside a right-to-left line, emitted
+// one digit per run. Ordering the whole line by descending x reads it
+// backwards, so scene 10 imports as scene "01" — and once two scenes disagree
+// about their number the parser splits one script into phantom episodes.
+check(
+  "a multi-run number inside an RTL line reads left to right",
+  one(
+    line([
+      ["م", 518.1, 5.139],
+      ["1", 497.9, 7.937],
+      ["0", 506.1, 7.937],
+      ["الطريق السريع", 419.0, 67.549],
+    ])
+  ),
+  "م 10 الطريق السريع"
+);
+
+// The thousands comma is a neutral between two digit runs, so it belongs to the
+// number. Treating it as a boundary would leave "20" and "000" as two groups
+// that each reverse to themselves — 20,000 would stay "000,20".
+check(
+  "a thousands comma stays inside the number",
+  one(line([["مخرج منفذ", 430, 48], ["20", 380, 12], [",", 392, 4], ["000", 396, 18]])),
+  "مخرج منفذ 20,000"
+);
+
+// The budget table's count column sits to the *right* of its money column, so
+// "1" and "20,000" already arrive in reading order. A visible gap is what keeps
+// them apart — merge them and every row's count swaps with its money.
+check(
+  "two numbers with space between them are two embeddings",
+  one(line([["مخرج منفذ", 430, 48], ["1", 410, 7], ["20,000", 360, 34]])),
+  "مخرج منفذ 1 20,000"
+);
+
+// The lam-lam-ha ligature is one glyph whose characters are stored in visual
+// order, which run reordering can't reach — عبدالله would import as عبدهللا.
+check(
+  "the Allah ligature is unreversed",
+  one(line([["غرفة عبدهللا بالفندق", 300, 90]])),
+  "غرفة عبدالله بالفندق"
+);
+
 console.log("\nLTR IS UNAFFECTED");
 
 check(

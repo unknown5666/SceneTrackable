@@ -401,7 +401,11 @@ export interface RecordEditor {
   /** Delete a record after confirming. */
   remove: (id: string) => void;
   /** "Add <Singular>" button — drop into a page/card header. */
-  AddButton: (props: { size?: "sm" | "md"; label?: string }) => JSX.Element;
+  AddButton: (props: {
+    size?: "sm" | "md";
+    label?: string;
+    variant?: "primary" | "secondary";
+  }) => JSX.Element;
   /** Edit + delete buttons for a table row. */
   RowActions: (props: { id: string }) => JSX.Element;
   /** Mount once per page; renders the add/edit modal. */
@@ -467,10 +471,20 @@ export function useRecordEditor(collection: RecordCollection): RecordEditor {
   // otherwise React remounts every button on each parent render.
   const AddButton = useMemo(
     () =>
-      function AddButton({ size = "sm", label }: { size?: "sm" | "md"; label?: string }) {
+      function AddButton({
+        size = "sm",
+        label,
+        // Secondary where "add by hand" sits beside a more likely primary
+        // action, as it does on the Budget empty state next to the importer.
+        variant = "primary",
+      }: {
+        size?: "sm" | "md";
+        label?: string;
+        variant?: "primary" | "secondary";
+      }) {
         if (!writable) return <></>;
         return (
-          <Button size={size} variant="primary" leftIcon={<Plus size={14} />} onClick={openNew}>
+          <Button size={size} variant={variant} leftIcon={<Plus size={14} />} onClick={openNew}>
             {label ?? `Add ${schema.singular}`}
           </Button>
         );
