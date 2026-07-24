@@ -20,7 +20,7 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { parseScreenplay, extractCharacters } from "../src/lib/script";
-import { parseBudgetText, toBudgetLines } from "../src/lib/budgetImport";
+import { parseBudgetText, toBudgetLines, foldArabic } from "../src/lib/budgetImport";
 import type {
   Scene,
   CastMember,
@@ -74,128 +74,173 @@ const totalPages = scenes.reduce((s, sc) => s + sc.pages, 0);
 const parsedBudget = parseBudgetText(readFileSync(BUDGET_TXT, "utf8"));
 
 /**
- * The three rows the file leaves blank — a camera-body rental, a lighting
- * package and a crane/dolly hire, all written as line items with no figure
- * against them. In the app these are exactly the rows the import modal stops
- * and asks about; here they are answered, at the rates the rest of the sheet
- * implies, so the shipped production has a complete top sheet.
+ * Rows the budget lists as line items but puts no figure against — a camera
+ * rental, a lighting package, a crane/dolly hire.
+ *
+ * They are carried through at zero, not filled in. Inventing a plausible rate
+ * would put a number on this production's top sheet that nobody in the
+ * production ever wrote, and it would be indistinguishable from the figures
+ * that are real. Zero is visible on the top sheet as "no figure yet", which is
+ * exactly what the source says. In the app itself these are the rows the import
+ * modal stops and asks the user about; the generator has nobody to ask.
  */
-const FILLED_AMOUNTS: Record<string, number> = {
-  "20": 60000, // أجار كاميرة تصوير
-  "21": 45000, // إضاءة ومعدات كاملة + سيارة معدات
-  "23": 25000, // استئجار كرين وشاريو
-};
-for (const row of parsedBudget.rows) {
-  if (row.amount === null && FILLED_AMOUNTS[row.code] !== undefined) {
-    row.amount = FILLED_AMOUNTS[row.code];
-  }
-}
+const unpriced = parsedBudget.rows.filter((r) => r.amount === null);
+for (const row of unpriced) row.amount = 0;
 
-const unresolved = parsedBudget.rows.filter((r) => !r.section || r.amount === null);
-if (unresolved.length > 0) {
+const unsectioned = parsedBudget.rows.filter((r) => !r.section);
+if (unsectioned.length > 0) {
   console.error(
-    `Budget rows the parser could not resolve:\n${unresolved
+    `Budget rows the parser could not place:\n${unsectioned
       .map((r) => `  ${r.code || "—"} ${r.description}`)
       .join("\n")}`
   );
   process.exit(1);
 }
 
+// budgeted comes from the file; committed and spent are zero because the file
+// says nothing about what has been committed or paid.
 const budgetLines = toBudgetLines(parsedBudget.rows, "ar");
-// Committed/spent dressing: prep has begun, so the above-the-line and
-// production rows are committed and partly paid while the shoot hasn't started.
-const COMMITTED_PCT: Record<string, [number, number]> = {
-  "فوق الخط": [1, 0.5],
-  "الطاقم الفني": [1, 0.25],
-  التصوير: [0.6, 0],
-  "الإضاءة والمعدات": [0.5, 0],
-  الصوت: [0.5, 0],
-  "الديكور والإكسسوارات": [0.4, 0.1],
-  "الماكياج والشعر": [0.3, 0],
-  "الممثلون والكومبارس": [0.8, 0.2],
-  "مواقع التصوير": [0.5, 0.15],
-  "النقل والمواصلات": [0.3, 0.1],
-  "الإعاشة والإقامة": [0.2, 0],
-  "ما بعد الإنتاج": [0, 0],
-  "مصاريف أخرى وطوارئ": [0.2, 0.2],
-};
-for (const line of budgetLines) {
-  const [c, s] = COMMITTED_PCT[line.category] ?? [0, 0];
-  line.committed = Math.round(line.budgeted * c);
-  line.spent = Math.round(line.budgeted * s);
-}
 const budgetTotal = budgetLines.reduce((s, l) => s + l.budgeted, 0);
 
 // ------------------------------------------------------------
-// CREW — read off the budget's own crew rows
+// CREW — the budget's own crew rows, and the script's title page
 // ------------------------------------------------------------
+/**
+ * Only the two documents. The budget's «الطاقم الفني» rows name the positions
+ * the production is paying for, and the script's title page names the three
+ * people credited on it. Nobody else is added, and no rates are set: the budget
+ * gives a lump sum per position, not an hourly rate, and deriving one would
+ * mean inventing a day count.
+ */
 const crew: CrewMember[] = [
-  { id: "crew_writer", name: "أحمد زين الهاشمي", role: "مؤلف ومخرج", department: "production", roleId: "admin" },
+  // Credited on the script's title page.
+  { id: "crew_writer", name: "أحمد زين الهاشمي", role: "تأليف وإخراج", department: "production", roleId: "admin" },
   { id: "crew_writer2", name: "أحمد خاطر", role: "سيناريو وحوار", department: "production" },
-  { id: "crew_exec", name: "مخرج منفذ", role: "مخرج منفذ", department: "production", roleId: "scheduler", ratePerHour: 250 },
-  { id: "crew_1ad", name: "مساعد مخرج وسكريبت", role: "مساعد مخرج / سكريبت", department: "production", roleId: "scheduler", ratePerHour: 140 },
-  { id: "crew_dp", name: "مدير التصوير", role: "مدير تصوير", department: "camera", roleId: "camera", ratePerHour: 320 },
-  { id: "crew_gaffer", name: "فني إضاءة", role: "فني إضاءة (٤)", department: "camera", roleId: "camera", ratePerHour: 110 },
-  { id: "crew_sound", name: "مهندس الصوت", role: "مهندس صوت ومساعده", department: "sound", roleId: "camera", ratePerHour: 180 },
-  { id: "crew_makeup", name: "الماكير", role: "ماكير (٢)", department: "wardrobe", roleId: "art", ratePerHour: 120 },
-  { id: "crew_pm", name: "مدير إدارة الإنتاج", role: "مدير إدارة إنتاج", department: "production", roleId: "scheduler", ratePerHour: 260 },
-  { id: "crew_pa", name: "منفذو الإنتاج", role: "منفذ إنتاج (٢)", department: "production", ratePerHour: 90 },
-  { id: "crew_art", name: "مشرف الديكور والإكسسوارات", role: "ديكور وإكسسوارات", department: "art", roleId: "art", ratePerHour: 130 },
-  { id: "crew_dit", name: "الـ DIT", role: "DIT", department: "camera", roleId: "camera", ratePerHour: 150 },
-  { id: "crew_acct", name: "المحاسب", role: "محاسب الإنتاج", department: "accounting", roleId: "accountant", ratePerHour: 160 },
+  // Positions listed in the budget. Unnamed there, so the position is the name.
+  { id: "crew_exec", name: "مخرج منفذ", role: "مخرج منفذ", department: "production", roleId: "scheduler" },
+  { id: "crew_1ad", name: "مساعد مخرج وسكريبت", role: "مساعد مخرج وسكريبت", department: "production", roleId: "scheduler" },
+  { id: "crew_dp", name: "مدير التصوير ومساعده", role: "مدير التصوير ومساعده", department: "camera", roleId: "camera" },
+  { id: "crew_gaffer", name: "فني إضاءة (٤)", role: "فني إضاءة عدد ٤", department: "camera", roleId: "camera" },
+  { id: "crew_sound", name: "مهندس صوت ومساعده", role: "مهندس صوت ومساعده", department: "sound", roleId: "camera" },
+  { id: "crew_makeup", name: "ماكير (٢)", role: "ماكير عدد ٢", department: "wardrobe", roleId: "art" },
+  { id: "crew_pm", name: "مدير إدارة إنتاج", role: "مدير إدارة إنتاج", department: "production", roleId: "scheduler" },
+  { id: "crew_pa", name: "منفذو الإنتاج (٢)", role: "منفذو الإنتاج عدد ٢", department: "production" },
+  { id: "crew_art", name: "الديكورات ومشرف الإكسسوارات", role: "ديكورات وإكسسوارات", department: "art", roleId: "art" },
+  { id: "crew_dit", name: "DIT", role: "DIT", department: "camera", roleId: "camera" },
 ];
 
 // ------------------------------------------------------------
 // CAST — the characters the script's dialogue cues name
 // ------------------------------------------------------------
 /**
- * Leads and their rates, in script order of prominence. The names are checked
- * against `extractCharacters` below rather than trusted: if the cue detection
- * regresses, a lead silently disappearing from the cast list is the kind of
- * thing that would otherwise go unnoticed until a call sheet was wrong.
+ * The speaking characters, by the name the script's dialogue cues use. Gender
+ * is the one attribute taken from the script rather than counted — مريم and
+ * المطوعة are written as women, the rest as men.
+ *
+ * No rates. The budget gives one lump sum for «أجور الفنانين + الكومبارس»
+ * (15 people, 150,000) and never breaks it down, so any per-day figure here
+ * would be one this production never set.
  */
-const LEADS: [string, CastMember["category"], number, CastMember["gender"]][] = [
-  ["خالد", "lead", 4500, "M"],
-  ["ياسر", "lead", 4500, "M"],
-  ["الرمسي", "lead", 4000, "M"],
-  ["سعيد", "lead", 4000, "M"],
-  ["عبدالله", "lead", 4000, "M"],
-  ["مرشد", "supporting", 3000, "M"],
-  ["علي", "supporting", 2500, "M"],
-  ["مريم", "supporting", 2800, "F"],
-  ["المطوعة", "supporting", 2600, "F"],
-  ["شهداد", "day_player", 1800, "M"],
+const CHARACTERS: { name: string; gender: CastMember["gender"]; spellings?: string[] }[] = [
+  { name: "خالد", gender: "M" },
+  { name: "ياسر", gender: "M" },
+  // The script writes the final ya both ways for this one.
+  { name: "الرمسي", gender: "M", spellings: ["الرمسي", "الرمسى"] },
+  { name: "سعيد", gender: "M" },
+  { name: "عبدالله", gender: "M" },
+  { name: "مرشد", gender: "M" },
+  { name: "علي", gender: "M" },
+  { name: "مريم", gender: "F" },
+  { name: "المطوعة", gender: "F" },
+  { name: "شهداد", gender: "M" },
 ];
 
 const detected = new Set(extractCharacters(scenes));
-const missing = LEADS.map(([n]) => n).filter((n) => !detected.has(n));
+const missing = CHARACTERS.filter(
+  (c) => ![c.name, ...(c.spellings ?? [])].some((s) => detected.has(s))
+).map((c) => c.name);
 if (missing.length > 0) {
   console.warn(`⚠ characters not detected in the script text: ${missing.join(", ")}`);
 }
 
-const cast: CastMember[] = LEADS.map(([name, category, ratePerDay, gender], i) => ({
+/**
+ * A character is in a scene when the scene's text names them, and their billing
+ * follows how many scenes that is. Both are counted off the script rather than
+ * asserted, so the cast page, the DOOD and the scene list can't disagree with
+ * what's actually on the page.
+ *
+ * Matched as whole words, not substrings: علي is a name *and* sits inside عليه,
+ * عليك and علينا, so a substring test puts him in 72 of 91 scenes and makes him
+ * the lead of a film he supports. Arabic has no `\b` in JS — it is ASCII-only —
+ * so the text is tokenized instead.
+ *
+ * And tokenized WITHOUT `foldArabic`, which is the fold the budget importer
+ * uses. That fold maps ى to ي, which is right for matching budget keywords and
+ * catastrophic here: it merges the name علي with على, the commonest preposition
+ * in the language, and hands him 90 of 91 scenes. Where a name really is spelled
+ * two ways the spellings are listed instead — narrow, and visible.
+ */
+const normalize = (s: string) => s.replace(/[أإآ]/g, "ا");
+
+/**
+ * Whether a scene really features a character.
+ *
+ * One bare mention isn't enough, because a name can be a word: «ال تتأخرون علي»
+ * is "don't keep me waiting", and it would otherwise put the boy علي in a hotel
+ * room he is never in. So a scene counts when the name heads a line — which is
+ * how this script writes a dialogue cue — or when it appears more than once,
+ * which no passing preposition does.
+ *
+ * A heuristic, and it is only used to seed the cast page and the DOOD; the AI
+ * character pass replaces it with a real read of the script.
+ */
+function featuresCharacter(scriptText: string, forms: string[]): boolean {
+  let mentions = 0;
+  for (const rawLine of scriptText.split("\n")) {
+    const line = normalize(rawLine).trim();
+    if (!line) continue;
+    const words = line.split(/[^\p{L}]+/u).filter(Boolean);
+    if (words.length === 0) continue;
+    // A cue: the name opens a short line — «خالد ( يضحك )», «ياسر».
+    if (forms.includes(words[0]) && words.length <= 4) return true;
+    for (const w of words) if (forms.includes(w)) mentions++;
+    if (mentions > 1) return true;
+  }
+  return false;
+}
+
+const appearances = new Map(
+  CHARACTERS.map((c) => {
+    const forms = [c.name, ...(c.spellings ?? [])].map(normalize);
+    return [c.name, scenes.filter((s) => featuresCharacter(s.scriptText, forms))];
+  })
+);
+const mostScenes = Math.max(...[...appearances.values()].map((v) => v.length));
+const billing = (name: string): CastMember["category"] => {
+  const n = appearances.get(name)?.length ?? 0;
+  if (n >= mostScenes * 0.5) return "lead";
+  return n >= mostScenes * 0.15 ? "supporting" : "day_player";
+};
+
+const cast: CastMember[] = CHARACTERS.map((c, i) => ({
   id: `cast_${i + 1}`,
-  name,
-  role: name,
-  category,
-  // A character is in a scene when the scene's text names them. Coarse, but it
-  // is read off the real script rather than invented, so the DOOD and the
-  // scene counts on the cast page agree with what's on the page.
-  scenes: scenes.filter((s) => s.scriptText.includes(name)).map((s) => s.id),
-  ratePerDay,
-  gender,
+  name: c.name,
+  role: c.name,
+  category: billing(c.name),
+  scenes: (appearances.get(c.name) ?? []).map((s) => s.id),
+  ratePerDay: 0,
+  gender: c.gender,
 }));
 
-const characterBible = LEADS.map(([name, category]) => ({
-  name,
-  speaking: true,
-  importance: (category === "lead"
-    ? "lead"
-    : category === "supporting"
-      ? "supporting"
-      : "minor") as "lead" | "supporting" | "minor",
-  firstSceneNumber: scenes.find((s) => s.scriptText.includes(name))?.number,
-}));
+const characterBible = CHARACTERS.map((c) => {
+  const cat = billing(c.name);
+  return {
+    name: c.name,
+    speaking: true,
+    importance: (cat === "day_player" ? "minor" : cat) as "lead" | "supporting" | "minor",
+    firstSceneNumber: appearances.get(c.name)?.[0]?.number,
+  };
+});
 
 // ------------------------------------------------------------
 // LOCATIONS — consolidated from the sluglines
@@ -206,24 +251,24 @@ const characterBible = LEADS.map(([name, category]) => ({
  * leading field is what turns 91 sluglines into the handful of units that
  * actually have to be scouted, permitted and moved between.
  */
-const LOCATION_GROUPS: { name: string; match: RegExp; type: ProductionLocation["type"]; permitStatus: ProductionLocation["permitStatus"] }[] = [
-  { name: "مزرعة يدو", match: /المزرعة|مزرعة يدو|فناء المزرعة|ساحة المزرعة|بوابة المزرعة|ممرات المزرعة|محيط المزرعة|وسط المزرعة/, type: "INT/EXT", permitStatus: "locked" },
-  { name: "بيت ياسر", match: /بيت ياسر|حديقة بيت ياسر/, type: "INT/EXT", permitStatus: "locked" },
-  { name: "بيت المطوعة", match: /بيت المطوعة|حوش بيت المطوعة/, type: "INT/EXT", permitStatus: "permit_pending" },
-  { name: "مركز الساونا", match: /الساونا/, type: "INT", permitStatus: "optioned" },
-  { name: "فندق عبدالله", match: /بالفندق/, type: "INT", permitStatus: "optioned" },
-  { name: "بيت عبدالله", match: /بيت عبدالله/, type: "INT", permitStatus: "scouting" },
-  { name: "بيت الرمسي", match: /بيت الرمسى|بيت الرمسي/, type: "INT", permitStatus: "scouting" },
-  { name: "بيت خالد", match: /بيت خالد/, type: "INT", permitStatus: "scouting" },
-  { name: "الصحراء", match: /الصحراء/, type: "EXT", permitStatus: "permit_pending" },
-  { name: "الطريق", match: /الطريق|قرية شعبية/, type: "EXT", permitStatus: "permit_pending" },
-  { name: "الكافيه", match: /الكافية|كافية/, type: "INT", permitStatus: "optioned" },
+const LOCATION_GROUPS: { name: string; match: RegExp }[] = [
+  { name: "مزرعة يدو", match: /المزرعة|مزرعة يدو|فناء المزرعة|ساحة المزرعة|بوابة المزرعة|ممرات المزرعة|محيط المزرعة|وسط المزرعة/ },
+  { name: "بيت ياسر", match: /بيت ياسر|حديقة بيت ياسر/ },
+  { name: "بيت المطوعة", match: /بيت المطوعة|حوش بيت المطوعة/ },
+  { name: "مركز الساونا", match: /الساونا/ },
+  { name: "فندق عبدالله", match: /بالفندق/ },
+  { name: "بيت عبدالله", match: /بيت عبدالله/ },
+  { name: "بيت الرمسي", match: /بيت الرمسى|بيت الرمسي/ },
+  { name: "بيت خالد", match: /بيت خالد/ },
+  { name: "الصحراء", match: /الصحراء/ },
+  { name: "الطريق", match: /الطريق|قرية شعبية/ },
+  { name: "الكافيه", match: /الكافية|كافية/ },
   // The parking corridor (sc. 28) is the hall's — it plays straight off the
   // celebration scenes either side of it, so it shoots with them.
-  { name: "قاعة الاحتفال", match: /قاعة الاحتفال|قاعة االحتفال|باركينج|موقف/, type: "INT", permitStatus: "optioned" },
-  { name: "مطعم أنيق", match: /مطعم/, type: "INT", permitStatus: "scouting" },
-  { name: "دار النشر", match: /دار نشر/, type: "EXT", permitStatus: "scouting" },
-  { name: "مزارع أخرى", match: /مزرعة اصدقاء|مزرعة آبل|احدى المزارع|مزرعة ياسر|مزرعة/, type: "EXT", permitStatus: "scouting" },
+  { name: "قاعة الاحتفال", match: /قاعة الاحتفال|قاعة االحتفال|باركينج|موقف/ },
+  { name: "مطعم أنيق", match: /مطعم/ },
+  { name: "دار النشر", match: /دار نشر/ },
+  { name: "مزارع أخرى", match: /مزرعة اصدقاء|مزرعة آبل|احدى المزارع|مزرعة ياسر|مزرعة/ },
 ];
 
 /** The unit a slugline's location belongs to. */
@@ -232,19 +277,24 @@ function unitFor(location: string): string {
   return "مواقع متفرقة";
 }
 
+/**
+ * Every unit starts at "scouting" and carries no day rate and no lock date.
+ * Neither document says a word about what has been secured, permitted or
+ * priced, and "scouting" is the status that claims nothing. INT/EXT is read
+ * off the sluglines that use the unit, so a unit played both ways is INT/EXT.
+ */
 const usedUnits = new Set(scenes.map((s) => unitFor(s.location)));
 const locations: ProductionLocation[] = LOCATION_GROUPS.filter((g) => usedUnits.has(g.name)).map(
   (g, i) => {
     const inUnit = scenes.filter((s) => unitFor(s.location) === g.name);
+    const kinds = new Set(inUnit.map((s) => s.intExt));
     return {
       id: `loc_${i + 1}`,
       name: g.name,
       aliases: [...new Set(inUnit.map((s) => s.location))].slice(0, 8),
-      type: g.type,
-      permitStatus: g.permitStatus,
-      costPerDay: g.permitStatus === "locked" ? 3500 : 2500,
+      type: (kinds.size === 1 ? [...kinds][0] : "INT/EXT") as ProductionLocation["type"],
+      permitStatus: "scouting" as const,
       notes: `${inUnit.length} ${inUnit.length === 1 ? "مشهد" : "مشهدًا"} في هذا الموقع.`,
-      ...(g.permitStatus === "locked" ? { lockDate: dateOnly(-6) } : {}),
     };
   }
 );
@@ -267,6 +317,8 @@ if (usedUnits.has("مواقع متفرقة")) {
  * what makes the strip board legible: the alternative — scenes in script order
  * — produces a board that moves the whole unit four times a day.
  */
+// A planning default, not something either document states — it's the knob the
+// 1st AD turns on the Schedule page, and the strip board is built from it.
 const PAGES_PER_DAY = 4;
 const shootDays: ShootDay[] = [];
 let dayNumber = 0;
@@ -277,18 +329,16 @@ for (const unit of locations.map((l) => l.name)) {
   const closeDay = () => {
     if (bucket.length === 0) return;
     dayNumber += 1;
-    const night = bucket.filter((s) => s.timeOfDay === "NIGHT").length > bucket.length / 2;
     shootDays.push({
       id: `day_${dayNumber}`,
       dayNumber,
       date: dateOnly(dayNumber + 6),
       location: unit,
       locations: [unit],
+      // Straight from the page count. No call or wrap times and no meal
+      // banners: those are the 1st AD's to set, and neither document sets them.
       estimatedHours: Math.min(12, Math.max(8, Math.round(pages * 2.5))),
       scenes: bucket.map((s) => s.id),
-      callTime: night ? "16:00" : "06:30",
-      wrapTime: night ? "04:00" : "18:30",
-      banners: [{ type: "meal", label: night ? "عشاء" : "غداء" }],
     });
     bucket = [];
     pages = 0;
@@ -326,24 +376,15 @@ for (const member of cast) {
 }
 
 // ------------------------------------------------------------
-// TASKS
+// TASKS — none
 // ------------------------------------------------------------
-const task = (
-  t: Omit<Task, "createdAt" | "updatedAt" | "computedDeadline"> & { computedDeadline: string }
-): Task => ({ ...t, createdAt: iso(-8), updatedAt: iso(-1) });
-
-const tasks: Task[] = [
-  task({ id: "t_permit_farm", title: "تصريح تصوير مزرعة يدو", description: "تصريح البلدية للتصوير الليلي داخل المزرعة.", owner: "crew_pm", department: "production", deadlineRule: "shoot_day(1) - 3d", computedDeadline: dateOnly(4), status: "completed", priority: "critical" }),
-  task({ id: "t_permit_mutawaa", title: "موافقة مالك بيت المطوعة", description: "التصوير في الحوش ليلاً — بانتظار الموافقة الخطية.", owner: "crew_pm", department: "production", deadlineRule: "shoot_day(1) - 1d", computedDeadline: dateOnly(6), status: "blocked", priority: "critical", notes: "المالك يطلب تعويضاً إضافياً عن الليالي." }),
-  task({ id: "t_camera_prep", title: "تجهيز الكاميرا والعدسات", owner: "crew_dp", department: "camera", deadlineRule: "shoot_day(1) - 2d", computedDeadline: dateOnly(5), status: "in_progress", priority: "high" }),
-  task({ id: "t_sauna_steam", title: "معالجة البخار في مشاهد الساونا", description: "اختبار مولد البخار مع العدسات — خطر التكاثف.", owner: "crew_dp", department: "camera", linkedScene: sceneId("2"), deadlineRule: "shoot_day(1) - 1d", computedDeadline: dateOnly(6), status: "not_started", priority: "high" }),
-  task({ id: "t_naay", title: "توفير الناي (إكسسوار بطل)", description: "الناي يظهر في مشاهد مرشد وعلي — نسختان للاستمرارية.", owner: "crew_art", department: "art", linkedScene: sceneId("3"), deadlineRule: "shoot_day(2) - 2d", computedDeadline: dateOnly(6), status: "in_progress", priority: "medium" }),
-  task({ id: "t_farm_dress", title: "تجهيز المزرعة بحالتيها (الحاضر والماضي)", description: "المشهد الأول يتطلب المزرعة مهجورة ثم مزدهرة — تنسيق الديكور والزراعة.", owner: "crew_art", department: "art", linkedScene: sceneId("1"), deadlineRule: "shoot_day(1) - 5d", computedDeadline: dateOnly(2), status: "in_progress", priority: "critical" }),
-  task({ id: "t_desert_convoy", title: "ترتيب قافلة الصحراء", description: "مشاهد الصحراء عند الغروب — نافذة تصوير ضيقة.", owner: "crew_pm", department: "transport", deadlineRule: "shoot_day(1) + 10d", computedDeadline: dateOnly(18), status: "not_started", priority: "medium" }),
-  task({ id: "t_cast_contracts", title: "عقود الممثلين والكومبارس", owner: "crew_acct", department: "cast", deadlineRule: "shoot_day(1) - 4d", computedDeadline: dateOnly(3), status: "review", priority: "high" }),
-  task({ id: "t_post_bid", title: "عروض ما بعد الإنتاج (مونتاج + تصحيح ألوان + DCP)", owner: "crew_acct", department: "accounting", deadlineRule: "manual(" + dateOnly(20) + ")", computedDeadline: dateOnly(20), status: "not_started", priority: "low" }),
-  task({ id: "t_meals", title: "تعاقد الإعاشة اليومية", owner: "crew_pa", department: "production", deadlineRule: "shoot_day(1) - 2d", computedDeadline: dateOnly(5), status: "not_started", priority: "medium" }),
-];
+/**
+ * Empty, deliberately. A task list is a record of what a production has decided
+ * to do and who owes it; neither the script nor the budget records any such
+ * decision, so every task here would be a guess about this crew's work dressed
+ * up as their plan. The Tasks page has an empty state for exactly this.
+ */
+const tasks: Task[] = [];
 
 // ------------------------------------------------------------
 // ASSEMBLE
@@ -353,7 +394,8 @@ const projectId = "proj_yadoo3";
 
 const production = {
   id: "prod_yadoo3",
-  title: "مزرعة يدو ٣",
+  // As the script's title page writes it.
+  title: "مزرعة يدو 3",
   currency: parsedBudget.currency ?? "AED",
   budget: budgetTotal,
   totalShootDays: shootDays.length,
@@ -362,24 +404,20 @@ const production = {
   script: { totalPages: Math.round(totalPages * 10) / 10, totalScenes: scenes.length },
 };
 
-const notifications = [
-  { id: "n_1", type: "task_overdue", title: "بيت المطوعة — الموافقة معلّقة", body: "المالك يطلب تعويضاً إضافياً عن الليالي؛ المهمة موقوفة.", createdAt: iso(-1), read: false, linkTo: "/tasks" },
-  { id: "n_2", type: "schedule_change", title: `الجدول جاهز — ${shootDays.length} يوم تصوير`, body: `${scenes.length} مشهدًا موزّعة على ${locations.length} موقعًا.`, createdAt: iso(-2), read: true, linkTo: "/schedule" },
-  { id: "n_3", type: "ai_digest", title: "الملخص اليومي جاهز", body: "الميزانية مستوردة من ملف الإنتاج · موقع واحد متوقف على تصريح.", createdAt: iso(0, 8), read: false, linkTo: "/dashboard" },
-];
+/**
+ * No notifications, no health history, and an activity log holding only the two
+ * things that did happen: this generator imported the script and the budget.
+ * Everything else would be a fabricated record of work by people who are named
+ * on a real film.
+ */
+const notifications: never[] = [];
 
 const activityLog = [
-  { id: "a_1", at: iso(-9), userId: "user_admin", userLabel: "Administrator", action: "created", entity: "project", entityId: projectId, description: "أنشأ مشروع مزرعة يدو ٣" },
-  { id: "a_2", at: iso(-9, 11), userId: "user_admin", userLabel: "Administrator", action: "imported", entity: "scene", description: `استورد السيناريو — ${scenes.length} مشهدًا` },
-  { id: "a_3", at: iso(-8), userId: "crew_acct", userLabel: "المحاسب", action: "imported", entity: "budget", description: `استورد ملف الميزانية — ${budgetLines.length} بندًا بقيمة ${budgetTotal.toLocaleString()} درهم` },
-  { id: "a_4", at: iso(-6), userId: "crew_pm", userLabel: "مدير إدارة الإنتاج", action: "updated", entity: "location", entityId: "loc_1", description: "ثبّت موقع مزرعة يدو" },
-  { id: "a_5", at: iso(-1), userId: "crew_pm", userLabel: "مدير إدارة الإنتاج", action: "status_change", entity: "task", entityId: "t_permit_mutawaa", description: "أوقف مهمة موافقة بيت المطوعة" },
+  { id: "a_1", at: iso(-1), userId: "", userLabel: "System", action: "imported", entity: "scene", description: `استيراد السيناريو — ${scenes.length} مشهدًا` },
+  { id: "a_2", at: iso(-1, 10), userId: "", userLabel: "System", action: "imported", entity: "budget", description: `استيراد ملف الميزانية — ${budgetLines.length} بندًا بقيمة ${budgetTotal.toLocaleString()} درهم` },
 ];
 
-const healthHistory = Array.from({ length: 10 }).map((_, i) => ({
-  date: dateOnly(-9 + i),
-  health: [52, 55, 58, 57, 62, 65, 64, 68, 70, 73][i],
-}));
+const healthHistory: never[] = [];
 
 const productionData = {
   production,
@@ -409,16 +447,9 @@ const productionData = {
   timesheet: [],
   notifications,
   activityLog,
-  aiDigest: {
-    at: iso(0, 8),
-    text:
-      `الميزانية مستوردة من ملف الإنتاج: ${budgetLines.length} بندًا بقيمة ${budgetTotal.toLocaleString()} درهم، ` +
-      `منها ثلاثة بنود (الكاميرا، الإضاءة، الكرين) لم تكن تحمل مبالغ في الملف الأصلي وتم استكمالها. ` +
-      `السيناريو ${scenes.length} مشهدًا على ${Math.round(totalPages)} صفحة، موزّعة على ${shootDays.length} يوم تصوير في ${locations.length} موقعًا. ` +
-      `العائق الحالي هو موافقة مالك بيت المطوعة — وهي على المسار الحرج لمشاهد الليل.`,
-    hash: "yadoo3",
-    model: "demo",
-  },
+  // No aiDigest: a digest is model output, and hand-writing one would put words
+  // in the AI's mouth. The dashboard reads "AI summary pending" until a real
+  // run produces one.
   healthHistory,
 };
 
@@ -442,25 +473,24 @@ const roles = [
   { id: "cast", label: "Cast Coordinator", description: "Cast schedules, DOOD, contracts, and call sheets.", department: "cast", access: ["cast", "schedule", "tasks"], permissions: permissionMapFrom([], ["cast", "schedule", "tasks"]), builtIn: true },
 ];
 
-// sha256("1234")
+// Only the seeded master admin. The teammates that were here before were
+// invented people on a real production's workspace. sha256("1234").
 const users = [
   { id: "user_admin", username: "Admin", displayName: "Administrator", password: "sha256$03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4", roleId: "admin", active: true, createdAt: iso(-30) },
-  { id: "user_pm", username: "pm", displayName: "مدير إدارة الإنتاج", password: "", roleId: "scheduler", active: true, createdAt: iso(-10), inviteCode: "YAD1PM01" },
-  { id: "user_acct", username: "acct", displayName: "المحاسب", password: "", roleId: "accountant", active: true, createdAt: iso(-10), inviteCode: "YAD2ACC1" },
 ];
 
 const project = {
   id: projectId,
   name: production.title,
-  logline:
-    "أصدقاء العمر يعودون إلى مزرعة يدو بعد سنوات، بين حاضرٍ مهجور وماضٍ مزدهر — تأليف أحمد زين الهاشمي، سيناريو وحوار أحمد خاطر.",
-  createdAt: iso(-9),
+  // The script's title page, verbatim — not a logline written for it.
+  logline: "تأليف أحمد زين الهاشمي · سيناريو وحوار أحمد خاطر · إخراج أحمد زين الهاشمي",
+  createdAt: iso(-1),
   updatedAt: iso(0),
   currency: production.currency,
   script: {
-    fileName: "مزرعة يدو — النسخة النهائية.pdf",
+    fileName: "مزرعة يدو النسخة final.pdf",
     rawText: readFileSync(SCRIPT_TXT, "utf8"),
-    uploadedAt: iso(-9),
+    uploadedAt: iso(-1),
     pageCount: 95,
     source: "pdf" as const,
   },
@@ -479,9 +509,8 @@ const state = {
   projects: [project],
   activeProjectId: projectId,
   projectData: {},
-  aiUsage: [
-    { id: "u_1", feature: "character_bible", at: iso(-9), inputTokens: 26400, outputTokens: 2100, model: "demo", costUsd: 0 },
-  ],
+  // No AI has run on this production, so there is no usage to report.
+  aiUsage: [],
   aiConfig: { alertThresholdPct: 80 },
 };
 
@@ -494,5 +523,9 @@ console.log(
     `  scenes=${scenes.length} (${nightScenes} night) pages=${Math.round(totalPages)} ` +
     `cast=${cast.length} crew=${crew.length} locations=${locations.length} days=${shootDays.length}\n` +
     `  budget=${production.currency} ${budgetTotal.toLocaleString()} across ${budgetLines.length} lines ` +
-    `(file stated ${parsedBudget.declaredTotal?.toLocaleString() ?? "—"})`
+    `(file stated ${parsedBudget.declaredTotal?.toLocaleString() ?? "—"})` +
+    (unpriced.length
+      ? `\n  ${unpriced.length} row(s) carry no figure in the source and are left at 0: ` +
+        unpriced.map((r) => `${r.code} ${r.description}`).join("; ")
+      : "")
 );

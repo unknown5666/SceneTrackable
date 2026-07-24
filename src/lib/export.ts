@@ -567,8 +567,8 @@ export const BUNDLED_PRODUCTIONS: BundledProduction[] = [
   {
     id: "yadoo3",
     file: "mazraat-yadoo-3.json",
-    name: "مزرعة يدو ٣",
-    subtitle: "Emirati feature · 91 scenes · AED budget imported from the production's own sheet",
+    name: "مزرعة يدو 3",
+    subtitle: "Emirati feature · 91 scenes · budget imported from the production's own sheet",
     language: "ar",
   },
 ];
