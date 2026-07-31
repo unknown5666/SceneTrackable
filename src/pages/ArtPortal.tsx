@@ -182,8 +182,8 @@ function ElementTracker() {
                               heading: `Scenes (${el.sceneIds.length})`,
                               rows: el.sceneIds.map((id) => [sceneNumberById[id] ?? id, ""]),
                             },
-                          ]),
-                          filename: pdfFilename(project?.name ?? "project", `${el.category}-${el.name}`),
+                          ], "wardrobe"),
+                          filename: pdfFilename(project?.name ?? "project", `${el.category} ${el.name}`),
                         })}
                       />
                       <ed.RowActions id={el.id} />

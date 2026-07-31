@@ -102,6 +102,14 @@ shape `{ state, version }`. `partialize` strips only `aiJobs` (transient).
 
 ## 4. Screenplay ingest (`src/lib/script.ts` + `pdf.ts` + `pdf-lines.ts`)
 
+> **`Scene.scriptText` is not decoration.** The parser stores each scene's own
+> slice of the screenplay, and three places must show it, not just the
+> `INT./EXT.` heading: the Breakdown tab's **Scene Text** card
+> (`pages/Breakdown.tsx`), the per-scene share PDF (`buildEntityPdf` section
+> `{heading:"Script", text}`), and the printed breakdown sheets
+> (`printBreakdownSheets`, the `.script` block). A breakdown sheet without the
+> scene on it is unusable on set.
+
 ### 4.1 PDF text extraction (`pdf.ts` + `pdf-lines.ts`)
 
 A PDF has no words/lines, only glyph runs at coordinates, and Arabic PDFs emit
@@ -618,15 +626,41 @@ schema, not a bespoke form.
 
 ## 24. Universal share/export layer (`lib/pdfExport.ts`, `lib/share.ts`, `ui/ShareMenu.tsx`)
 
+### 24.0 One document layer — branding, colour, file names (`lib/reports.ts`)
+`reports.ts` is the dependency-free module, so the shared document rules live
+there and **every** export path imports them (never the reverse):
+- `BRAND_FOOTER` — `"Made with Scene Trackable powered by Over Exposure
+  Productions"`. **Required on the bottom of every document the app generates**
+  — jsPDF PDFs (`pdfExport.ts`), every print window (`printReport`,
+  `printScheduleDocument`, `printBreakdownSheets`, `printCallSheet`).
+- `accentHex(kind)` — per-document accent (scenes indigo, cast pink, schedule
+  teal, budget amber…). Drives the header band/rule and the table head fill, so
+  document type is readable at a glance.
+- `statusTone(cell)` / `TONE_CSS` / `TONE_STYLE` / `toneClass(cell)` — the cell
+  colour coding: green done/confirmed, amber pending, red problem, blue
+  informational. One definition, used by the print HTML (CSS classes) and by
+  jsPDF (`didParseCell` fill/text colours). `COLOR_KEY` prints the legend.
+- `exportFilename(projectTitle, kind, ext)` → `Sample-Film_Scene-Breakdown_
+  2026-07-31.pdf`. **ASCII, title-cased, always English** — the old `slug()`
+  helpers dropped every non-Latin character, so an Arabic project title
+  produced files literally named `-schedule-2026-01-01.csv`. All the old
+  per-module `slug()` copies are gone; `pdfFilename` wraps this.
+
 - **Real PDF generation** (`lib/pdfExport.ts`) is new: previously "PDF export"
   meant a browser print window (`reports.ts printReport`, still there,
   unchanged, still used by the Reports page's own "PDF" button). This module
   uses `jspdf` + `jspdf-autotable` to build an actual `.pdf` `Blob`/`File`.
-  - `buildTablePdf(title, subtitle, table: ReportTable)` — reuses the same
-    `ReportTable` shape `reports.ts` already produces, so a report has one
-    definition and three output paths (CSV, print, real PDF).
-  - `buildEntityPdf(title, subtitle, sections)` — single-record detail sheets
-    (a scene, a location, a cast member, a wardrobe piece, an asset).
+  - `buildTablePdf(title, subtitle, table: ReportTable, kind?)` — reuses the
+    same `ReportTable` shape `reports.ts` already produces, so a report has one
+    definition and three output paths (CSV, print, real PDF). **Theme `"grid"`
+    with an explicit `lineWidth`/`lineColor`** — the default theme drew no row
+    borders at all, which is what made these read as unformatted mush. Tables
+    with more than 7 columns switch to **A4 landscape automatically**.
+  - `buildEntityPdf(title, subtitle, sections, kind?)` — single-record detail
+    sheets (a scene, a location, a cast member, a wardrobe piece, an asset).
+    A section is `{heading, rows?, text?}`: `rows` is a bordered label/value
+    table, **`text` is a wrapped monospace block** — that's how a scene's
+    `scriptText` gets into its PDF (§4.2), and it paginates line by line.
   - `downloadPdf`/`pdfBlob`/`pdfFilename`.
 - **WhatsApp share** (`lib/share.ts`): `whatsappUrl(text)` /
   `openWhatsAppShare(text)` build the public click-to-chat link
@@ -741,6 +775,9 @@ format. Both are built from the same store slices the strip board reads, so
 - **Counts are measured, never estimated** — same rule as `metrics.ts`. Crew is
   the real crew-list length, cast is the distinct cast actually in that block's
   scenes; anything unmeasurable renders `—`.
+- Both documents now use the shared §24.0 layer: accent-coloured head band,
+  bordered cells, tone-tinted status values, the colour key and `BRAND_FOOTER`
+  at the foot, `exportFilename` for the CSV name.
 - **CSV** (`exportScheduleCSV`) is a true download and reuses `reports.ts`'s
   `tableToCSV` — which prepends a UTF-8 BOM, the thing that makes Arabic open
   correctly in Excel. The location schedule appends its summary block below the
@@ -786,6 +823,10 @@ format. Both are built from the same store slices the strip board reads, so
 | Scene shows as scheduled but "not shot" won't clear | `shotStatus` lives on `Scene`, independent of `ShootDay.scenes` — moving a scene between days doesn't change it |
 | AI continuity move looks wrong or got rejected | `validateContinuityMoves` in `lib/continuity.ts` — check location lock dates / principal-photography window first |
 | Arabic comes out as disconnected/reversed letters in a PDF | jsPDF can't shape Arabic — use the print-window path, §26 |
+| A PDF/print table has no row borders | `tableOptions` `pdfExport.ts` (theme `grid`) / the `th, td` rule in the print CSS, §24.0 |
+| Exported file is named `-report-2026-01-01.csv` | a `slug()` copy sneaked back in — use `exportFilename`, §24.0 |
+| Colour coding missing when printed | the print dialog's "Background graphics" is off; the CSS already sets `print-color-adjust: exact` |
+| Brand line missing from a new document | it didn't use `BRAND_FOOTER` — every generated document must, §24.0 |
 | Shoot day dates wrong / off by one | `alignShootDayDates` + `addDaysIso` (UTC-based on purpose), §7.1 |
 | Exported schedule disagrees with the strip board | It can't — both read the same store slices; check the `data` memo's slice list in `ScheduleDocuments` |
 | Post-production dates look like they overlap the shoot | They're meant to — `postProductionStart` is independent of wrap, §7.1 |

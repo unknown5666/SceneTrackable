@@ -77,9 +77,10 @@ export const HANDBOOK: HandbookDoc[] = [
     summary: "Edit every scene's elements, filter by day/night, INT/EXT, cast and more.",
     iconKey: "film",
     route: "/breakdown",
-    keywords: "scenes elements edit filter chips inspector props wardrobe",
+    keywords: "scenes elements edit filter chips inspector props wardrobe script text",
     body: [
       "The Breakdown page is the editable heart of the production. Pick a scene on the left; edit its heading, notes and every element on the right. Elements are color-coded by category everywhere they appear.",
+      "Under the heading sits the Scene Text card — the scene exactly as it reads in the script, not just its INT./EXT. line. Collapse it with Hide when you want the elements table higher up. Scenes typed in by hand show a note instead, since there is no imported text for them.",
       "Filter chips narrow the scene list by INT/EXT, time of day, location, cast and shoot date.",
     ],
     steps: [
@@ -90,7 +91,7 @@ export const HANDBOOK: HandbookDoc[] = [
     ],
     tips: [
       "Press J / K to move to the next / previous scene.",
-      "Export the whole breakdown to CSV or printable sheets from the header.",
+      "Export the whole breakdown to CSV or printable sheets from the header — the printed sheets and the share PDF both carry the scene text.",
     ],
   },
   {
@@ -318,6 +319,33 @@ export const HANDBOOK: HandbookDoc[] = [
     steps: [
       "Choose a report and review its preview.",
       "Download the CSV, print the styled sheet, or use the share icon for WhatsApp / a real PDF.",
+    ],
+    tips: ["Every generated document follows the rules in Documents, PDFs & file names."],
+  },
+  {
+    id: "documents",
+    title: "Documents, PDFs & file names",
+    summary: "How every PDF, print sheet and CSV this app produces is built.",
+    iconKey: "file-text",
+    route: "/reports",
+    keywords:
+      "pdf print export file name filename borders colour color code legend footer branding paperwork document a4 landscape",
+    body: [
+      "Every document the app generates — reports, breakdown sheets, call sheets, the schedule documents, and the single-record PDFs behind each share icon — comes out of one shared layer, so they all look like they belong to the same production.",
+      "Tables are fully ruled: every row and every cell has a visible border, the header band is the document's own colour, and rows alternate shading. Wide reports switch to A4 landscape automatically so ten columns don't get squeezed into slivers.",
+      "Colour coding is consistent everywhere. The header band tells you what kind of document you're holding — scenes indigo, elements/wardrobe violet, cast pink, DOOD crimson, schedule teal, calendar blue, locations green, budget/invoices amber, tasks blue, drones/camera slate. Inside the table, status values are tinted: green means done or confirmed, amber means pending or in progress, red means a problem or not done, blue is informational (shoot, off day, INT/EXT, day/night). The same key is printed at the bottom of the document.",
+      "Every file is named in English: Production-Name_Document-Name_YYYY-MM-DD. A production titled in Arabic (or any non-Latin script) still exports as a readable English file name instead of an empty one.",
+      "The bottom of every generated document carries: Made with Scene Trackable powered by Over Exposure Productions — plus page numbers on real PDFs.",
+      "The two schedule documents and the Arabic-heavy sheets go through the browser's print engine rather than the PDF generator, because that is the only path that shapes and orders Arabic correctly. Choose 'Save as PDF' in the print dialog, and leave 'Background graphics' on so the colour coding prints.",
+    ],
+    steps: [
+      "Hit any Download PDF, Print or CSV button — Reports, Schedule → Documents, Breakdown sheets, or a share icon.",
+      "For print-window documents, pick Save as PDF as the destination and enable Background graphics.",
+      "Check the colour key at the foot of the page if a tint is unclear.",
+    ],
+    tips: [
+      "Breakdown documents include the scene's script text, not just the heading — the sheet is usable on set.",
+      "CSV keeps its UTF-8 marker so Arabic columns open correctly in Excel.",
     ],
   },
   {

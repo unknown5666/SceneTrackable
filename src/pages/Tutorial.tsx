@@ -29,6 +29,7 @@ import {
   Cloud,
   Settings as SettingsIcon,
 } from "lucide-react";
+import { FileText } from "lucide-react";
 import { useStore } from "@/state/store";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -55,6 +56,7 @@ const ICONS: Record<string, React.ReactNode> = {
   "list-checks": <ListChecks size={16} />,
   "dollar-sign": <DollarSign size={16} />,
   "file-bar-chart": <FileBarChart size={16} />,
+  "file-text": <FileText size={16} />,
   bell: <Bell size={16} />,
   shield: <Shield size={16} />,
   cloud: <Cloud size={16} />,

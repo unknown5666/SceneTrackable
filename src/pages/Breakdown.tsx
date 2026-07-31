@@ -62,6 +62,7 @@ export function Breakdown() {
     if (!scenes.find((s) => s.id === selectedSceneId)) setSelectedSceneId(scenes[0]?.id ?? "");
   }, [scenes, selectedSceneId]);
 
+  const [scriptOpen, setScriptOpen] = useState(true);
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState("");
@@ -512,22 +513,33 @@ export function Breakdown() {
                   <ShareMenu
                     buildText={() => buildSceneShareText(scene, project?.name ?? "Production")}
                     buildPdf={() => ({
-                      doc: buildEntityPdf(`Scene ${scene.number}`, `${scene.intExt}. ${scene.location} — ${scene.timeOfDay}`, [
-                        {
-                          heading: "Scene",
-                          rows: [
-                            ["Synopsis", scene.synopsis || "—"],
-                            ["Pages", String(scene.pages)],
-                            ["Est. minutes", String(scene.estimatedShootMinutes)],
-                            ["Status", scene.shotStatus === "shot" ? "Shot" : "Not shot"],
-                          ],
-                        },
-                        {
-                          heading: `Elements (${scene.elements.length})`,
-                          rows: scene.elements.map((el) => [el.category, el.name]),
-                        },
-                      ]),
-                      filename: pdfFilename(project?.name ?? "project", `scene-${scene.number}`),
+                      doc: buildEntityPdf(
+                        `Scene ${scene.number}`,
+                        `${scene.intExt}. ${scene.location} — ${scene.timeOfDay}`,
+                        [
+                          {
+                            heading: "Scene",
+                            rows: [
+                              ["Synopsis", scene.synopsis || "—"],
+                              ["Pages", String(scene.pages)],
+                              ["Est. minutes", String(scene.estimatedShootMinutes)],
+                              ["Status", scene.shotStatus === "shot" ? "Shot" : "Not shot"],
+                            ],
+                          },
+                          // The scene itself, not just its heading — a breakdown
+                          // sheet is unusable on set without the text.
+                          {
+                            heading: "Script",
+                            text: scene.scriptText?.trim() || "No script text captured for this scene.",
+                          },
+                          {
+                            heading: `Elements (${scene.elements.length})`,
+                            rows: scene.elements.map((el) => [el.category, el.name] as [string, string]),
+                          },
+                        ],
+                        "scene"
+                      ),
+                      filename: pdfFilename(project?.name ?? "project", `Scene ${scene.number}`),
                     })}
                   />
                 </div>
@@ -538,6 +550,36 @@ export function Breakdown() {
                   className="w-full text-xs h-16 resize-none"
                   readOnly={!writable}
                 />
+              </Card>
+
+              {/* The scene itself — the heading alone is not a breakdown. */}
+              <Card padding="none">
+                <div className="p-4 pb-2 flex items-center justify-between gap-3">
+                  <CardHeader
+                    title="Scene Text"
+                    subtitle={
+                      scene.scriptText?.trim()
+                        ? `${scene.scriptText.trim().split(/\s+/).length} words · as parsed from the script`
+                        : "No script text captured for this scene"
+                    }
+                    className="mb-0"
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setScriptOpen((v) => !v)}
+                  >
+                    {scriptOpen ? "Hide" : "Show"}
+                  </Button>
+                </div>
+                {scriptOpen && (
+                  <div className="px-4 pb-4">
+                    <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap break-words rounded-md border border-[var(--border-default)] bg-[var(--bg-base)] p-3 font-mono text-xs leading-relaxed text-[var(--text-primary)]">
+                      {scene.scriptText?.trim() ||
+                        "This scene was created or edited by hand, or the script text was not captured on import."}
+                    </pre>
+                  </div>
+                )}
               </Card>
 
               {/* Elements editable table */}

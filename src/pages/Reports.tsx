@@ -181,8 +181,8 @@ export function Reports() {
                       buildReportShareText(def.title, def.build(data).rows.length, project?.name ?? "Production")
                     }
                     buildPdf={() => ({
-                      doc: buildTablePdf(def.title, project?.name ?? "Production", def.build(data)),
-                      filename: pdfFilename(project?.name ?? "project", def.id),
+                      doc: buildTablePdf(def.title, project?.name ?? "Production", def.build(data), def.id),
+                      filename: pdfFilename(project?.name ?? "project", def.title),
                     })}
                   />
                 )}
@@ -238,8 +238,13 @@ export function Reports() {
                   )
                 }
                 buildPdf={() => ({
-                  doc: buildTablePdf(previewTable.def.title, project?.name ?? "Production", previewTable.table),
-                  filename: pdfFilename(project?.name ?? "project", previewTable.def.id),
+                  doc: buildTablePdf(
+                    previewTable.def.title,
+                    project?.name ?? "Production",
+                    previewTable.table,
+                    previewTable.def.id
+                  ),
+                  filename: pdfFilename(project?.name ?? "project", previewTable.def.title),
                 })}
               />
             </div>

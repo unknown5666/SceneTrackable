@@ -1,6 +1,15 @@
 import type { ProductionData, Scene, ShootDay } from "@/types";
 import type { ReportTable } from "@/lib/reports";
-import { tableToCSV, triggerDownload } from "@/lib/reports";
+import {
+  BRAND_FOOTER,
+  COLOR_KEY,
+  TONE_STYLE,
+  accentHex,
+  exportFilename,
+  tableToCSV,
+  toneClass,
+  triggerDownload,
+} from "@/lib/reports";
 import { dayLocations } from "@/lib/locations";
 import { addDaysIso } from "@/lib/utils";
 
@@ -321,9 +330,6 @@ export const SCHEDULE_EXPORTS: ScheduleExportDef[] = [
   },
 ];
 
-const slug = (s: string) =>
-  s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-
 export function exportScheduleCSV(def: ScheduleExportDef, d: ProductionData) {
   const table = def.build(d);
   const rows = def.summary
@@ -341,9 +347,8 @@ export function exportScheduleCSV(def: ScheduleExportDef, d: ProductionData) {
         ],
       }
     : table;
-  const stamp = new Date().toISOString().slice(0, 10);
   triggerDownload(
-    `${slug(d.production.title || "project")}-${slug(def.id)}-${stamp}.csv`,
+    exportFilename(d.production.title, def.title, "csv"),
     tableToCSV(rows),
     "text/csv;charset=utf-8"
   );
@@ -370,9 +375,15 @@ export function printScheduleDocument(def: ScheduleExportDef, d: ProductionData)
   const table = def.build(d);
   const title = d.production.title || "Production";
   const generated = new Date().toLocaleString();
+  const accent = accentHex(def.id);
   const head = table.columns.map((c) => `<th>${escapeHTML(c)}</th>`).join("");
   const body = table.rows
-    .map((row) => `<tr>${row.map((c) => `<td>${escapeHTML(c)}</td>`).join("")}</tr>`)
+    .map(
+      (row) =>
+        `<tr>${row
+          .map((c) => `<td${toneClass(c)}>${escapeHTML(c)}</td>`)
+          .join("")}</tr>`
+    )
     .join("");
   const summary = def.summary
     ? `<table class="summary"><tbody>${def
@@ -389,19 +400,26 @@ export function printScheduleDocument(def: ScheduleExportDef, d: ProductionData)
   )} — ${escapeHTML(def.arabicTitle)}</title><style>
     * { box-sizing: border-box; }
     body { font-family: "Segoe UI", Tahoma, "Noto Naskh Arabic", Arial, sans-serif; color: #111; margin: 24px; }
-    header { border-bottom: 2px solid #111; padding-bottom: 12px; margin-bottom: 16px; }
+    header { border-bottom: 3px solid ${accent}; padding-bottom: 12px; margin-bottom: 16px; }
     h1 { font-size: 18px; margin: 0; }
-    h2 { font-size: 14px; font-weight: 600; margin: 4px 0 0; color: #555; }
+    h2 { font-size: 14px; font-weight: 600; margin: 4px 0 0; color: ${accent}; }
     .meta { font-size: 11px; color: #888; margin-top: 6px; }
     table { width: 100%; border-collapse: collapse; font-size: 10px; table-layout: fixed; }
-    th, td { border: 1px solid #ccc; padding: 4px 6px; text-align: right; vertical-align: top; word-wrap: break-word; }
-    th { background: #f2f2f2; font-weight: 600; font-size: 9px; }
-    tr:nth-child(even) td { background: #fafafa; }
+    th, td { border: 1px solid #9aa0a6; padding: 5px 6px; text-align: right; vertical-align: top; word-wrap: break-word; }
+    th { background: ${accent}; color: #fff; font-weight: 700; font-size: 9px; border-color: ${accent}; }
+    tbody tr:nth-child(even) td { background: #f4f5f7; }
+    ${TONE_STYLE}
     table.summary { width: auto; margin-top: 18px; font-size: 11px; }
-    table.summary th { text-align: right; background: #f2f2f2; }
-    footer { margin-top: 20px; font-size: 10px; color: #aaa; }
+    table.summary th { text-align: right; background: #eef0f3; color: #111; border-color: #9aa0a6; }
+    .key { margin-top: 12px; font-size: 9px; color: #666; }
+    footer { margin-top: 8px; font-size: 10px; color: #666; border-top: 1px solid #ddd; padding-top: 8px; }
     @page { size: A4 landscape; margin: 10mm; }
-    @media print { body { margin: 0; } }
+    @media print {
+      body { margin: 0; }
+      thead { display: table-header-group; }
+      tr { break-inside: avoid; }
+      th, td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
   </style></head><body>
     <header>
       <h1>${escapeHTML(title)}</h1>
@@ -410,7 +428,8 @@ export function printScheduleDocument(def: ScheduleExportDef, d: ProductionData)
     </header>
     <table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>
     ${summary}
-    <footer>SceneTrackable · Built by OverExposure Productions</footer>
+    <div class="key">${escapeHTML(COLOR_KEY)}</div>
+    <footer>${escapeHTML(BRAND_FOOTER)}</footer>
     <script>window.onload = function () { window.print(); };<\/script>
   </body></html>`;
 

@@ -173,8 +173,8 @@ export function CastPortal() {
                                 heading: `Scenes (${c.scenes.length})`,
                                 rows: c.scenes.map((id) => [sceneNumberById[id] ?? id, ""]),
                               },
-                            ]),
-                            filename: pdfFilename(project?.name ?? "project", `cast-${c.name}`),
+                            ], "cast"),
+                            filename: pdfFilename(project?.name ?? "project", `Cast ${c.name}`),
                           })}
                         />
                         {canManage && (

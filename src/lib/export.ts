@@ -7,6 +7,7 @@ import type { ProductionData, Project, Scene } from "@/types";
 import { demoDigest, type ProposedCallSheet } from "@/lib/claude";
 import { buildDigestInput } from "@/lib/metrics";
 import { blankData } from "@/state/store";
+import { BRAND_FOOTER, accentHex, exportFilename } from "@/lib/reports";
 
 const STORE_KEY = "scenetrackable-v1";
 
@@ -60,10 +61,6 @@ export function downloadText(filename: string, content: string, mime = "text/pla
   URL.revokeObjectURL(url);
 }
 
-function slug(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "project";
-}
-
 function esc(s: string | undefined | null): string {
   return String(s ?? "")
     .replace(/&/g, "&amp;")
@@ -98,7 +95,11 @@ export function exportBreakdownCSV(projectName: string, scenes: Scene[]): void {
       ]);
     }
   }
-  downloadText(`${slug(projectName)}-breakdown.csv`, toCSV(rows), "text/csv");
+  downloadText(
+    exportFilename(projectName, "Script Breakdown", "csv"),
+    toCSV(rows),
+    "text/csv"
+  );
 }
 
 // ------------------------------------------------------------
@@ -149,7 +150,12 @@ export function printBreakdownSheets(projectName: string, scenes: Scene[]): void
           <h2>Scene ${esc(sc.number)} · ${esc(sc.intExt)}. ${esc(sc.location)} — ${esc(sc.timeOfDay)}</h2>
           <div class="meta">${sc.pages} pages · est. ${sc.estimatedShootMinutes} min${sc.synopsis ? ` · ${esc(sc.synopsis)}` : ""}</div>
         </header>
+        <div class="script">
+          <h3>Scene ${esc(sc.number)} — script</h3>
+          <pre>${esc(sc.scriptText?.trim()) || "No script text captured for this scene."}</pre>
+        </div>
         <div class="grid">${boxes || "<div class='box empty'>No elements recorded for this scene.</div>"}</div>
+        <footer class="brand">${esc(BRAND_FOOTER)}</footer>
       </section>`;
     })
     .join("");
@@ -171,7 +177,15 @@ export function printBreakdownSheets(projectName: string, scenes: Scene[]): void
     .box h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-bottom: 6px; }
     .box ul { list-style: none; font-size: 12px; line-height: 1.5; }
     .box.empty { grid-column: span 2; color: #777; font-size: 12px; border-style: dashed; }
-    @media print { .sheet { padding: 0 0 24px; } }
+    /* The scene itself — a breakdown sheet without the text is just a heading. */
+    .script { border: 1px solid #999; border-left: 4px solid ${accentHex("breakdown")}; padding: 8px 10px; margin-bottom: 12px; break-inside: avoid; }
+    .script h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: ${accentHex("breakdown")}; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-bottom: 6px; }
+    .script pre { font-family: 'Courier New', Courier, monospace; font-size: 11px; line-height: 1.45; white-space: pre-wrap; word-wrap: break-word; }
+    footer.brand { margin-top: 14px; border-top: 1px solid #ddd; padding-top: 6px; font-size: 9px; color: #777; }
+    @media print {
+      .sheet { padding: 0 0 24px; }
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
   </style></head><body>${pages}</body></html>`;
 
   const w = window.open("", "_blank");
@@ -237,6 +251,7 @@ export function printCallSheet(
     ul { font-size: 12px; line-height: 1.6; margin-left: 18px; }
     .advance { font-size: 12px; color: #333; margin-top: 8px; }
     .ai-note { margin-top: 22px; font-size: 10px; color: #888; border-top: 1px solid #eee; padding-top: 8px; }
+    footer.brand { margin-top: 10px; border-top: 1px solid #ddd; padding-top: 6px; font-size: 9px; color: #777; }
   </style></head><body>
     <header>
       <div class="prod">${esc(projectName)} — Call Sheet</div>
@@ -261,6 +276,7 @@ export function printCallSheet(
     ${sheet.advanceSchedule ? `<h2>Advance Schedule</h2><div class="advance">${esc(sheet.advanceSchedule)}</div>` : ""}
 
     <div class="ai-note">AI-drafted call sheet — review every time, cast and department detail against the DOOD and contacts before distribution.</div>
+    <footer class="brand">${esc(BRAND_FOOTER)}</footer>
   </body></html>`;
 
   openPrintWindow(html, "the call sheet");
@@ -388,7 +404,11 @@ export function exportProject(projectId?: string): string | null {
     project: found.project,
     data: found.data,
   };
-  downloadText(`${slug(found.project.name)}-project.json`, JSON.stringify(payload, null, 2), "application/json");
+  downloadText(
+    exportFilename(found.project.name, "Project Backup", "json"),
+    JSON.stringify(payload, null, 2),
+    "application/json"
+  );
   return null;
 }
 

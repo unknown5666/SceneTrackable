@@ -332,9 +332,10 @@ export function Drones() {
                                   ["Booked", d.assignedShootDay ? `Day ${d.assignedShootDay}` : "—"],
                                 ],
                               },
-                            ]
+                            ],
+                            "drone"
                           ),
-                          filename: pdfFilename(project?.name ?? "project", `drone-${d.model}`),
+                          filename: pdfFilename(project?.name ?? "project", `Drone ${d.model}`),
                         })}
                       />
                       <ed.RowActions id={d.id} />

@@ -366,6 +366,111 @@ export const getReport = (id: ReportId): ReportDef | undefined =>
   REPORTS.find((r) => r.id === id);
 
 // ------------------------------------------------------------
+// Branding, colour coding and file naming
+//
+// Shared by EVERY export path (CSV, the print-to-PDF windows and the jsPDF
+// builders in lib/pdfExport.ts) so a document looks the same and is named the
+// same wherever it was generated from. These live here, not in pdfExport.ts,
+// because reports.ts is the module with no dependencies — pdfExport imports
+// from here, never the other way round.
+// ------------------------------------------------------------
+
+/** Required on the bottom of every document this application generates. */
+export const BRAND_FOOTER =
+  "Made with Scene Trackable powered by Over Exposure Productions";
+
+/** Human-readable key for the cell tinting below — printed under every table. */
+export const COLOR_KEY =
+  "Colour key — green: done / confirmed · amber: pending / in progress · red: problem / not done · blue: informational";
+
+/**
+ * Accent colour per document kind. The header band, the rule under the title
+ * and the table head all use it, so you can tell a budget sheet from a
+ * schedule from across the room.
+ */
+const ACCENTS: Record<string, string> = {
+  scene: "#4f46e5",
+  element: "#7c3aed",
+  cast: "#db2777",
+  dood: "#be123c",
+  wardrobe: "#7c3aed",
+  art: "#7c3aed",
+  schedule: "#0d9488",
+  calendar: "#0284c7",
+  location: "#16a34a",
+  budget: "#b45309",
+  invoice: "#b45309",
+  task: "#2563eb",
+  drone: "#475569",
+  camera: "#475569",
+  call: "#0f766e",
+  breakdown: "#4f46e5",
+};
+
+/** Accent for a report id, document id or free-form kind ("scene-12A"). */
+export function accentHex(kind: string): string {
+  const k = kind.toLowerCase();
+  for (const key of Object.keys(ACCENTS)) if (k.includes(key)) return ACCENTS[key];
+  return "#1f2937";
+}
+
+export type StatusTone = "good" | "warn" | "bad" | "info" | null;
+
+const TONE_WORDS: { tone: Exclude<StatusTone, null>; re: RegExp }[] = [
+  {
+    tone: "good",
+    re: /^(yes|shot|done|complete|completed|confirmed|approved|secured|locked|paid|reconciled|active|available|delivered|w|sw|wf|swf)$/i,
+  },
+  {
+    tone: "warn",
+    re: /^(pending|in progress|processing|on hold|hold|h|draft|requested|partial|uploaded|prep|tentative|not shot|todo|scouting)$/i,
+  },
+  {
+    tone: "bad",
+    re: /^(no|overdue|blocked|error|rejected|denied|cancelled|canceled|unavailable|missing|urgent|critical|high)$/i,
+  },
+  { tone: "info", re: /^(shoot|off day|travel|t|post|day|night|d \+ n|int|ext|int\+ext)$/i },
+];
+
+/** Tone for one cell value — drives the background tint in every export. */
+export function statusTone(value: string): StatusTone {
+  const v = value.trim();
+  if (!v || v.length > 24) return null;
+  for (const t of TONE_WORDS) if (t.re.test(v)) return t.tone;
+  return null;
+}
+
+export const TONE_CSS: Record<Exclude<StatusTone, null>, { bg: string; fg: string }> = {
+  good: { bg: "#dcfce7", fg: "#166534" },
+  warn: { bg: "#fef3c7", fg: "#92400e" },
+  bad: { bg: "#fee2e2", fg: "#991b1b" },
+  info: { bg: "#e0f2fe", fg: "#075985" },
+};
+
+/**
+ * ASCII, title-cased name part. An Arabic (or any non-Latin) project title
+ * would otherwise slug down to an empty string and produce files called
+ * "-schedule-2026-01-01.csv"; every exported file is named in English.
+ */
+function asciiName(s: string): string {
+  return (s || "")
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^A-Za-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w[0].toUpperCase() + w.slice(1))
+    .join("-");
+}
+
+/** `Sample-Film_Scene-Breakdown_2026-07-31.pdf` — always English, always dated. */
+export function exportFilename(projectTitle: string, kind: string, ext: string): string {
+  const stamp = new Date().toISOString().slice(0, 10);
+  return `${asciiName(projectTitle) || "Production"}_${asciiName(kind) || "Export"}_${stamp}.${ext}`;
+}
+
+// ------------------------------------------------------------
 // CSV serialization + download
 // ------------------------------------------------------------
 
@@ -384,9 +489,6 @@ export function tableToCSV(table: ReportTable): string {
   return "﻿" + lines.join("\r\n");
 }
 
-const slug = (s: string) =>
-  s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-
 export function triggerDownload(filename: string, content: string, mime: string) {
   const blob = new Blob([content], { type: mime });
   const url = URL.createObjectURL(blob);
@@ -402,9 +504,11 @@ export function triggerDownload(filename: string, content: string, mime: string)
 export function exportReportCSV(def: ReportDef, d: ProductionData) {
   const table = def.build(d);
   const csv = tableToCSV(table);
-  const stamp = new Date().toISOString().slice(0, 10);
-  const name = `${slug(d.production.title || "project")}-${def.id}-${stamp}.csv`;
-  triggerDownload(name, csv, "text/csv;charset=utf-8");
+  triggerDownload(
+    exportFilename(d.production.title, def.title, "csv"),
+    csv,
+    "text/csv;charset=utf-8"
+  );
 }
 
 // ------------------------------------------------------------
@@ -418,15 +522,29 @@ const escapeHTML = (s: string) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 
+/** Tone class for a body cell — the shared colour coding, as a CSS class. */
+export const toneClass = (cell: string): string => {
+  const tone = statusTone(cell);
+  return tone ? ` class="t-${tone}"` : "";
+};
+
+/** The `<style>` rules for tone tinting, shared by every print document. */
+export const TONE_STYLE = (Object.keys(TONE_CSS) as Exclude<StatusTone, null>[])
+  .map((t) => `td.t-${t} { background: ${TONE_CSS[t].bg} !important; color: ${TONE_CSS[t].fg}; font-weight: 600; }`)
+  .join("\n    ");
+
 export function printReport(def: ReportDef, d: ProductionData, narration?: string) {
   const table = def.build(d);
   const title = d.production.title || "Production";
+  const accent = accentHex(def.id);
   const generated = new Date().toLocaleString();
   const head = table.columns.map((c) => `<th>${escapeHTML(c)}</th>`).join("");
   const body = table.rows
     .map(
       (row) =>
-        `<tr>${row.map((cell) => `<td>${escapeHTML(cell)}</td>`).join("")}</tr>`
+        `<tr>${row
+          .map((cell) => `<td${toneClass(cell)}>${escapeHTML(cell)}</td>`)
+          .join("")}</tr>`
     )
     .join("");
 
@@ -435,18 +553,25 @@ export function printReport(def: ReportDef, d: ProductionData, narration?: strin
   )} — ${escapeHTML(def.title)}</title><style>
     * { box-sizing: border-box; }
     body { font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; color: #111; margin: 32px; }
-    header { border-bottom: 2px solid #111; padding-bottom: 12px; margin-bottom: 16px; }
+    header { border-bottom: 3px solid ${accent}; padding-bottom: 12px; margin-bottom: 16px; }
     h1 { font-size: 18px; margin: 0; }
-    h2 { font-size: 14px; font-weight: 600; margin: 4px 0 0; color: #555; }
+    h2 { font-size: 14px; font-weight: 600; margin: 4px 0 0; color: ${accent}; }
     .meta { font-size: 11px; color: #888; margin-top: 6px; }
-    .summary { font-size: 12px; line-height: 1.5; margin: 0 0 16px; padding: 10px 12px; background: #f7f7f9; border-left: 3px solid #666; }
+    .summary { font-size: 12px; line-height: 1.5; margin: 0 0 16px; padding: 10px 12px; background: #f7f7f9; border-left: 3px solid ${accent}; }
     .summary h3 { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: #666; margin: 0 0 4px; }
     table { width: 100%; border-collapse: collapse; font-size: 11px; }
-    th, td { border: 1px solid #ccc; padding: 5px 7px; text-align: left; vertical-align: top; }
-    th { background: #f2f2f2; font-weight: 600; }
-    tr:nth-child(even) td { background: #fafafa; }
-    footer { margin-top: 20px; font-size: 10px; color: #aaa; }
-    @media print { body { margin: 12mm; } }
+    th, td { border: 1px solid #9aa0a6; padding: 5px 7px; text-align: left; vertical-align: top; }
+    th { background: ${accent}; color: #fff; font-weight: 700; border-color: ${accent}; }
+    tbody tr:nth-child(even) td { background: #f4f5f7; }
+    ${TONE_STYLE}
+    .key { margin-top: 14px; font-size: 9px; color: #666; }
+    footer { margin-top: 8px; font-size: 10px; color: #666; border-top: 1px solid #ddd; padding-top: 8px; }
+    @media print {
+      body { margin: 12mm; }
+      thead { display: table-header-group; }
+      tr { break-inside: avoid; }
+      th, td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
   </style></head><body>
     <header>
       <h1>${escapeHTML(title)}</h1>
@@ -461,7 +586,8 @@ export function printReport(def: ReportDef, d: ProductionData, narration?: strin
         : ""
     }
     <table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>
-    <footer>SceneTrackable · Built by OverExposure Productions</footer>
+    <div class="key">${escapeHTML(COLOR_KEY)}</div>
+    <footer>${escapeHTML(BRAND_FOOTER)}</footer>
   </body></html>`;
 
   const win = window.open("", "_blank");

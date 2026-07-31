@@ -269,8 +269,8 @@ function LocationDetail({
                 heading: `Scenes (${scenes.length})`,
                 rows: scenes.map((s) => [s.number, `${s.intExt}. ${s.timeOfDay} — ${s.synopsis}`]),
               },
-            ]),
-            filename: pdfFilename(projectName, `location-${loc.name}`),
+            ], "location"),
+            filename: pdfFilename(projectName, `Location ${loc.name}`),
           })}
         />
         {onScout && (
