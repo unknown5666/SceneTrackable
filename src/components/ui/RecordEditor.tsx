@@ -387,6 +387,8 @@ const COLLECTION_PAGE: Record<RecordCollection, string> = {
   checklists: "camera",
   artElements: "art",
   continuityPhotos: "art",
+  vendors: "budget",
+  invoices: "invoices",
 };
 
 export interface RecordEditor {

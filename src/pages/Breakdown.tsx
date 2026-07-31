@@ -31,6 +31,9 @@ import { exportBreakdownCSV, printBreakdownSheets } from "@/lib/export";
 import { CATEGORY_META, CATEGORY_ORDER as CATEGORIES } from "@/lib/breakdownVisuals";
 import { HelpButton } from "@/components/ui/HelpButton";
 import { SceneHeading } from "@/components/ui/SceneHeading";
+import { ShareMenu } from "@/components/ui/ShareMenu";
+import { buildEntityPdf, pdfFilename } from "@/lib/pdfExport";
+import { buildSceneShareText } from "@/lib/share";
 import type { ElementCategory, BreakdownElement } from "@/types";
 const INT_EXT: ("INT" | "EXT" | "INT/EXT")[] = ["INT", "EXT", "INT/EXT"];
 const TIMES: ("DAY" | "NIGHT" | "DAWN" | "DUSK")[] = ["DAY", "NIGHT", "DAWN", "DUSK"];
@@ -506,6 +509,27 @@ export function Breakdown() {
                   <span className="text-xs text-[var(--text-secondary)]">
                     {scene.pages} pg · ~{scene.estimatedShootMinutes}min
                   </span>
+                  <ShareMenu
+                    buildText={() => buildSceneShareText(scene, project?.name ?? "Production")}
+                    buildPdf={() => ({
+                      doc: buildEntityPdf(`Scene ${scene.number}`, `${scene.intExt}. ${scene.location} — ${scene.timeOfDay}`, [
+                        {
+                          heading: "Scene",
+                          rows: [
+                            ["Synopsis", scene.synopsis || "—"],
+                            ["Pages", String(scene.pages)],
+                            ["Est. minutes", String(scene.estimatedShootMinutes)],
+                            ["Status", scene.shotStatus === "shot" ? "Shot" : "Not shot"],
+                          ],
+                        },
+                        {
+                          heading: `Elements (${scene.elements.length})`,
+                          rows: scene.elements.map((el) => [el.category, el.name]),
+                        },
+                      ]),
+                      filename: pdfFilename(project?.name ?? "project", `scene-${scene.number}`),
+                    })}
+                  />
                 </div>
                 <textarea
                   value={scene.notes ?? ""}

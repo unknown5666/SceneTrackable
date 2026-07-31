@@ -23,7 +23,9 @@ export type RecordCollection =
   | "equipmentCheckouts"
   | "checklists"
   | "artElements"
-  | "continuityPhotos";
+  | "continuityPhotos"
+  | "vendors"
+  | "invoices";
 
 export type FieldType =
   | "text"
@@ -494,6 +496,47 @@ export const SCHEMAS: Record<RecordCollection, RecordSchema> = {
       { key: "takenAt", label: "Taken At", type: "date", required: true },
       { key: "caption", label: "Caption", type: "text", wide: true },
     ],
+  },
+
+  // ----------------------------------------------------------
+  vendors: {
+    singular: "Vendor",
+    idPrefix: "vnd",
+    entity: "purchase_order",
+    label: (r) => r.name,
+    fields: [
+      { key: "name", label: "Name", type: "text", required: true },
+      { key: "department", label: "Department", type: "select", optionsFrom: "departments", required: true },
+      { key: "contactName", label: "Contact", type: "text" },
+      { key: "contactPhone", label: "Contact Phone", type: "text" },
+      { key: "email", label: "Email", type: "text", placeholder: "vendor@example.com" },
+      { key: "notes", label: "Notes", type: "textarea", wide: true },
+    ],
+  },
+
+  // ----------------------------------------------------------
+  invoices: {
+    singular: "Invoice",
+    idPrefix: "inv",
+    entity: "purchase_order",
+    label: (r) => `${r.vendorName || "Invoice"} (${r.parsedTotal ?? "—"})`,
+    fields: [
+      { key: "department", label: "Department", type: "select", optionsFrom: "departments", required: true },
+      { key: "vendorName", label: "Vendor", type: "text" },
+      { key: "parsedDate", label: "Invoice Date", type: "date" },
+      { key: "parsedTotal", label: "Total", type: "number", step: 0.01, min: 0 },
+      {
+        key: "status",
+        label: "Status",
+        type: "select",
+        options: ["uploaded", "processing", "parsed", "reconciled", "error"],
+        default: "uploaded",
+      },
+    ],
+    // Upload/OCR/AI-parse fields (fileName, fileDataUrl, ocrText, parsedLineItems,
+    // uploadedBy/At) are written by the InvoicePortal flow, not this form — the
+    // generic editor here is only for post-parse corrections.
+    fromForm: (v, prev) => ({ ...prev, ...v }),
   },
 };
 

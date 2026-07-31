@@ -16,6 +16,9 @@ import {
   type ReportId,
 } from "@/lib/reports";
 import { HelpButton } from "@/components/ui/HelpButton";
+import { ShareMenu } from "@/components/ui/ShareMenu";
+import { buildTablePdf, pdfFilename } from "@/lib/pdfExport";
+import { buildReportShareText } from "@/lib/share";
 
 interface Narration {
   /** The report this describes — it must never be shown above another. */
@@ -172,6 +175,17 @@ export function Reports() {
                 >
                   PDF
                 </Button>
+                {!empty && (
+                  <ShareMenu
+                    buildText={() =>
+                      buildReportShareText(def.title, def.build(data).rows.length, project?.name ?? "Production")
+                    }
+                    buildPdf={() => ({
+                      doc: buildTablePdf(def.title, project?.name ?? "Production", def.build(data)),
+                      filename: pdfFilename(project?.name ?? "project", def.id),
+                    })}
+                  />
+                )}
               </div>
             </Card>
           );
@@ -215,6 +229,19 @@ export function Reports() {
               >
                 Print / PDF
               </Button>
+              <ShareMenu
+                buildText={() =>
+                  buildReportShareText(
+                    previewTable.def.title,
+                    previewTable.table.rows.length,
+                    project?.name ?? "Production"
+                  )
+                }
+                buildPdf={() => ({
+                  doc: buildTablePdf(previewTable.def.title, project?.name ?? "Production", previewTable.table),
+                  filename: pdfFilename(project?.name ?? "project", previewTable.def.id),
+                })}
+              />
             </div>
           </div>
 

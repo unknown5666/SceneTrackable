@@ -130,6 +130,8 @@ export interface ScriptCharacter {
   firstSceneNumber?: string;
 }
 
+export type SceneShotStatus = "shot" | "not_shot";
+
 export interface Scene {
   id: string;
   number: string; // e.g. "42A"
@@ -144,6 +146,8 @@ export interface Scene {
   vfxFlags: boolean;
   sfxFlags: boolean;
   notes?: string;
+  /** Absent means "not_shot" — every reader treats undefined as not-shot. */
+  shotStatus?: SceneShotStatus;
 }
 
 // ============================================================
@@ -312,6 +316,19 @@ export type POStatus =
   | "approved"
   | "rejected";
 
+export type InstallmentStatus = "pending" | "paid" | "overdue";
+
+/** One part-payment of a PO's total — a milestone/installment schedule. */
+export interface Installment {
+  id: string;
+  label: string; // e.g. "Deposit", "Milestone 2", "Final"
+  dueDate: string; // ISO
+  amount: number;
+  status: InstallmentStatus;
+  paidDate?: string;
+  paidAmount?: number;
+}
+
 export interface PurchaseOrder {
   id: string;
   number: string;
@@ -334,6 +351,8 @@ export interface PurchaseOrder {
     note?: string;
   }[];
   auditLog: { at: string; by: string; action: string }[];
+  /** Part-payment schedule against `amount`, when the vendor is paid in milestones. */
+  installments?: Installment[];
 }
 
 export interface PettyCashEntry {
@@ -345,6 +364,57 @@ export interface PettyCashEntry {
   department: DepartmentId;
   receiptFileId?: string;
   loggedBy: string;
+}
+
+// ============================================================
+// VENDORS & INVOICES
+// ============================================================
+
+/** A vendor/supplier a department buys from — referenced by invoices and POs. */
+export interface Vendor {
+  id: string;
+  name: string;
+  department: DepartmentId;
+  contactName?: string;
+  contactPhone?: string;
+  email?: string;
+  notes?: string;
+}
+
+export interface InvoiceLineItem {
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+}
+
+export type InvoiceStatus = "uploaded" | "processing" | "parsed" | "reconciled" | "error";
+
+/**
+ * A receipt/invoice uploaded through a department buyer portal. `fileDataUrl`
+ * is a small base64 data-URI (same convention as `imageUrl`/`FileEntry` —
+ * there is no real file-storage backend), OCR'd client-side, then structured
+ * by the AI on the "Process Invoice with AI" trigger.
+ */
+export interface Invoice {
+  id: string;
+  department: DepartmentId;
+  vendorId?: string;
+  vendorName?: string;
+  uploadedBy: string;
+  uploadedAt: string;
+  fileName: string;
+  fileDataUrl: string;
+  ocrText?: string;
+  status: InvoiceStatus;
+  parsedTotal?: number;
+  parsedDate?: string;
+  parsedLineItems?: InvoiceLineItem[];
+  parseError?: string;
+  /** Reconciliation only links records — it never mutates budgetLines/POs. */
+  linkedBudgetLineId?: string;
+  linkedPOId?: string;
+  reconciledAt?: string;
 }
 
 // ============================================================
@@ -637,7 +707,9 @@ export type AIFeature =
   | "call_sheet"
   | "dood_draft"
   | "art_suggestions"
-  | "location_scout";
+  | "location_scout"
+  | "invoice_parse"
+  | "continuity_optimize";
 
 export interface AIUsageEntry {
   id: string;
@@ -725,6 +797,17 @@ export interface ProductionMeta {
     totalPages: number;
     totalScenes: number;
   };
+  /**
+   * Timeline boundaries — all optional, all ISO dates. Configured on the Schedule page.
+   * `postProductionStart` is independent of `principalPhotographyEnd` — post
+   * (editing/VFX prep) can start before wrap and run concurrently with the
+   * tail of the shoot, so it is not derived from the photography end date.
+   */
+  preProductionStart?: string;
+  principalPhotographyStart?: string;
+  principalPhotographyEnd?: string;
+  postProductionStart?: string;
+  postProductionEnd?: string;
 }
 
 // ============================================================
@@ -805,6 +888,8 @@ export interface ProductionData {
   checklists: Checklist[];
   artElements: ArtElement[];
   continuityPhotos: ContinuityPhoto[];
+  vendors: Vendor[];
+  invoices: Invoice[];
   timesheet: TimesheetEntry[];
   notifications: AppNotification[];
   activityLog: ActivityLogEntry[];

@@ -1,12 +1,15 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Plus, Pencil, Trash2 } from "lucide-react";
-import { useStore, canWrite } from "@/state/store";
+import { useStore, canWrite, activeProject } from "@/state/store";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { InitialsAvatar, ImageInput } from "@/components/ui/Media";
+import { ShareMenu } from "@/components/ui/ShareMenu";
+import { buildEntityPdf, pdfFilename } from "@/lib/pdfExport";
+import { buildCastShareText } from "@/lib/share";
 import { formatCurrency } from "@/lib/utils";
 import type { CastMember } from "@/types";
 
@@ -35,10 +38,18 @@ const BLANK_FORM: CastForm = {
 export function CastPortal() {
   const cast = useStore((s) => s.cast);
   const production = useStore((s) => s.production);
+  const scenes = useStore((s) => s.scenes);
+  const project = useStore(activeProject);
   const addCast = useStore((s) => s.addCastMember);
   const updateCast = useStore((s) => s.updateCastMember);
   const removeCast = useStore((s) => s.removeCastMember);
   const canManage = useStore((s) => canWrite(s, "cast"));
+
+  const sceneNumberById = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const sc of scenes) map[sc.id] = sc.number;
+    return map;
+  }, [scenes]);
 
   const [modal, setModal] = useState<null | { editingId?: string }>(null);
   const [form, setForm] = useState<CastForm>(BLANK_FORM);
@@ -136,24 +147,55 @@ export function CastPortal() {
                           as <span className="font-medium">{c.role}</span>
                         </div>
                       </div>
-                      {canManage && (
-                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                          <button
-                            className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                            onClick={() => openEdit(c)}
-                            title="Edit"
-                          >
-                            <Pencil size={12} />
-                          </button>
-                          <button
-                            className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--color-danger)]"
-                            onClick={() => onDelete(c)}
-                            title="Remove"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        </div>
-                      )}
+                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                        <ShareMenu
+                          size="sm"
+                          buildText={() =>
+                            buildCastShareText(
+                              c,
+                              c.scenes.map((id) => sceneNumberById[id] ?? id),
+                              project?.name ?? "Production",
+                              production.currency
+                            )
+                          }
+                          buildPdf={() => ({
+                            doc: buildEntityPdf(c.name, `as ${c.role}`, [
+                              {
+                                heading: "Cast",
+                                rows: [
+                                  ["Category", c.category.replace("_", " ")],
+                                  ["Rate/day", formatCurrency(c.ratePerDay, production.currency)],
+                                  ["Agent", c.agent || "—"],
+                                  ["Contact", c.contact || "—"],
+                                ],
+                              },
+                              {
+                                heading: `Scenes (${c.scenes.length})`,
+                                rows: c.scenes.map((id) => [sceneNumberById[id] ?? id, ""]),
+                              },
+                            ]),
+                            filename: pdfFilename(project?.name ?? "project", `cast-${c.name}`),
+                          })}
+                        />
+                        {canManage && (
+                          <>
+                            <button
+                              className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                              onClick={() => openEdit(c)}
+                              title="Edit"
+                            >
+                              <Pencil size={12} />
+                            </button>
+                            <button
+                              className="p-1 rounded text-[var(--text-muted)] hover:text-[var(--color-danger)]"
+                              onClick={() => onDelete(c)}
+                              title="Remove"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
                     <div className="flex items-center gap-2 mt-2 flex-wrap">
                       <Badge

@@ -12,6 +12,8 @@ DOOD, budget, tasks, departments, reports. Rebranded from an earlier "Production
 
 ## Stack & commands
 - Vite + React 18 + TypeScript + Tailwind + Zustand (persisted) + react-router v6 + **Framer Motion** + dnd-kit + Recharts.
+- Export/AI-input extras: `jspdf` + `jspdf-autotable` (real PDF export, `lib/pdfExport.ts`), `tesseract.js` (client-side
+  invoice OCR, dynamically imported in `lib/ocr.ts` so its wasm bundle only loads on demand).
 - Windows dev box. Shell = PowerShell (primary) or Git Bash (Bash tool). Node scripts via `node`.
 - **Build/verify:** `npm run build` (runs `tsc -b && vite build`). Keep it green after every change.
 - `tsconfig` has `noUnusedLocals: false` / `noUnusedParameters: false` — unused imports won't fail the build (but tidy anyway).
@@ -39,7 +41,7 @@ DOOD, budget, tasks, departments, reports. Rebranded from an earlier "Production
 - **Identity gradients:** `src/lib/identity.ts` (`gradientFor(id)`, `initialsOf`) → `IdentityAvatar` + `ProjectPoster`.
 
 ## State (Zustand)
-- One store: `src/state/store.ts`, persisted to localStorage key **`scenetrackable-v1`**, version **5**, shape
+- One store: `src/state/store.ts`, persisted to localStorage key **`scenetrackable-v1`**, version **6**, shape
   `{ state: {...}, version }`. `partialize` strips only `aiJobs` (transient).
 - Active project's `ProductionData` is spread at the **top level** of state; other projects snapshotted in `projectData`.
   Types in `src/types/index.ts` (`ProductionData` lists every collection). `blankData()`/`DATA_KEYS` in store define the set.
@@ -60,6 +62,8 @@ DOOD, budget, tasks, departments, reports. Rebranded from an earlier "Production
 ## AI
 - `src/lib/claude.ts` = provider (Z.ai GLM only, key hardcoded/public free tier; 15 RPM; error 1113 = allowance gone, permanent).
   No key → intelligent demo fallback. **Treat `claude.ts` + `cloud.ts` + `supabase/` as off-limits for UI work.**
+- The model is **text-only, no vision input** — `invoice_parse` (see below) only ever sends it OCR/extracted text, never
+  an image or PDF.
 - Orchestration is `src/lib/script.ts` (`runBreakdown(scenes, onProgress, projectName, onSceneDone)`) — this IS editable.
   Breakdown job tracked in store `aiJobs` (`aiJobBegin/Progress/PauseLimit/Done/Fail/Reset`, selector `activeAIJob`,
   `job.progress = {done,total}`).
@@ -116,6 +120,13 @@ DOOD, budget, tasks, departments, reports. Rebranded from an earlier "Production
 - **Admin console** = tabbed (Users&Roles | AI | Cloud | Data). `/ai` `/cloud` are redirects to `/admin?tab=…`.
   `AISettings`/`CloudSync` take an `embedded` prop.
 - **Settings** (`/settings`, `pages/Settings.tsx`) — theme preview cards, accent swatches, density.
+- **Sharing/export + financial installments + AI continuity scheduling pass** (see `AGENTS.md` §7.1, §13, §24, §25 for
+  the full logic map): real PDF export + WhatsApp text-share (`ShareMenu`, wired into Reports/Breakdown/Locations/
+  CastPortal/ArtPortal/Drones) · vendors/invoices + PO installments + a department buyer portal (`/invoices`, new
+  Art/Wardrobe/Production Buyer roles) with client-side OCR → AI invoice structuring · Scene `shotStatus` + "migrate
+  unshot scenes" + four production-timeline-boundary fields + an AI continuity optimizer (location clustering +
+  wardrobe continuity) on the Schedule page · a scene-count column on the Location Report. Store version bumped 5→6
+  (migration backfills `vendors`/`invoices` onto every project).
 
 ## Tables (design-system decision — P3 #14)
 - **`.pos-table` (in `index.css`) is the canonical shared table** — used on every page, each wrapped in `overflow-x-auto`.

@@ -217,6 +217,7 @@ export const REPORTS: ReportDef[] = [
         "Type",
         "Permit Status",
         "Lock Date",
+        "Scene Count",
         "Scenes",
         "Shoot Days",
         "Cost/Day",
@@ -237,6 +238,7 @@ export const REPORTS: ReportDef[] = [
             cleanCell(loc.type),
             cleanCell(loc.permitStatus.replace(/_/g, " ")),
             loc.lockDate ? formatDate(loc.lockDate, { year: "numeric" }) : "",
+            cleanCell(at.length),
             cleanCell(at.map((s) => s.number).join(", ")),
             cleanCell(days.join(", ")),
             loc.costPerDay === undefined

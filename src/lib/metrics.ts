@@ -310,6 +310,85 @@ export function buildSpendChart(d: ProductionData, weeks = 6): SpendWeek[] {
 }
 
 // ------------------------------------------------------------
+// Finance summary — installments + invoices
+// ------------------------------------------------------------
+// Deliberately separate from computeMetrics' budgeted/committed/spent: this
+// answers "what's actually been paid out via tracked installments/invoices",
+// not "what the top sheet says". Reconciling an invoice never touches
+// budgetLines.spent (see reconcileInvoice in state/store.ts), so mixing the
+// two would double-count the same money under two different names.
+
+export interface FinanceDeptRow {
+  department: string;
+  budgeted: number;
+  paidInstallments: number;
+  pendingInstallments: number;
+}
+
+export interface FinanceVendorRow {
+  name: string;
+  invoiced: number;
+  invoiceCount: number;
+}
+
+export interface FinanceSummary {
+  totalBudget: number;
+  totalPaidInstallments: number;
+  totalPendingInstallments: number;
+  byDepartment: FinanceDeptRow[];
+  byVendor: FinanceVendorRow[];
+}
+
+export function computeFinanceSummary(d: ProductionData): FinanceSummary {
+  const byDept = new Map<string, FinanceDeptRow>();
+  const deptRow = (dept: string) => {
+    let row = byDept.get(dept);
+    if (!row) {
+      row = { department: dept, budgeted: 0, paidInstallments: 0, pendingInstallments: 0 };
+      byDept.set(dept, row);
+    }
+    return row;
+  };
+
+  for (const l of d.budgetLines) {
+    if (!l.department) continue;
+    deptRow(l.department).budgeted += l.budgeted;
+  }
+
+  let totalPaidInstallments = 0;
+  let totalPendingInstallments = 0;
+  for (const po of d.purchaseOrders) {
+    for (const inst of po.installments ?? []) {
+      const row = deptRow(po.department);
+      if (inst.status === "paid") {
+        totalPaidInstallments += inst.paidAmount ?? inst.amount;
+        row.paidInstallments += inst.paidAmount ?? inst.amount;
+      } else {
+        totalPendingInstallments += inst.amount;
+        row.pendingInstallments += inst.amount;
+      }
+    }
+  }
+
+  const byVendor = new Map<string, FinanceVendorRow>();
+  for (const inv of d.invoices) {
+    const name = inv.vendorName || "Unknown vendor";
+    const row = byVendor.get(name) ?? { name, invoiced: 0, invoiceCount: 0 };
+    row.invoiced += inv.parsedTotal ?? 0;
+    row.invoiceCount += 1;
+    byVendor.set(name, row);
+  }
+
+  return {
+    totalBudget: d.production.budget,
+    totalPaidInstallments,
+    totalPendingInstallments,
+    byDepartment: Array.from(byDept.values()).sort((a, b) => b.budgeted - a.budgeted),
+    byVendor: Array.from(byVendor.values()).sort((a, b) => b.invoiced - a.invoiced),
+  };
+}
+
+// ------------------------------------------------------------
 // Digest input
 // ------------------------------------------------------------
 

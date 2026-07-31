@@ -12,6 +12,9 @@ import { ImageThumb } from "@/components/ui/Media";
 import { ProposalPicker, type ProposalItem } from "@/components/ui/ProposalPicker";
 import { aiArtSuggestions, isAllowanceExhausted } from "@/lib/claude";
 import { formatCurrency, cn } from "@/lib/utils";
+import { ShareMenu } from "@/components/ui/ShareMenu";
+import { buildEntityPdf, pdfFilename } from "@/lib/pdfExport";
+import { buildWardrobeShareText } from "@/lib/share";
 import type { ArtElementStatus } from "@/types";
 
 const STATUS_ORDER: ArtElementStatus[] = ["needed", "sourced", "in_progress", "fitting", "ready"];
@@ -53,9 +56,16 @@ function ElementTracker() {
   const scenes = useStore((s) => s.scenes);
   const cast = useStore((s) => s.cast);
   const production = useStore((s) => s.production);
+  const project = useStore(activeProject);
   const writable = useStore((s) => canWrite(s, "art"));
   const ed = useRecordEditor("artElements");
   const [suggestOpen, setSuggestOpen] = useState(false);
+
+  const sceneNumberById = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const sc of scenes) map[sc.id] = sc.number;
+    return map;
+  }, [scenes]);
 
   const suggestBtn =
     writable && cast.some((c) => c.scenes.length > 0) ? (
@@ -148,6 +158,34 @@ function ElementTracker() {
                           → {nextStatus.replace("_", " ")}
                         </Button>
                       )}
+                      <ShareMenu
+                        buildText={() =>
+                          buildWardrobeShareText(
+                            el,
+                            el.sceneIds.map((id) => sceneNumberById[id] ?? id),
+                            project?.name ?? "Production",
+                            production.currency
+                          )
+                        }
+                        buildPdf={() => ({
+                          doc: buildEntityPdf(el.name, el.category.replace("_", " "), [
+                            {
+                              heading: "Details",
+                              rows: [
+                                ["Status", el.status.replace("_", " ")],
+                                ["Character", el.characterName || "—"],
+                                ["Cost", el.cost !== undefined ? formatCurrency(el.cost, production.currency) : "—"],
+                                ["Notes", el.notes || "—"],
+                              ],
+                            },
+                            {
+                              heading: `Scenes (${el.sceneIds.length})`,
+                              rows: el.sceneIds.map((id) => [sceneNumberById[id] ?? id, ""]),
+                            },
+                          ]),
+                          filename: pdfFilename(project?.name ?? "project", `${el.category}-${el.name}`),
+                        })}
+                      />
                       <ed.RowActions id={el.id} />
                     </div>
                   </td>

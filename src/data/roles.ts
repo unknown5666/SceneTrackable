@@ -19,6 +19,7 @@ export const ACCESS_KEYS: { key: string; label: string }[] = [
   { key: "cast", label: "Cast" },
   { key: "timesheet", label: "Timesheet" },
   { key: "reports", label: "Reports" },
+  { key: "invoices", label: "Invoice Upload" },
 ];
 
 export const PERMISSION_LEVELS: { level: PermissionLevel; label: string; hint: string }[] = [
@@ -101,6 +102,24 @@ export const ROLE_PRESETS: RolePreset[] = [
     permissions: permissionMap(["breakdown", "schedule"], ["timesheet"]),
   },
   {
+    id: "art_buyer",
+    label: "Art Buyer",
+    description: "Uploads and AI-parses art department invoices.",
+    permissions: permissionMap([], ["invoices"]),
+  },
+  {
+    id: "wardrobe_buyer",
+    label: "Wardrobe Buyer",
+    description: "Uploads and AI-parses wardrobe department invoices.",
+    permissions: permissionMap([], ["invoices"]),
+  },
+  {
+    id: "production_buyer",
+    label: "Production Buyer",
+    description: "Uploads and AI-parses production department invoices.",
+    permissions: permissionMap([], ["invoices"]),
+  },
+  {
     id: "locked",
     label: "No access",
     description: "Dashboard only — every page off. A good base to build from.",
@@ -180,6 +199,33 @@ export const DEFAULT_ROLES: Role[] = [
     department: "cast",
     access: ["cast", "schedule", "tasks"],
     permissions: permissionMap([], ["cast", "schedule", "tasks"]),
+    builtIn: true,
+  },
+  {
+    id: "art_buyer",
+    label: "Art Buyer",
+    description: "Uploads and AI-parses art department invoices.",
+    department: "art",
+    access: ["invoices"],
+    permissions: permissionMap([], ["invoices"]),
+    builtIn: true,
+  },
+  {
+    id: "wardrobe_buyer",
+    label: "Wardrobe Buyer",
+    description: "Uploads and AI-parses wardrobe department invoices.",
+    department: "wardrobe",
+    access: ["invoices"],
+    permissions: permissionMap([], ["invoices"]),
+    builtIn: true,
+  },
+  {
+    id: "production_buyer",
+    label: "Production Buyer",
+    description: "Uploads and AI-parses production department invoices.",
+    department: "production",
+    access: ["invoices"],
+    permissions: permissionMap([], ["invoices"]),
     builtIn: true,
   },
 ];

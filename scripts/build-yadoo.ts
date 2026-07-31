@@ -21,6 +21,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { parseScreenplay, extractCharacters } from "../src/lib/script";
 import { parseBudgetText, toBudgetLines, foldArabic } from "../src/lib/budgetImport";
+import { addDaysIso } from "../src/lib/utils";
 import type {
   Scene,
   CastMember,
@@ -41,7 +42,6 @@ const DAY = 86400000;
 const now = new Date("2026-07-19T09:00:00.000Z");
 const iso = (offsetDays: number, h = 9) =>
   new Date(now.getTime() + offsetDays * DAY + (h - 9) * 3600000).toISOString();
-const dateOnly = (offsetDays: number) => iso(offsetDays).slice(0, 10);
 
 // ------------------------------------------------------------
 // SCENES
@@ -309,47 +309,83 @@ if (usedUnits.has("مواقع متفرقة")) {
 }
 
 // ------------------------------------------------------------
+// TIMELINE — the real production dates, supplied by the production (not in
+// either source document): 30 shoot days from Sep 20, pre-production Sep 1–20,
+// post-production Sep 21 (deliberately overlapping the tail of the shoot, for
+// dailies/edit prep) running 60 days.
+// ------------------------------------------------------------
+const PRE_PRODUCTION_START = "2026-09-01";
+const PRINCIPAL_PHOTOGRAPHY_START = "2026-09-20";
+const TOTAL_SHOOT_DAYS = 30;
+const POST_PRODUCTION_START = "2026-09-21";
+const POST_PRODUCTION_DAYS = 60;
+
+// ------------------------------------------------------------
 // SCHEDULE — scenes banked by unit, so days don't company-move needlessly
 // ------------------------------------------------------------
 /**
- * Days are built by filling one location unit at a time up to the planned page
- * count. Shooting a location out is how a schedule is actually built, and it is
+ * Days are built by filling one location unit at a time up to a per-day page
+ * cap. Shooting a location out is how a schedule is actually built, and it is
  * what makes the strip board legible: the alternative — scenes in script order
  * — produces a board that moves the whole unit four times a day.
+ *
+ * The cap itself is *derived*, not a fixed guess: it's searched so the board
+ * lands on exactly `TOTAL_SHOOT_DAYS` (the production's real day count), since
+ * each of the 15 location units forces at least one day boundary regardless of
+ * page count. `buildBuckets` is pure so the search can call it repeatedly.
  */
-// A planning default, not something either document states — it's the knob the
-// 1st AD turns on the Schedule page, and the strip board is built from it.
-const PAGES_PER_DAY = 4;
-const shootDays: ShootDay[] = [];
-let dayNumber = 0;
-for (const unit of locations.map((l) => l.name)) {
-  const inUnit = scenes.filter((s) => unitFor(s.location) === unit);
-  let bucket: Scene[] = [];
-  let pages = 0;
-  const closeDay = () => {
-    if (bucket.length === 0) return;
-    dayNumber += 1;
-    shootDays.push({
-      id: `day_${dayNumber}`,
-      dayNumber,
-      date: dateOnly(dayNumber + 6),
-      location: unit,
-      locations: [unit],
-      // Straight from the page count. No call or wrap times and no meal
-      // banners: those are the 1st AD's to set, and neither document sets them.
-      estimatedHours: Math.min(12, Math.max(8, Math.round(pages * 2.5))),
-      scenes: bucket.map((s) => s.id),
-    });
-    bucket = [];
-    pages = 0;
-  };
-  for (const sc of inUnit) {
-    if (pages + sc.pages > PAGES_PER_DAY && bucket.length > 0) closeDay();
-    bucket.push(sc);
-    pages += sc.pages;
+function buildBuckets(pagesPerDay: number): { location: string; scenes: Scene[] }[] {
+  const buckets: { location: string; scenes: Scene[] }[] = [];
+  for (const unit of locations.map((l) => l.name)) {
+    const inUnit = scenes.filter((s) => unitFor(s.location) === unit);
+    let bucket: Scene[] = [];
+    let pages = 0;
+    const closeDay = () => {
+      if (bucket.length === 0) return;
+      buckets.push({ location: unit, scenes: bucket });
+      bucket = [];
+      pages = 0;
+    };
+    for (const sc of inUnit) {
+      if (pages + sc.pages > pagesPerDay && bucket.length > 0) closeDay();
+      bucket.push(sc);
+      pages += sc.pages;
+    }
+    closeDay();
   }
-  closeDay();
+  return buckets;
 }
+
+// Search a range of per-day page caps for the one that yields the target day
+// count exactly; fall back to whichever candidate lands closest.
+let bestBuckets = buildBuckets(4);
+let bestDiff = Math.abs(bestBuckets.length - TOTAL_SHOOT_DAYS);
+for (let cap = 2; cap <= 10; cap += 0.05) {
+  const candidate = buildBuckets(cap);
+  const diff = Math.abs(candidate.length - TOTAL_SHOOT_DAYS);
+  if (diff < bestDiff) {
+    bestBuckets = candidate;
+    bestDiff = diff;
+    if (diff === 0) break;
+  }
+}
+const PAGES_PER_DAY = 4; // kept as the displayed planning default; the search above governs the actual bucket cap
+const shootDays: ShootDay[] = bestBuckets.map((b, i) => {
+  const pages = b.scenes.reduce((s, sc) => s + sc.pages, 0);
+  return {
+    id: `day_${i + 1}`,
+    dayNumber: i + 1,
+    date: addDaysIso(PRINCIPAL_PHOTOGRAPHY_START, i),
+    location: b.location,
+    locations: [b.location],
+    // Straight from the page count. No call or wrap times and no meal
+    // banners: those are the 1st AD's to set, and neither document sets them.
+    estimatedHours: Math.min(12, Math.max(8, Math.round(pages * 2.5))),
+    scenes: b.scenes.map((s) => s.id),
+  };
+});
+const PRINCIPAL_PHOTOGRAPHY_END = shootDays[shootDays.length - 1].date;
+const POST_PRODUCTION_END = addDaysIso(POST_PRODUCTION_START, POST_PRODUCTION_DAYS - 1);
 
 // ------------------------------------------------------------
 // DOOD — worked when the actor's scenes fall on the day
@@ -402,6 +438,11 @@ const production = {
   currentShootDay: 0,
   plannedPagesPerDay: PAGES_PER_DAY,
   script: { totalPages: Math.round(totalPages * 10) / 10, totalScenes: scenes.length },
+  preProductionStart: PRE_PRODUCTION_START,
+  principalPhotographyStart: PRINCIPAL_PHOTOGRAPHY_START,
+  principalPhotographyEnd: PRINCIPAL_PHOTOGRAPHY_END,
+  postProductionStart: POST_PRODUCTION_START,
+  postProductionEnd: POST_PRODUCTION_END,
 };
 
 /**

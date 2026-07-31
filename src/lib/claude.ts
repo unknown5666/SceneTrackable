@@ -1559,6 +1559,156 @@ export async function aiCallSheet(
   return { sheet, result };
 }
 
+// ---- Invoice parsing (one call per uploaded invoice) ----
+// OCR/text-extraction happens client-side first (src/lib/ocr.ts, or
+// extractPdfText for digital PDFs) — this call only structures already-
+// extracted text. The free model has no vision input, so it never sees the
+// image/PDF itself.
+export interface ParsedInvoiceLineItem {
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+}
+
+export interface ParsedInvoice {
+  vendorName?: string;
+  date?: string;
+  total?: number;
+  lineItems: ParsedInvoiceLineItem[];
+}
+
+const INVOICE_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  additionalProperties: false,
+  required: ["lineItems"],
+  properties: {
+    vendorName: { type: "string" },
+    date: { type: "string" },
+    total: { type: "number" },
+    lineItems: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["description", "quantity", "unitPrice", "total"],
+        properties: {
+          description: { type: "string" },
+          quantity: { type: "number" },
+          unitPrice: { type: "number" },
+          total: { type: "number" },
+        },
+      },
+    },
+  },
+};
+
+const INVOICE_SYSTEM = `You are an accounts-payable clerk structuring one invoice/receipt from its raw OCR'd or extracted text.
+- Extract the vendor/supplier name, the invoice or receipt date (ISO yyyy-mm-dd if you can tell), the grand total, and every line item (description, quantity, unit price, line total).
+- OCR text is noisy: fix obvious digit/character misreads only when the surrounding numbers make the correction unambiguous (e.g. a line total that doesn't match quantity × unit price by an OCR-plausible digit swap). Never invent a line item or number that isn't in the text.
+- If quantity is never stated, use 1. If a field genuinely isn't present, omit it (for the invoice-level fields) — never fabricate a vendor name or date.`;
+
+/** Structures OCR/extracted invoice text into vendor + line items. Throws on live-API failure. */
+export async function aiParseInvoice(
+  ocrText: string,
+  vendorHint?: string
+): Promise<{ parsed: ParsedInvoice | null; result: ClaudeResult }> {
+  const result = await callClaude({
+    feature: "invoice_parse",
+    weight: "light",
+    system: INVOICE_SYSTEM,
+    user: `${vendorHint ? `DEPARTMENT/VENDOR HINT: ${vendorHint}\n\n` : ""}RAW INVOICE TEXT:\n${ocrText.slice(0, 6000)}`,
+    maxTokens: 1200,
+    jsonSchema: INVOICE_SCHEMA,
+  });
+  let parsed: ParsedInvoice | null = null;
+  try {
+    const raw = JSON.parse(extractJson(result.text));
+    if (raw && Array.isArray(raw.lineItems)) {
+      parsed = {
+        vendorName: raw.vendorName ? String(raw.vendorName).trim() : undefined,
+        date: raw.date ? String(raw.date).trim() : undefined,
+        total: typeof raw.total === "number" ? raw.total : undefined,
+        lineItems: raw.lineItems
+          .filter((li: any) => li && li.description)
+          .map((li: any) => ({
+            description: String(li.description).trim(),
+            quantity: Number(li.quantity) || 1,
+            unitPrice: Number(li.unitPrice) || 0,
+            total: Number(li.total) || 0,
+          })),
+      };
+    }
+  } catch {
+    if (!result.fromMock) throw new ClaudeApiError("Could not parse the invoice as JSON.");
+  }
+  return { parsed, result };
+}
+
+// ---- AI continuity optimizer (location clustering + wardrobe continuity) ----
+export interface ProposedContinuityMove {
+  sceneNumber: string;
+  toDay: number;
+  reason: string;
+}
+
+const CONTINUITY_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  additionalProperties: false,
+  required: ["moves"],
+  properties: {
+    moves: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["sceneNumber", "toDay", "reason"],
+        properties: {
+          sceneNumber: { type: "string" },
+          toDay: { type: "number" },
+          reason: { type: "string" },
+        },
+      },
+    },
+  },
+};
+
+const CONTINUITY_SYSTEM = `You are a 1st AD optimizing a shooting schedule for two things: location clustering (scenes at the same location should shoot on the same or adjacent days, minimizing company moves) and wardrobe continuity (scenes where a character wears a specific tracked wardrobe item should be scheduled on the same or nearby days, so the look doesn't have to be exactly re-matched across a long gap).
+- You are given a pre-computed analysis of which locations and wardrobe items are currently split across non-adjacent days. Only propose moving a scene when it measurably improves one of those two things.
+- Never propose moving a scene to a day outside the shoot days you were given, and never propose a day that violates a location lock date or falls outside the principal photography window when those are given to you.
+- Propose the smallest set of moves that meaningfully improves clustering — don't reshuffle scenes that are already well-placed.
+- reason: one short sentence naming the location or wardrobe item driving the move.`;
+
+/** Proposes scene→day moves that improve location clustering / wardrobe continuity. Throws on live-API failure. */
+export async function aiContinuityOptimize(
+  digest: string,
+  projectName?: string
+): Promise<{ moves: ProposedContinuityMove[]; result: ClaudeResult }> {
+  const result = await callClaude({
+    feature: "continuity_optimize",
+    system: CONTINUITY_SYSTEM,
+    user: `${projectName ? `PRODUCTION: ${projectName}\n\n` : ""}${digest}`,
+    maxTokens: 2500,
+    jsonSchema: CONTINUITY_SCHEMA,
+  });
+  let moves: ProposedContinuityMove[] = [];
+  try {
+    const parsed = JSON.parse(extractJson(result.text));
+    if (Array.isArray(parsed.moves)) {
+      moves = parsed.moves
+        .filter((m: any) => m && m.sceneNumber && Number.isFinite(Number(m.toDay)))
+        .map((m: any) => ({
+          sceneNumber: String(m.sceneNumber).trim(),
+          toDay: Number(m.toDay),
+          reason: String(m.reason ?? "").trim(),
+        }));
+    }
+  } catch {
+    if (!result.fromMock) throw new ClaudeApiError("Could not parse the continuity proposals as JSON.");
+  }
+  return { moves, result };
+}
+
 // ------------------------------------------------------------
 // Demo breakdown — keyword-driven, always plausible
 // ------------------------------------------------------------

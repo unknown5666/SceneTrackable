@@ -310,13 +310,34 @@ export const HANDBOOK: HandbookDoc[] = [
     summary: "Generate call sheets, DOOD, breakdown CSV and printable sheets.",
     iconKey: "file-bar-chart",
     route: "/reports",
-    keywords: "reports export csv pdf call sheet dood print paperwork",
+    keywords: "reports export csv pdf call sheet dood print paperwork share whatsapp",
     body: [
       "Reports produces industry-standard paperwork — call sheets, the DOOD, and breakdown exports (CSV or printable sheets styled like real production documents). Printing forces a light theme so it reads on paper.",
+      "The share icon next to any report, scene, location, cast member, wardrobe piece or asset opens a menu to copy a text summary, share via WhatsApp, or download a real PDF. WhatsApp's link can only pre-fill text — it can't attach a file — so sharing a PDF via WhatsApp also downloads it, with a reminder to attach it yourself.",
     ],
     steps: [
       "Choose a report and review its preview.",
-      "Download the CSV or print the styled sheet.",
+      "Download the CSV, print the styled sheet, or use the share icon for WhatsApp / a real PDF.",
+    ],
+  },
+  {
+    id: "invoices",
+    title: "Invoice Upload",
+    summary: "Department buyer portal — upload a receipt and extract it with AI.",
+    iconKey: "receipt",
+    route: "/invoices",
+    keywords: "invoice receipt upload ocr ai buyer art wardrobe production vendor reconcile",
+    body: [
+      "Each buyer role (Art Buyer, Wardrobe Buyer, Production Buyer) uploads receipts/invoices here for their own department. The app has no vision-capable model, so 'Process Invoice with AI' first runs OCR client-side (tesseract.js for photos, the same PDF text extraction the script importer uses for digital PDFs), then sends that text to the AI to structure vendor, total, and line items.",
+      "A parsed invoice is reviewable and editable before anything else touches it. Reconciling an invoice — linking it to a budget line or PO from the Budget page's Invoices tab — only records that link; it never rewrites the budget top sheet's spent/committed figures.",
+    ],
+    steps: [
+      "Upload a photo or PDF of the receipt.",
+      "Click Process Invoice with AI and review the extracted vendor, total and line items.",
+      "Edit anything the OCR got wrong, then reconcile it against a budget line or PO from Budget → Invoices.",
+    ],
+    tips: [
+      "OCR on a photographed receipt is never perfect — always check the total against the actual document before reconciling.",
     ],
   },
   {

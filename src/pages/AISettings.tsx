@@ -32,6 +32,8 @@ const FEATURE_LABELS: Record<AIFeature, string> = {
   dood_draft: "DOOD Draft",
   art_suggestions: "Prop / Wardrobe Ideas",
   location_scout: "Location Scout Brief",
+  invoice_parse: "Invoice Parsing",
+  continuity_optimize: "AI Continuity Optimizer",
 };
 
 const FEATURE_EST: Record<AIFeature, { avgIn: number; avgOut: number; perUnit: string }> = {
@@ -49,6 +51,8 @@ const FEATURE_EST: Record<AIFeature, { avgIn: number; avgOut: number; perUnit: s
   dood_draft: { avgIn: 3000, avgOut: 1200, perUnit: "per run" },
   art_suggestions: { avgIn: 2000, avgOut: 800, perUnit: "per character" },
   location_scout: { avgIn: 2500, avgOut: 500, perUnit: "per location" },
+  invoice_parse: { avgIn: 1200, avgOut: 500, perUnit: "per invoice" },
+  continuity_optimize: { avgIn: 6000, avgOut: 2000, perUnit: "per run" },
 };
 
 export function AISettings({ embedded }: { embedded?: boolean } = {}) {

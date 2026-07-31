@@ -61,6 +61,7 @@ import {
   buildDigestInput,
   buildPaceChart,
   buildSpendChart,
+  computeFinanceSummary,
   computeMetrics,
   radarAxes,
   shotSceneIds,
@@ -1128,13 +1129,21 @@ function AccountantDashboard() {
   // dates, so they cannot produce a time series; the previous version of this
   // chart filled the gap with Math.random().
   const spendData = useMemo(() => buildSpendChart(data), [data]);
+  const finance = useMemo(() => computeFinanceSummary(data), [data]);
 
   return (
     <>
       {/* Budget spent vs planned is in the shared row above. */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <StatCard icon={<DollarSign size={20} />} label="Committed" value={formatCurrency(totalCommitted - totalSpent, production.currency)} hint="Committed, not yet paid" tone="warning" />
         <StatCard icon={<AlertCircle size={20} />} label="POs Pending" value={pendingReview.length} tone={pendingReview.length > 0 ? "warning" : "success"} />
+        <StatCard
+          icon={<DollarSign size={20} />}
+          label="Pending Installments"
+          value={formatCurrency(finance.totalPendingInstallments, production.currency)}
+          hint={`${formatCurrency(finance.totalPaidInstallments, production.currency)} paid`}
+          tone={finance.totalPendingInstallments > 0 ? "warning" : "success"}
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">

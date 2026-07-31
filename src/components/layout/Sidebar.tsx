@@ -17,6 +17,7 @@ import {
   Users,
   Clock,
   FileBarChart,
+  Receipt,
   Bell,
   Shield,
   Clapperboard,
@@ -72,6 +73,7 @@ const SECTIONS: NavSection[] = [
     items: [
       { to: "/tasks", label: "Tasks", icon: <ListChecks size={18} />, access: "tasks" },
       { to: "/budget", label: "Budget", icon: <DollarSign size={18} />, access: "budget" },
+      { to: "/invoices", label: "Invoice Upload", icon: <Receipt size={18} />, access: "invoices" },
       { to: "/timesheet", label: "Timesheet", icon: <Clock size={18} />, access: "timesheet" },
       { to: "/reports", label: "Reports", icon: <FileBarChart size={18} />, access: "reports" },
     ],

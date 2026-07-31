@@ -29,6 +29,11 @@ import {
   Loader2,
   Check,
   FileText,
+  CheckCircle2,
+  Circle,
+  ArrowRightCircle,
+  CalendarRange,
+  AlertTriangle,
 } from "lucide-react";
 import { useStore, activeProject, canWrite } from "@/state/store";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -40,15 +45,17 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { IntExtBadge, TimeBadge } from "@/components/ui/SceneHeading";
 import { intExtChip } from "@/lib/breakdownVisuals";
 import { useRecordEditor, type RecordEditor } from "@/components/ui/RecordEditor";
-import { formatDate, cn } from "@/lib/utils";
+import { formatDate, cn, addDaysIso } from "@/lib/utils";
 import { dayLocations, sceneMatchesDay, locKey } from "@/lib/locations";
 import {
   aiScheduleDraft,
   aiDoodDraft,
   aiCallSheet,
+  aiContinuityOptimize,
   isAllowanceExhausted,
   type ProposedDoodEntry,
 } from "@/lib/claude";
+import { buildContinuityDigest, validateContinuityMoves, type ValidatedContinuityMove, type RejectedContinuityMove } from "@/lib/continuity";
 import { printCallSheet } from "@/lib/export";
 import { ProposalPicker, type ProposalItem } from "@/components/ui/ProposalPicker";
 import { HelpButton } from "@/components/ui/HelpButton";
@@ -105,6 +112,8 @@ export function Schedule() {
         </div>
         <PublishButton />
       </div>
+
+      <TimelineCard />
 
       <Tabs
         tabs={[
@@ -172,6 +181,96 @@ function PublishButton() {
   );
 }
 
+/**
+ * Four timeline-boundary dates (pre-production start, principal photography
+ * start/end, post-production end). No other page edits ProductionMeta today,
+ * so this lives here since Schedule already owns every other shoot-day date —
+ * and the continuity engine reads these two of the four to keep proposed
+ * moves inside the principal-photography window.
+ */
+function TimelineCard() {
+  const production = useStore((s) => s.production);
+  const shootDays = useStore((s) => s.shootDays);
+  const updateProductionMeta = useStore((s) => s.updateProductionMeta);
+  const alignShootDayDates = useStore((s) => s.alignShootDayDates);
+  const writable = useStore((s) => canWrite(s, "schedule"));
+
+  const [dayCount, setDayCount] = useState(shootDays.length || production.totalShootDays || 1);
+
+  const fields: {
+    key: "preProductionStart" | "principalPhotographyStart" | "principalPhotographyEnd" | "postProductionStart" | "postProductionEnd";
+    label: string;
+  }[] = [
+    { key: "preProductionStart", label: "Pre-Production Start" },
+    { key: "principalPhotographyStart", label: "Principal Photography Start" },
+    { key: "principalPhotographyEnd", label: "Principal Photography End" },
+    { key: "postProductionStart", label: "Post-Production Start" },
+    { key: "postProductionEnd", label: "Post-Production End" },
+  ];
+
+  return (
+    <Card className="mb-6">
+      <div className="flex items-center gap-1.5 mb-3">
+        <CalendarRange size={14} className="text-[var(--text-muted)]" />
+        <div className="section-header">Production Timeline</div>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        {fields.map((f) => (
+          <div key={f.key}>
+            <label className="text-[10px] text-[var(--text-muted)] block mb-1">{f.label}</label>
+            <input
+              type="date"
+              value={production[f.key]?.slice(0, 10) ?? ""}
+              onChange={(e) => updateProductionMeta({ [f.key]: e.target.value || undefined })}
+              disabled={!writable}
+              className="h-8 text-xs w-full"
+            />
+          </div>
+        ))}
+      </div>
+      {writable && (
+        <div className="flex items-end gap-2 mt-3 pt-3 border-t border-[var(--border)]">
+          <div>
+            <label className="text-[10px] text-[var(--text-muted)] block mb-1">Shoot Days</label>
+            <input
+              type="number"
+              min={1}
+              step={1}
+              value={dayCount}
+              onChange={(e) => setDayCount(Math.max(1, Number(e.target.value) || 1))}
+              className="h-8 text-xs w-20"
+            />
+          </div>
+          <Button
+            variant="secondary"
+            className="h-8 text-xs"
+            disabled={!production.principalPhotographyStart}
+            title={
+              !production.principalPhotographyStart
+                ? "Set Principal Photography Start first"
+                : shootDays.length
+                  ? `Re-dates the existing ${shootDays.length} shoot day(s) to consecutive days from the start date`
+                  : `Creates ${dayCount} blank shoot day(s) dated consecutively from the start date`
+            }
+            onClick={() =>
+              production.principalPhotographyStart &&
+              alignShootDayDates(production.principalPhotographyStart, dayCount)
+            }
+          >
+            <CalendarRange size={13} />
+            {shootDays.length ? "Align Shoot Day Dates" : "Generate Shoot Days"}
+          </Button>
+          {production.principalPhotographyStart && dayCount > 0 && (
+            <div className="text-[10px] text-[var(--text-muted)] pb-1.5">
+              → ends {formatDate(addDaysIso(production.principalPhotographyStart, dayCount - 1))}
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function StripBoard() {
   const scenes = useStore((s) => s.scenes);
   const shootDays = useStore((s) => s.shootDays);
@@ -181,6 +280,7 @@ function StripBoard() {
   const [activeDrag, setActiveDrag] = useState<string | null>(null);
   const [draftOpen, setDraftOpen] = useState(false);
   const [callSheetOpen, setCallSheetOpen] = useState(false);
+  const [continuityOpen, setContinuityOpen] = useState(false);
   const ed = useRecordEditor("shootDays");
 
   // Page range for horizontal scroll
@@ -295,6 +395,11 @@ function StripBoard() {
                 <Sparkles size={14} /> Draft schedule (AI)
               </Button>
             )}
+            {ed.canWrite && (
+              <Button variant="ai" size="sm" onClick={() => setContinuityOpen(true)}>
+                <Wand2 size={14} /> Optimize with AI
+              </Button>
+            )}
             <ed.AddButton label="Add Day" />
           </div>
         </div>
@@ -317,6 +422,7 @@ function StripBoard() {
                 scenes={scenes}
                 currentShootDay={production.currentShootDay}
                 plannedPagesPerDay={production.plannedPagesPerDay}
+                allDays={shootDays}
                 ed={ed}
               />
             ))}
@@ -351,7 +457,161 @@ function StripBoard() {
       {ed.modal}
       <DraftScheduleModal open={draftOpen} onClose={() => setDraftOpen(false)} />
       <CallSheetModal open={callSheetOpen} onClose={() => setCallSheetOpen(false)} />
+      <ContinuityModal open={continuityOpen} onClose={() => setContinuityOpen(false)} />
     </>
+  );
+}
+
+// ============================================================
+// AI CONTINUITY OPTIMIZER
+//
+// Location clustering + wardrobe continuity: a heuristic pre-analysis
+// (lib/continuity.ts) flags what's split across non-adjacent days, the model
+// proposes moves to fix it, and every move is re-validated against location
+// locks and the principal-photography window before it's ever shown as
+// acceptable — the model's "reason" is not trusted as proof it's a legal move.
+// ============================================================
+function ContinuityModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const data = useScheduleData();
+  const project = useStore(activeProject);
+  const applyContinuityMoves = useStore((s) => s.applyContinuityMoves);
+  const recordAIUsage = useStore((s) => s.recordAIUsage);
+
+  const [busy, setBusy] = useState(false);
+  const [limit, setLimit] = useState(false);
+  const [error, setError] = useState("");
+  const [valid, setValid] = useState<ValidatedContinuityMove[] | null>(null);
+  const [rejected, setRejected] = useState<RejectedContinuityMove[]>([]);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+
+  const run = async () => {
+    setBusy(true);
+    setError("");
+    setLimit(false);
+    try {
+      const digest = buildContinuityDigest(data);
+      const { moves, result } = await aiContinuityOptimize(digest, project?.name);
+      recordAIUsage({
+        feature: "continuity_optimize",
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        model: result.model,
+        costUsd: result.costUsd,
+      });
+      const { valid: v, rejected: r } = validateContinuityMoves(moves, data);
+      setValid(v);
+      setRejected(r);
+      setPicked(new Set(v.map((m) => m.sceneId)));
+    } catch (err) {
+      if (isAllowanceExhausted(err)) setLimit(true);
+      else setError((err as Error).message || "The continuity pass failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const accept = () => {
+    if (!valid) return;
+    applyContinuityMoves(valid.filter((m) => picked.has(m.sceneId)).map((m) => ({ sceneId: m.sceneId, toDay: m.toDay })));
+    close();
+  };
+
+  const close = () => {
+    setValid(null);
+    setRejected([]);
+    setPicked(new Set());
+    setError("");
+    setLimit(false);
+    onClose();
+  };
+
+  return (
+    <Modal
+      open={open}
+      onClose={busy ? () => undefined : close}
+      size="lg"
+      title="Optimize schedule with AI"
+      subtitle="Proposes scene moves that cluster same-location scenes together and keep tracked wardrobe items on nearby days. Nothing moves until you accept it."
+      footer={
+        valid ? (
+          <>
+            <Button variant="secondary" onClick={close}>Cancel</Button>
+            <Button onClick={accept} disabled={picked.size === 0}>
+              <Check size={14} /> Apply {picked.size} move{picked.size === 1 ? "" : "s"}
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button variant="secondary" onClick={close} disabled={busy}>Cancel</Button>
+            <Button variant="ai" onClick={run} disabled={busy || data.shootDays.length === 0}>
+              {busy ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
+              {busy ? "Analyzing…" : "Run continuity pass"}
+            </Button>
+          </>
+        )
+      }
+    >
+      {limit && (
+        <div className="text-xs text-[var(--color-warning)] mb-2">
+          GLM free allowance exhausted — try again once it resets.
+        </div>
+      )}
+      {error && <div className="text-xs text-[var(--color-danger)] mb-2">{error}</div>}
+
+      {valid ? (
+        <div className="space-y-3">
+          {valid.length === 0 && rejected.length === 0 && (
+            <div className="text-sm text-[var(--text-secondary)]">
+              No moves proposed — the schedule is already well clustered.
+            </div>
+          )}
+          {valid.map((m) => (
+            <label
+              key={m.sceneId}
+              className="flex items-start gap-2 p-2 rounded-lg border border-[var(--border-default)] cursor-pointer"
+            >
+              <input
+                type="checkbox"
+                checked={picked.has(m.sceneId)}
+                onChange={(e) =>
+                  setPicked((prev) => {
+                    const n = new Set(prev);
+                    if (e.target.checked) n.add(m.sceneId);
+                    else n.delete(m.sceneId);
+                    return n;
+                  })
+                }
+                className="mt-1"
+              />
+              <div>
+                <div className="text-sm text-[var(--text-primary)]">
+                  Scene {m.sceneNumber} <ArrowRightCircle size={12} className="inline mx-1" /> Day {m.toDay}
+                </div>
+                <div className="text-xs text-[var(--text-secondary)]">{m.reason}</div>
+              </div>
+            </label>
+          ))}
+          {rejected.length > 0 && (
+            <div className="text-xs text-[var(--text-muted)] border-t border-[var(--border-default)] pt-2">
+              <div className="flex items-center gap-1 mb-1">
+                <AlertTriangle size={12} /> {rejected.length} proposed move{rejected.length === 1 ? "" : "s"} rejected:
+              </div>
+              {rejected.map((r, i) => (
+                <div key={i}>
+                  Scene {r.sceneNumber} — {r.reason}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="text-sm text-[var(--text-secondary)]">
+          {data.shootDays.length === 0
+            ? "Add shoot days first."
+            : "Analyzes location clustering and wardrobe continuity across the current board, then proposes the smallest set of scene moves to improve both."}
+        </div>
+      )}
+    </Modal>
   );
 }
 
@@ -744,9 +1004,10 @@ function useScheduleData(): ProductionData {
   const scenes = useStore((s) => s.scenes);
   const shootDays = useStore((s) => s.shootDays);
   const locations = useStore((s) => s.locations);
+  const artElements = useStore((s) => s.artElements);
   return useMemo(
-    () => ({ production, scenes, shootDays, locations } as unknown as ProductionData),
-    [production, scenes, shootDays, locations]
+    () => ({ production, scenes, shootDays, locations, artElements } as unknown as ProductionData),
+    [production, scenes, shootDays, locations, artElements]
   );
 }
 
@@ -761,15 +1022,19 @@ function DayColumn({
   scenes,
   currentShootDay,
   plannedPagesPerDay,
+  allDays,
   ed,
 }: {
   day: ShootDay;
   scenes: Scene[];
   currentShootDay: number;
   plannedPagesPerDay?: number;
+  allDays: ShootDay[];
   ed: RecordEditor;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `day_${day.dayNumber}` });
+  const migrateUnshotScenes = useStore((s) => s.migrateUnshotScenes);
+  const [migrateTarget, setMigrateTarget] = useState<string>("");
 
   const assigned = day.scenes.map((sid) => scenes.find((s) => s.id === sid)!).filter(Boolean);
   // Every assigned scene stays on the board — page totals cover the lot,
@@ -779,6 +1044,8 @@ function DayColumn({
   const { groups, multi } = groupDayScenes(assigned, day);
   const isToday = day.dayNumber === currentShootDay;
   const overPacked = Boolean(plannedPagesPerDay && totalPages > plannedPagesPerDay + 0.05);
+  const unshotCount = assigned.filter((sc) => sc.shotStatus !== "shot").length;
+  const otherDays = allDays.filter((d) => d.dayNumber !== day.dayNumber).sort((a, b) => a.dayNumber - b.dayNumber);
 
   return (
     <div
@@ -834,6 +1101,36 @@ function DayColumn({
             ? ` · ${(totalPages - plannedPagesPerDay).toFixed(1)} over target`
             : ""}
         </div>
+        {ed.canWrite && unshotCount > 0 && otherDays.length > 0 && (
+          <div className="flex items-center gap-1 mt-1.5">
+            <select
+              value={migrateTarget}
+              onChange={(e) => setMigrateTarget(e.target.value)}
+              className="h-6 text-[9px] flex-1 min-w-0"
+              title={`${unshotCount} unshot scene${unshotCount === 1 ? "" : "s"} on this day`}
+            >
+              <option value="">Migrate {unshotCount} unshot →</option>
+              {otherDays.map((d) => (
+                <option key={d.id} value={d.dayNumber}>
+                  Day {d.dayNumber}
+                </option>
+              ))}
+            </select>
+            {migrateTarget && (
+              <button
+                type="button"
+                title="Move unshot scenes"
+                onClick={() => {
+                  migrateUnshotScenes(day.dayNumber, Number(migrateTarget));
+                  setMigrateTarget("");
+                }}
+                className="shrink-0"
+              >
+                <ArrowRightCircle size={14} style={{ color: "var(--accent-blue)" }} />
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Banners */}
@@ -917,6 +1214,9 @@ function DayColumn({
 function SceneStrip({ scene, offLocation = false }: { scene: Scene; offLocation?: boolean }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: scene.id });
+  const setShotStatus = useStore((s) => s.setSceneShotStatus);
+  const writable = useStore((s) => canWrite(s, "schedule"));
+  const shot = scene.shotStatus === "shot";
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -964,23 +1264,42 @@ function SceneStrip({ scene, offLocation = false }: { scene: Scene; offLocation?
       </div>
       <div className="flex items-center justify-between mt-1">
         <span className="text-[10px] text-[var(--text-muted)]">{scene.pages}pg</span>
-        <div className="flex -space-x-1">
-          {scene.elements
-            .filter((e) => e.category === "cast")
-            .slice(0, 3)
-            .map((e, i) => (
-              <div
-                key={i}
-                className="w-4 h-4 rounded-full flex items-center justify-center text-[6px] font-semibold border border-[var(--bg-surface)]"
-                style={{
-                  background: "var(--accent-blue)",
-                  color: "white",
-                }}
-                title={e.name}
-              >
-                {e.name[0]}
-              </div>
-            ))}
+        <div className="flex items-center gap-1">
+          <div className="flex -space-x-1">
+            {scene.elements
+              .filter((e) => e.category === "cast")
+              .slice(0, 3)
+              .map((e, i) => (
+                <div
+                  key={i}
+                  className="w-4 h-4 rounded-full flex items-center justify-center text-[6px] font-semibold border border-[var(--bg-surface)]"
+                  style={{
+                    background: "var(--accent-blue)",
+                    color: "white",
+                  }}
+                  title={e.name}
+                >
+                  {e.name[0]}
+                </div>
+              ))}
+          </div>
+          <button
+            type="button"
+            title={shot ? "Shot — click to mark not shot" : "Not shot — click to mark shot"}
+            disabled={!writable}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              setShotStatus(scene.id, shot ? "not_shot" : "shot");
+            }}
+            className="shrink-0"
+          >
+            {shot ? (
+              <CheckCircle2 size={13} style={{ color: "var(--color-success)" }} />
+            ) : (
+              <Circle size={13} className="text-[var(--text-muted)]" />
+            )}
+          </button>
         </div>
       </div>
     </div>

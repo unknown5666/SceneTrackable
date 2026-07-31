@@ -20,6 +20,9 @@ import { locationExists, locationFromProposal } from "@/lib/proposals";
 import { aiLocationScout, isAllowanceExhausted, type ProposedLocation } from "@/lib/claude";
 import { Sparkles as SparklesIcon, Loader2 as Loader2Icon, Check as CheckIcon } from "lucide-react";
 import { formatDate, cn } from "@/lib/utils";
+import { ShareMenu } from "@/components/ui/ShareMenu";
+import { buildEntityPdf, pdfFilename } from "@/lib/pdfExport";
+import { buildLocationShareText } from "@/lib/share";
 import type { LocationPermitStatus, ProductionLocation, Scene } from "@/types";
 
 const STATUS_TONE: Record<LocationPermitStatus, "muted" | "info" | "warning" | "success" | "neutral"> = {
@@ -188,6 +191,7 @@ export function Locations() {
                               loc={loc}
                               scenes={at}
                               days={days.map((d) => d.dayNumber)}
+                              projectName={project?.name ?? "Production"}
                               onScout={
                                 ed.canWrite && at.length > 0
                                   ? () => setScout({ loc, scenes: at })
@@ -234,22 +238,47 @@ function LocationDetail({
   loc,
   scenes,
   days,
+  projectName,
   onScout,
 }: {
   loc: ProductionLocation;
   scenes: { id: string; number: string; intExt: string; timeOfDay: string; synopsis: string }[];
   days: number[];
+  projectName: string;
   onScout?: () => void;
 }) {
   return (
     <div className="p-4 space-y-3">
-      {onScout && (
-        <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        <ShareMenu
+          buildText={() => buildLocationShareText(loc, scenes.map((s) => s.number), projectName)}
+          buildPdf={() => ({
+            doc: buildEntityPdf(loc.name, `${loc.type} · ${loc.permitStatus.replace(/_/g, " ")}`, [
+              {
+                heading: "Details",
+                rows: [
+                  ["Address", loc.address || "—"],
+                  ["Contact", [loc.contactName, loc.contactPhone].filter(Boolean).join(" · ") || "—"],
+                  ["Lock date", loc.lockDate ? loc.lockDate.slice(0, 10) : "—"],
+                  ["Shoot days", days.length ? days.map((d) => `Day ${d}`).join(", ") : "—"],
+                  ["Parking", loc.parkingNotes || "—"],
+                  ["Power", loc.powerNotes || "—"],
+                ],
+              },
+              {
+                heading: `Scenes (${scenes.length})`,
+                rows: scenes.map((s) => [s.number, `${s.intExt}. ${s.timeOfDay} — ${s.synopsis}`]),
+              },
+            ]),
+            filename: pdfFilename(projectName, `location-${loc.name}`),
+          })}
+        />
+        {onScout && (
           <Button variant="ai" size="sm" onClick={onScout}>
             <SparklesIcon size={14} /> Scout brief (AI)
           </Button>
-        </div>
-      )}
+        )}
+      </div>
       {(loc.imageUrl || loc.mapUrl || loc.address) && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {loc.imageUrl && (

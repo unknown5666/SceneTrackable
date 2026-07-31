@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Plane, LayoutGrid, DollarSign, ShieldCheck, Check } from "lucide-react";
-import { useStore } from "@/state/store";
+import { useStore, activeProject } from "@/state/store";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -10,6 +10,9 @@ import { CatalogPicker } from "@/components/ui/CatalogPicker";
 import { EquipmentImage } from "@/components/ui/EquipmentImage";
 import { DRONE_PRESETS, type EquipmentPreset } from "@/data/equipment-presets";
 import { formatCurrency } from "@/lib/utils";
+import { ShareMenu } from "@/components/ui/ShareMenu";
+import { buildAssetShareText } from "@/lib/share";
+import { buildEntityPdf, pdfFilename } from "@/lib/pdfExport";
 import type { Drone } from "@/types";
 
 const REG_TONE: Record<NonNullable<Drone["regStatus"]>, "success" | "warning" | "muted"> = {
@@ -38,6 +41,7 @@ export function Drones() {
   const shootDays = useStore((s) => s.shootDays);
   const production = useStore((s) => s.production);
   const budgetLines = useStore((s) => s.budgetLines);
+  const project = useStore(activeProject);
   const addRecord = useStore((s) => s.addRecord);
   const updateRecord = useStore((s) => s.updateRecord);
   const ed = useRecordEditor("drones");
@@ -285,7 +289,56 @@ export function Drones() {
                     )}
                   </td>
                   <td>
-                    <ed.RowActions id={d.id} />
+                    <div className="flex items-center gap-1">
+                      <ShareMenu
+                        buildText={() =>
+                          buildAssetShareText(
+                            "Drone",
+                            `${d.manufacturer ? `${d.manufacturer} ` : ""}${d.model}`,
+                            {
+                              Weight: d.weightGrams ? `${d.weightGrams} g` : undefined,
+                              Registration: d.regStatus ? REG_LABEL[d.regStatus] : undefined,
+                              Operator: d.operatorName,
+                              "Day rate": formatCurrency(
+                                (d.droneRatePerDay ?? 0) + (d.operatorRatePerDay ?? 0),
+                                production.currency
+                              ),
+                              Status: d.status,
+                              Booked: d.assignedShootDay ? `Day ${d.assignedShootDay}` : undefined,
+                            },
+                            project?.name ?? "Production"
+                          )
+                        }
+                        buildPdf={() => ({
+                          doc: buildEntityPdf(
+                            `${d.manufacturer ? `${d.manufacturer} ` : ""}${d.model}`,
+                            "Drone",
+                            [
+                              {
+                                heading: "Details",
+                                rows: [
+                                  ["Weight", d.weightGrams ? `${d.weightGrams} g` : "—"],
+                                  ["Registration", d.regStatus ? REG_LABEL[d.regStatus] : "—"],
+                                  ["Operator", d.operatorName || "—"],
+                                  ["Licence", d.operatorLicense || "—"],
+                                  [
+                                    "Day rate",
+                                    formatCurrency(
+                                      (d.droneRatePerDay ?? 0) + (d.operatorRatePerDay ?? 0),
+                                      production.currency
+                                    ),
+                                  ],
+                                  ["Status", d.status],
+                                  ["Booked", d.assignedShootDay ? `Day ${d.assignedShootDay}` : "—"],
+                                ],
+                              },
+                            ]
+                          ),
+                          filename: pdfFilename(project?.name ?? "project", `drone-${d.model}`),
+                        })}
+                      />
+                      <ed.RowActions id={d.id} />
+                    </div>
                   </td>
                 </tr>
               ))}

@@ -24,7 +24,7 @@ budget file (pdf/csv) ─▶ extractPdfText ─▶ parseBudgetText ─▶ review
 
 store (state/store.ts, ONE Zustand store) ─▶ every page reads from it
    │
-   ├─ persists to localStorage  "scenetrackable-v1" (version 5)
+   ├─ persists to localStorage  "scenetrackable-v1" (version 6)
    └─ optionally syncs to Supabase (cloud.ts, env-gated)
 
 Derived, never authored:  metrics.ts (dashboard KPIs) · reports.ts (tables) · snapshot.ts (ask-AI context)
@@ -43,7 +43,7 @@ AI pattern everywhere:    model returns a PROPOSAL → user reviews → accept w
 
 ## 1. State — the hub (`src/state/store.ts`)
 
-One Zustand store, persisted to `localStorage["scenetrackable-v1"]`, version 5,
+One Zustand store, persisted to `localStorage["scenetrackable-v1"]`, version 6,
 shape `{ state, version }`. `partialize` strips only `aiJobs` (transient).
 
 - **Active project lives at the top level of state**; inactive projects are
@@ -183,7 +183,8 @@ The core enrichment. Two passes:
 - Full AI feature list = `AIFeature` union (`types/index.ts:627`):
   `script_breakdown, character_bible, daily_digest, report_narration, nl_query,
   task_proposals, location_bible, schedule_draft, call_sheet, dood_draft,
-  art_suggestions, location_scout`.
+  art_suggestions, location_scout, invoice_parse, continuity_optimize`. The last
+  two are documented in §24 (invoice parsing) and §7.1 (continuity optimizer).
 
 ---
 
@@ -222,6 +223,48 @@ The core enrichment. Two passes:
   `buildScheduleDigest` → model → `validateSchedule` (drops invalid days) →
   `shootDayFromProposal`. `demoScheduleDraft` groups by location, skips weekends
   (`shootingDates`). Proposal → user accepts → real `ShootDay`s.
+
+### 7.1 Shot/Not-Shot, timeline boundaries, AI continuity optimizer
+
+- **Shot/Not-Shot**: `Scene.shotStatus?: "shot"|"not_shot"` (`types/index.ts`,
+  absent = not_shot). Toggled per-strip in `SceneStrip` (a small button with
+  `onPointerDown` `stopPropagation` so it doesn't get eaten by the dnd-kit drag
+  listeners on the strip). Store action `setSceneShotStatus` (`store.ts`).
+  **`ShootDay.scenes` still only encodes assignment, never completion** — a
+  scene being on a day's list means it's scheduled there, not that it's shot.
+- **Migrate unshot scenes**: `DayColumn` shows a day-picker + arrow button when
+  a day holds any `shotStatus !== "shot"` scene and another day exists. Calls
+  `migrateUnshotScenes(fromDay, toDay)` (`store.ts`) — one batched write, one
+  summary notification, moves only the unshot subset, leaves shot scenes where
+  they are.
+- **Timeline boundaries**: `ProductionMeta` gained four optional ISO-date
+  fields — `preProductionStart`, `principalPhotographyStart`,
+  `principalPhotographyEnd`, `postProductionEnd`. Edited via the
+  `TimelineCard` at the top of `pages/Schedule.tsx`, written with
+  `updateProductionMeta(patch)`. **This is the only page that edits
+  `ProductionMeta` today** — a pre-existing gap this closes for just these four
+  fields (nothing else on the meta object has a form anywhere).
+- **AI continuity optimizer** (`lib/continuity.ts` + `aiContinuityOptimize` in
+  `claude.ts`, feature id `continuity_optimize`): mirrors the
+  `taskProposals.ts` shape (digest builder → model → validator → review UI).
+  - `buildContinuityDigest(d)` — the heuristic pre-analysis the model reasons
+    over: which locations (`scenesAtLocation`) and which tracked wardrobe
+    `ArtElement`s (`category==="wardrobe"`, by `sceneIds`) currently have their
+    scenes spread across non-adjacent shoot days. The model only has to
+    propose fixes to a spread already computed in code — it's not asked to
+    re-derive the schedule.
+  - `validateContinuityMoves(moves, d)` re-checks every proposed
+    `{sceneNumber, toDay, reason}` against real records: rejects a move that
+    names a scene/day that doesn't exist, falls outside
+    `principalPhotographyStart/End`, or lands on/after a location's `lockDate`
+    (documented assumption: a location's lock date is read as "must shoot
+    there by this date"). **The model's stated reason is never trusted as
+    proof a move is legal** — only the validator's checks are.
+  - Accepted moves apply via `applyContinuityMoves` (`store.ts`) — a single
+    batched write + one summary notification, not one per move.
+  - Review UI: `ContinuityModal` in `pages/Schedule.tsx`, triggered by the
+    "Optimize with AI" button. Rejected moves are shown to the user with their
+    reason, not silently dropped.
 
 ---
 
@@ -359,6 +402,14 @@ stated **757,000**.
 - `PettyCashEntry` (`types:339`) + `addPettyCash`.
 - POs and petty cash are the **only dated money records**, so they drive the
   weekly-spend chart (`metrics.buildSpendChart`).
+- **Installments** (`PurchaseOrder.installments?: Installment[]`, `types:295`):
+  a PO's milestone/part-payment schedule. `addInstallment`/`updateInstallment`
+  (`store.ts`). UI: an expandable row per PO in `pages/Budget.tsx`'s
+  "Purchase Orders" tab (`InstallmentPanel`). An installment's `status` the
+  app writes is only ever `"pending"`/`"paid"` — `"overdue"` is a **display-only**
+  derivation (`dueDate < today && status==="pending"`), never persisted, so
+  nothing has to keep it in sync. See §24 for how installment totals feed the
+  finance dashboard separately from the top sheet's budgeted/spent.
 
 ---
 
@@ -393,8 +444,14 @@ because the dashboard used to invent KPIs.
   row builder over `ProductionData`.
 - `exportReportCSV` (`:400`) / `printReport` (`:419`) / `tableToCSV` /
   `triggerDownload`.
+- **Location Report** carries a `"Scene Count"` column (`at.length`, right after
+  `"Location"`) alongside the existing scene-number list column — the count was
+  previously only derivable by reading the list.
 - **AI narration**: `aiNarrateReport` writes an executive summary over a table;
   `demoNarration` offline.
+- **Real PDF export + WhatsApp share**: see §24 — every report card also has a
+  `ShareMenu` that builds an actual `.pdf` (via `buildTablePdf`), not just the
+  print-window path.
 
 ---
 
@@ -531,7 +588,105 @@ schema, not a bespoke form.
 
 ---
 
-## 24. Symptom → where to look
+## 24. Universal share/export layer (`lib/pdfExport.ts`, `lib/share.ts`, `ui/ShareMenu.tsx`)
+
+- **Real PDF generation** (`lib/pdfExport.ts`) is new: previously "PDF export"
+  meant a browser print window (`reports.ts printReport`, still there,
+  unchanged, still used by the Reports page's own "PDF" button). This module
+  uses `jspdf` + `jspdf-autotable` to build an actual `.pdf` `Blob`/`File`.
+  - `buildTablePdf(title, subtitle, table: ReportTable)` — reuses the same
+    `ReportTable` shape `reports.ts` already produces, so a report has one
+    definition and three output paths (CSV, print, real PDF).
+  - `buildEntityPdf(title, subtitle, sections)` — single-record detail sheets
+    (a scene, a location, a cast member, a wardrobe piece, an asset).
+  - `downloadPdf`/`pdfBlob`/`pdfFilename`.
+- **WhatsApp share** (`lib/share.ts`): `whatsappUrl(text)` /
+  `openWhatsAppShare(text)` build the public click-to-chat link
+  (`api.whatsapp.com/send?text=…`). **This is text-only — it cannot attach a
+  file.** There is no client-only way to push a file into WhatsApp; that needs
+  the WhatsApp Business Platform (Meta app review + a registered number + a
+  server this app doesn't have), which is explicitly out of scope. When a
+  share also has a PDF, the flow downloads the PDF first and tells the user to
+  attach it manually — see `ShareMenu`'s `handleWhatsApp`.
+  - Per-kind text builders: `buildSceneShareText`, `buildLocationShareText`,
+    `buildCastShareText`, `buildWardrobeShareText`, `buildReportShareText`,
+    `buildAssetShareText`.
+  - `copyShareText` — clipboard write, used by the "Copy text" menu item.
+- **`ShareMenu`** (`components/ui/ShareMenu.tsx`): the one dropdown component
+  every page wires in — `{ buildText, buildPdf? }`, three actions (copy /
+  WhatsApp / download PDF). Wired into: `Reports.tsx` (report), `Breakdown.tsx`
+  (scene), `Locations.tsx` (location), `CastPortal.tsx` (cast member),
+  `ArtPortal.tsx` (wardrobe/art element), `Drones.tsx` (asset). Adding it to
+  another page/collection is: import `ShareMenu`, write a `buildText`
+  (probably reusing/extending a `lib/share.ts` builder), optionally a
+  `buildPdf` via `buildEntityPdf`.
+
+---
+
+## 25. Financial installments, vendors & the invoice AI pipeline
+
+### 25.1 Data model
+- `Vendor` (`types/index.ts`): name + `department: DepartmentId` + contacts.
+  Generic-CRUD collection (`SCHEMAS.vendors`) — managed from the "Invoices" tab
+  in `pages/Budget.tsx`.
+- `Installment` + `PurchaseOrder.installments?` — see §13.
+- `Invoice` (`types/index.ts`): one uploaded receipt. `fileDataUrl` is a base64
+  data-URI — **the same "no real file-storage backend" convention** as
+  `imageUrl`/`FileEntry` elsewhere in the app, not a new pattern. `status`:
+  `uploaded → processing → parsed → reconciled`, or `error`.
+- Both are required arrays on `ProductionData` (`vendors: Vendor[]`,
+  `invoices: Invoice[]`) — the persist `migrate` step (from < 6) backfills
+  `[]` onto every existing project (root + every `projectData[pid]`), because
+  generic `addRecord` spreads `s[collection]` as an array and throws on
+  `undefined`.
+
+### 25.2 Upload → OCR → AI parse pipeline
+The app's only AI model (Z.ai GLM `glm-4.7-flash`) has **no vision/image
+input** — it can never read an uploaded photo or PDF directly. So "Process
+Invoice with AI" is two steps, not one:
+1. **Client-side text extraction** (`lib/ocr.ts`, new): `recognizeInvoiceText(file)`
+   — a digital PDF goes through the existing `extractPdfText` (`lib/pdf.ts`,
+   the same code the script importer uses); a photo goes through `tesseract.js`,
+   **dynamically imported** so its wasm/worker bundle only loads when someone
+   actually clicks the button.
+2. **AI structuring** (`aiParseInvoice(ocrText, vendorHint?)` in `claude.ts`,
+   feature id `invoice_parse`) — sends only the extracted text, never the
+   image, and returns `{vendorName?, date?, total?, lineItems}`.
+- Every field is reviewable/editable before it's saved — same "AI proposes,
+  human commits" rule as everywhere else in the app.
+
+### 25.3 Department buyer portals (`pages/InvoicePortal.tsx`, route `/invoices`)
+- New access key `"invoices"` (`data/roles.ts` `ACCESS_KEYS`) + three new
+  built-in roles: **Art Buyer** (`department:"art"`), **Wardrobe Buyer**
+  (`department:"wardrobe"`), **Production Buyer** (`department:"production"`),
+  each write-only on `invoices` — same department-scoped-role pattern as
+  `camera`/`rf_comms`/`vfx`/`art`/`cast`. The page locks the invoice's
+  department to `currentRole().department` when the role carries one.
+- Store actions: `uploadInvoice` (creates, status `"uploaded"`),
+  `updateInvoiceParse` (writes OCR text + parsed fields, or an error),
+  `reconcileInvoice(id, {linkedBudgetLineId?, linkedPOId?})`.
+
+### 25.4 Reconciliation — deliberately does not touch the budget
+- **`reconcileInvoice` only links records** (`linkedBudgetLineId`/`linkedPOId`
+  + `status:"reconciled"`). **It never mutates `budgetLines.spent` or a PO's
+  `installments`.** Reconciliation is done from `pages/Budget.tsx`'s
+  "Invoices" tab (all departments, `budget` access key).
+- **Why**: the finance dashboard (`computeFinanceSummary`, `lib/metrics.ts`)
+  answers a different question than the existing top-sheet metrics
+  (`computeMetrics`'s budgeted/committed/spent) — "what's been paid via
+  tracked installments/invoices" vs. "what the top sheet says". Mixing the two
+  — e.g. auto-incrementing `spent` when an invoice reconciles — would
+  double-count the same money under two different names. If a future task
+  wants automatic reconciliation, it needs an explicit decision about which
+  number wins, not a silent write.
+- `computeFinanceSummary(d)` → `{totalBudget, totalPaidInstallments,
+  totalPendingInstallments, byDepartment[], byVendor[]}`. Rendered in
+  `Budget.tsx`'s "charts" tab and as one `StatCard` on the accountant
+  Dashboard.
+
+---
+
+## 26. Symptom → where to look
 
 | Symptom | Start here |
 |---|---|
@@ -554,10 +709,16 @@ schema, not a bespoke form.
 | PO stuck / wrong approver | `advancePO` chain `store.ts:1181`; `POStatus` `types:307` |
 | A page 403s for a role | `permissionFor` `types:66`; `AccessGuard` `App.tsx` |
 | New record type needs a form | Add a schema in `data/schemas.ts`; use `addRecord`/`RecordEditor` |
+| WhatsApp share doesn't attach a file | It can't — `api.whatsapp.com` is text-only; §24 |
+| Invoice "Process with AI" fails / times out | Check OCR first (`lib/ocr.ts` — is the file actually text-bearing?), then the GLM call itself; the model never sees the image |
+| Reconciled invoice didn't change the budget top sheet | Correct — `reconcileInvoice` only links records, §25.4 |
+| Installment stuck showing "pending" past its due date | "overdue" is computed at render time, never persisted — check the component, not the store |
+| Scene shows as scheduled but "not shot" won't clear | `shotStatus` lives on `Scene`, independent of `ShootDay.scenes` — moving a scene between days doesn't change it |
+| AI continuity move looks wrong or got rejected | `validateContinuityMoves` in `lib/continuity.ts` — check location lock dates / principal-photography window first |
 
 ---
 
-## 25. Node repro scripts & guard rails
+## 27. Node repro scripts & guard rails
 
 ```bash
 npx tsx scripts/budget-test.ts <file.pdf|csv>   # budget parse + reconciliation, row by row

@@ -40,6 +40,13 @@ export function daysBetween(a: string, b: string): number {
   return Math.round(ms / (1000 * 60 * 60 * 24));
 }
 
+/** Adds `n` calendar days to an ISO date, returned as YYYY-MM-DD (UTC, so it's stable regardless of local timezone). */
+export function addDaysIso(iso: string, n: number): string {
+  const d = new Date(iso.slice(0, 10) + "T00:00:00.000Z");
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
 export function isOverdue(deadline: string, now: Date = new Date()): boolean {
   return new Date(deadline).getTime() < now.getTime();
 }

@@ -22,6 +22,10 @@ import type {
   Checklist,
   ArtElement,
   ContinuityPhoto,
+  Invoice,
+  InvoiceStatus,
+  Installment,
+  SceneShotStatus,
   TimesheetEntry,
   AppNotification,
   AIUsageEntry,
@@ -49,7 +53,7 @@ import { isAdminRole, permissionFor, accessFromPermissions } from "@/types";
 import { DEFAULT_ROLES } from "@/data/roles";
 import { evaluateDeadline } from "@/lib/deadlines";
 import { resolveLockDates, locKey } from "@/lib/locations";
-import { id, verifyPassword, hashPassword, HASH_PREFIX } from "@/lib/utils";
+import { id, verifyPassword, hashPassword, HASH_PREFIX, addDaysIso } from "@/lib/utils";
 import {
   cloudEnabled,
   cloudConnect,
@@ -235,6 +239,8 @@ export function blankData(title: string, currency = "AED"): ProductionData {
     checklists: [],
     artElements: [],
     continuityPhotos: [],
+    vendors: [],
+    invoices: [],
     timesheet: [],
     notifications: [],
     activityLog: [],
@@ -419,6 +425,20 @@ interface State extends ProductionData {
   recomputeAllDeadlines: () => void;
   /** Records a lock date against a location by name. */
   setLocationLock: (locationName: string, date: string) => void;
+  /** Toggles a scene between shot / not-shot; independent of which day it's assigned to. */
+  setSceneShotStatus: (sceneId: string, status: SceneShotStatus) => void;
+  /** Moves every not-shot scene from one day to another in a single batch. Returns the count moved. */
+  migrateUnshotScenes: (fromDay: number, toDay: number) => number;
+  /** Patches production-meta fields — currently used for the timeline-boundary dates. */
+  updateProductionMeta: (patch: Partial<ProductionMeta>) => void;
+  /**
+   * Lines up shoot-day dates to consecutive calendar days starting at `startDate`,
+   * in `dayNumber` order — reusable for any project, not just one built by hand.
+   * If no shoot days exist yet, pass `count` to create that many blank ones first.
+   */
+  alignShootDayDates: (startDate: string, count?: number) => void;
+  /** Applies a batch of AI-continuity-proposed scene moves as one summarized action. */
+  applyContinuityMoves: (moves: { sceneId: string; toDay: number }[]) => void;
   /** Replaces the persisted character bible after a breakdown run. */
   setCharacterBible: (characters: ScriptCharacter[]) => void;
   /** Caches the daily digest so it isn't regenerated on every dashboard visit. */
@@ -441,6 +461,8 @@ interface State extends ProductionData {
 
   submitPO: (po: Omit<PurchaseOrder, "id" | "requestedAt" | "status" | "approvals" | "auditLog" | "number">) => void;
   advancePO: (id: string, decision: "approve" | "reject", byUserId: string, note?: string) => void;
+  addInstallment: (poId: string, installment: Omit<Installment, "id">) => void;
+  updateInstallment: (poId: string, installmentId: string, patch: Partial<Installment>) => void;
   addPettyCash: (entry: Omit<PettyCashEntry, "id">) => void;
   /**
    * Land a parsed budget file on the top sheet. "replace" swaps the whole
@@ -452,6 +474,18 @@ interface State extends ProductionData {
     lines: BudgetLine[],
     mode: "replace" | "append",
     meta?: { fileName?: string; currency?: string }
+  ) => void;
+
+  /** Creates an uploaded invoice record (status "uploaded"), returns its id. */
+  uploadInvoice: (
+    draft: Omit<Invoice, "id" | "uploadedAt" | "status"> & { status?: InvoiceStatus }
+  ) => string;
+  /** Writes OCR/AI-parse results (or an error) onto an existing invoice. */
+  updateInvoiceParse: (id: string, patch: Partial<Invoice>) => void;
+  /** Links a parsed invoice to a budget line and/or PO and marks it reconciled. */
+  reconcileInvoice: (
+    id: string,
+    links: { linkedBudgetLineId?: string; linkedPOId?: string }
   ) => void;
 
   updateShotStatus: (id: string, status: VFXShot["status"]) => void;
@@ -1055,6 +1089,130 @@ export const useStore = create<State>()(
         get().recomputeAllDeadlines();
       },
 
+      setSceneShotStatus: (sceneId, status) => {
+        set((s) => ({
+          scenes: s.scenes.map((sc) => (sc.id === sceneId ? { ...sc, shotStatus: status } : sc)),
+        }));
+      },
+
+      /**
+       * Moves every scene in `fromDay` that isn't marked "shot" onto `toDay`,
+       * leaving shot scenes where they are. One batched write, one
+       * notification — mirrors moveSceneToDay's bookkeeping but summarized
+       * instead of per-scene.
+       */
+      migrateUnshotScenes: (fromDay, toDay) => {
+        const state = get();
+        const from = state.shootDays.find((d) => d.dayNumber === fromDay);
+        if (!from || fromDay === toDay) return 0;
+        const sceneById = new Map(state.scenes.map((sc) => [sc.id, sc]));
+        const unshot = from.scenes.filter((sid) => sceneById.get(sid)?.shotStatus !== "shot");
+        if (unshot.length === 0) return 0;
+        const unshotSet = new Set(unshot);
+
+        const newShootDays = state.shootDays.map((d) => {
+          if (d.dayNumber === fromDay) {
+            return { ...d, scenes: d.scenes.filter((sid) => !unshotSet.has(sid)) };
+          }
+          if (d.dayNumber === toDay) {
+            return { ...d, scenes: [...d.scenes, ...unshot] };
+          }
+          return d;
+        });
+
+        set({
+          shootDays: newShootDays,
+          publishedSchedule: {
+            ...state.publishedSchedule,
+            lastChanges: [
+              ...state.publishedSchedule.lastChanges,
+              ...unshot.map((sceneId) => ({ sceneId, fromDay, toDay })),
+            ],
+          },
+        });
+
+        get().recomputeAllDeadlines();
+        get().addNotification({
+          type: "schedule_change",
+          title: `${unshot.length} unshot scene${unshot.length === 1 ? "" : "s"} migrated to Day ${toDay}`,
+          body: `From Day ${fromDay}. Deadlines recomputed.`,
+          linkTo: "/schedule",
+        });
+        return unshot.length;
+      },
+
+      updateProductionMeta: (patch) => {
+        set((s) => ({ production: { ...s.production, ...patch } }));
+      },
+
+      alignShootDayDates: (startDate, count) => {
+        const state = get();
+        let days = [...state.shootDays].sort((a, b) => a.dayNumber - b.dayNumber);
+        if (days.length === 0 && count && count > 0) {
+          days = Array.from({ length: count }, (_, i) => ({
+            id: id("day"),
+            dayNumber: i + 1,
+            date: startDate,
+            location: "",
+            locations: [],
+            estimatedHours: 8,
+            scenes: [],
+          }));
+        }
+        if (days.length === 0) return;
+        const dated = days.map((d, i) => ({ ...d, date: addDaysIso(startDate, i) }));
+        set({
+          shootDays: dated,
+          production: { ...state.production, totalShootDays: dated.length },
+        });
+        get().logActivity({
+          action: "updated",
+          entity: "shoot_day",
+          description: `Aligned ${dated.length} shoot day date(s) starting ${startDate}`,
+        });
+        pushToast({
+          title: "Shoot day dates set",
+          description: `${dated.length} day(s) from ${startDate}`,
+          tone: "success",
+        });
+      },
+
+      /** Applies AI-continuity moves as one batch, then one summary notification. */
+      applyContinuityMoves: (moves) => {
+        if (moves.length === 0) return;
+        const state = get();
+        let shootDays = state.shootDays;
+        const changes: { sceneId: string; fromDay: number; toDay: number }[] = [];
+
+        for (const { sceneId, toDay } of moves) {
+          const fromDayNum = shootDays.find((d) => d.scenes.includes(sceneId))?.dayNumber;
+          if (fromDayNum === toDay) continue;
+          shootDays = shootDays.map((d) => {
+            const isTo = d.dayNumber === toDay;
+            const sceneList = d.scenes.filter((sid) => sid !== sceneId);
+            return { ...d, scenes: isTo ? [...sceneList, sceneId] : sceneList };
+          });
+          changes.push({ sceneId, fromDay: fromDayNum ?? 0, toDay });
+        }
+        if (changes.length === 0) return;
+
+        set({
+          shootDays,
+          publishedSchedule: {
+            ...state.publishedSchedule,
+            lastChanges: [...state.publishedSchedule.lastChanges, ...changes],
+          },
+        });
+
+        get().recomputeAllDeadlines();
+        get().addNotification({
+          type: "schedule_change",
+          title: `AI continuity optimization applied — ${changes.length} scene${changes.length === 1 ? "" : "s"} moved`,
+          body: "Deadlines recomputed.",
+          linkTo: "/schedule",
+        });
+      },
+
       setCharacterBible: (characters) => set({ characterBible: characters }),
 
       setAIDigest: (digest) => set({ aiDigest: digest }),
@@ -1212,6 +1370,37 @@ export const useStore = create<State>()(
           }),
         })),
 
+      addInstallment: (poId, installment) => {
+        set((s) => ({
+          purchaseOrders: s.purchaseOrders.map((po) =>
+            po.id === poId
+              ? { ...po, installments: [...(po.installments ?? []), { ...installment, id: id("inst") }] }
+              : po
+          ),
+        }));
+        get().logActivity({
+          action: "updated",
+          entity: "purchase_order",
+          entityId: poId,
+          description: `Added installment "${installment.label}" (${installment.amount})`,
+        });
+      },
+
+      updateInstallment: (poId, installmentId, patch) => {
+        set((s) => ({
+          purchaseOrders: s.purchaseOrders.map((po) =>
+            po.id === poId
+              ? {
+                  ...po,
+                  installments: (po.installments ?? []).map((inst) =>
+                    inst.id === installmentId ? { ...inst, ...patch } : inst
+                  ),
+                }
+              : po
+          ),
+        }));
+      },
+
       addPettyCash: (entry) =>
         set((s) => ({
           pettyCash: [{ ...entry, id: id("pc") }, ...s.pettyCash],
@@ -1253,6 +1442,51 @@ export const useStore = create<State>()(
             },
           });
         }
+      },
+
+      // ---- Invoices (department buyer portals) ----
+      uploadInvoice: (draft) => {
+        const rec: Invoice = {
+          ...draft,
+          id: id("inv"),
+          uploadedAt: new Date().toISOString(),
+          status: draft.status ?? "uploaded",
+        };
+        set((s) => ({ invoices: [rec, ...s.invoices] }));
+        get().logActivity({
+          action: "created",
+          entity: "purchase_order",
+          entityId: rec.id,
+          description: `Uploaded invoice: ${rec.fileName} (${rec.department})`,
+        });
+        return rec.id;
+      },
+
+      updateInvoiceParse: (invId, patch) => {
+        set((s) => ({
+          invoices: s.invoices.map((inv) => (inv.id === invId ? { ...inv, ...patch } : inv)),
+        }));
+      },
+
+      reconcileInvoice: (invId, links) => {
+        set((s) => ({
+          invoices: s.invoices.map((inv) =>
+            inv.id === invId
+              ? {
+                  ...inv,
+                  ...links,
+                  status: "reconciled" as InvoiceStatus,
+                  reconciledAt: new Date().toISOString(),
+                }
+              : inv
+          ),
+        }));
+        get().logActivity({
+          action: "updated",
+          entity: "purchase_order",
+          entityId: invId,
+          description: "Invoice reconciled",
+        });
       },
 
       // ---- VFX ----
@@ -1970,7 +2204,7 @@ export const useStore = create<State>()(
     {
       name: "scenetrackable-v1",
       storage: createJSONStorage(() => localStorage),
-      version: 5,
+      version: 6,
       // aiJobs / breakdownRun are deliberately transient: on reload an
       // interrupted run must present as resumable (its results were saved
       // incrementally), never as still-running against a promise that no
@@ -2001,6 +2235,20 @@ export const useStore = create<State>()(
             delete ai.model;
             delete ai.lightModel;
             delete ai.apiKey;
+          }
+        }
+        if (from < 6) {
+          // v6 added vendors/invoices as required collections — generic
+          // addRecord spreads `s[collection]` as an array, which throws on
+          // undefined, so every project (active + snapshotted) needs both.
+          const backfill = (data: Record<string, any> | undefined) => {
+            if (!data) return;
+            data.vendors ??= [];
+            data.invoices ??= [];
+          };
+          backfill(s);
+          for (const pid of Object.keys(s.projectData ?? {})) {
+            backfill(s.projectData[pid]);
           }
         }
         return s;

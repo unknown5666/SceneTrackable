@@ -9,6 +9,7 @@ import { Schedule } from "@/pages/Schedule";
 import { Locations } from "@/pages/Locations";
 import { Tasks } from "@/pages/Tasks";
 import { Budget } from "@/pages/Budget";
+import { InvoicePortal } from "@/pages/InvoicePortal";
 import { Reports } from "@/pages/Reports";
 import { VFXPipeline } from "@/pages/VFXPipeline";
 import { RFComms } from "@/pages/RFComms";
@@ -69,6 +70,7 @@ export default function App() {
         <Route path="/locations" element={<AccessGuard page="locations"><Locations /></AccessGuard>} />
         <Route path="/tasks" element={<AccessGuard page="tasks"><Tasks /></AccessGuard>} />
         <Route path="/budget" element={<AccessGuard page="budget"><Budget /></AccessGuard>} />
+        <Route path="/invoices" element={<AccessGuard page="invoices"><InvoicePortal /></AccessGuard>} />
         <Route path="/reports" element={<AccessGuard page="reports"><Reports /></AccessGuard>} />
         <Route path="/vfx" element={<AccessGuard page="vfx"><VFXPipeline /></AccessGuard>} />
         <Route path="/rf" element={<AccessGuard page="rf"><RFComms /></AccessGuard>} />
