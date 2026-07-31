@@ -27,6 +27,8 @@ store (state/store.ts, ONE Zustand store) ─▶ every page reads from it
    ├─ persists to localStorage  "scenetrackable-v1" (version 6)
    └─ optionally syncs to Supabase (cloud.ts, env-gated)
 
+store ─▶ reports.ts / scheduleExports.ts ─▶ CSV (download) · print window (Arabic-safe PDF) · jsPDF (Latin)
+
 Derived, never authored:  metrics.ts (dashboard KPIs) · reports.ts (tables) · snapshot.ts (ask-AI context)
 AI pattern everywhere:    model returns a PROPOSAL → user reviews → accept writes a record (proposals.ts et al.)
 ```
@@ -184,7 +186,7 @@ The core enrichment. Two passes:
   `script_breakdown, character_bible, daily_digest, report_narration, nl_query,
   task_proposals, location_bible, schedule_draft, call_sheet, dood_draft,
   art_suggestions, location_scout, invoice_parse, continuity_optimize`. The last
-  two are documented in §24 (invoice parsing) and §7.1 (continuity optimizer).
+  two are documented in §25.2 (invoice parsing) and §7.1 (continuity optimizer).
 
 ---
 
@@ -237,13 +239,29 @@ The core enrichment. Two passes:
   `migrateUnshotScenes(fromDay, toDay)` (`store.ts`) — one batched write, one
   summary notification, moves only the unshot subset, leaves shot scenes where
   they are.
-- **Timeline boundaries**: `ProductionMeta` gained four optional ISO-date
+- **Timeline boundaries**: `ProductionMeta` carries five optional ISO-date
   fields — `preProductionStart`, `principalPhotographyStart`,
-  `principalPhotographyEnd`, `postProductionEnd`. Edited via the
-  `TimelineCard` at the top of `pages/Schedule.tsx`, written with
+  `principalPhotographyEnd`, `postProductionStart`, `postProductionEnd`.
+  Edited via the `TimelineCard` at the top of `pages/Schedule.tsx`, written with
   `updateProductionMeta(patch)`. **This is the only page that edits
-  `ProductionMeta` today** — a pre-existing gap this closes for just these four
+  `ProductionMeta` today** — a pre-existing gap this closes for just these five
   fields (nothing else on the meta object has a form anywhere).
+  - **`postProductionStart` is deliberately independent of
+    `principalPhotographyEnd`.** Post routinely starts *before* wrap — an editor
+    cuts dailies while the unit is still shooting — so it is never derived from
+    the photography end date. The bundled production is exactly this shape
+    (shoot Sep 20 → Oct 19, post opens Sep 21), and the real production's own
+    calendar sheet writes those overlapping days «تصوير + مونتاج». Anything
+    reading the timeline must treat shoot and post as **overlapping windows,
+    not a sequence** (see `buildGeneralCalendarTable`, §26).
+- **Dating the board**: `alignShootDayDates(startDate, count?)` (`store.ts`)
+  re-dates every shoot day to consecutive calendar days from `startDate` in
+  `dayNumber` order, and recomputes `production.totalShootDays`. With no shoot
+  days yet it *creates* `count` blank ones instead — so a brand-new project can
+  go from "principal photography starts here, 30 days" to a dated board in one
+  click. Exposed as the "Align Shoot Day Dates" / "Generate Shoot Days" control
+  in `TimelineCard`. Date arithmetic goes through `addDaysIso` (`lib/utils.ts`),
+  which is UTC-based so a board never shifts a day on a timezone boundary.
 - **AI continuity optimizer** (`lib/continuity.ts` + `aiContinuityOptimize` in
   `claude.ts`, feature id `continuity_optimize`): mirrors the
   `taskProposals.ts` shape (digest builder → model → validator → review UI).
@@ -408,7 +426,7 @@ stated **757,000**.
   "Purchase Orders" tab (`InstallmentPanel`). An installment's `status` the
   app writes is only ever `"pending"`/`"paid"` — `"overdue"` is a **display-only**
   derivation (`dueDate < today && status==="pending"`), never persisted, so
-  nothing has to keep it in sync. See §24 for how installment totals feed the
+  nothing has to keep it in sync. See §25.4 for how installment totals feed the
   finance dashboard separately from the top sheet's budgeted/spent.
 
 ---
@@ -565,6 +583,16 @@ schema, not a bespoke form.
   built by `scripts/build-yadoo.ts` which runs the committed extracted text
   through the app's *own* `parseScreenplay` + `parseBudgetText` (so it doubles as
   a regression check). Loaded additively.
+  - Its **timeline is the production's real one**, not a generated offset:
+    pre-production 2026-09-01, principal photography 2026-09-20 → 10-19
+    (30 days), post-production 2026-09-21 → 11-19 (60 days, overlapping —
+    §7.1). The constants sit at the top of the SCHEDULE block.
+  - The board must land on **exactly 30 days**, but each of the 15 location
+    units forces a day boundary regardless of page count, so a fixed
+    pages-per-day cap can't hit the target. `buildBuckets(cap)` is therefore
+    pure and the script **searches** caps 2→10 for the one yielding 30,
+    falling back to the closest. If the parsers regress and the scene/location
+    mix changes, this silently re-solves — check `days=` in its output.
 - `ensureFreshDigest()` runs inside `applyBackupText` so restored data lands a
   completed AI digest (dashboard doesn't read "out of date").
 
@@ -686,7 +714,49 @@ Invoice with AI" is two steps, not one:
 
 ---
 
-## 26. Symptom → where to look
+## 26. Schedule documents — the two sheets a production circulates
+### (`src/lib/scheduleExports.ts`, Schedule page → "Documents" tab)
+
+Modelled on the two spreadsheets this production actually works from, so an
+export drops straight into the existing paperwork instead of inventing a
+format. Both are built from the same store slices the strip board reads, so
+**they can never drift from the board**.
+
+1. **Location Schedule — «الجدول الزمني»** (`buildLocationScheduleTable`).
+   One row per *run of consecutive shoot days at one location*, grouped by
+   `locationBlocks(d)`. **Consecutive is the whole point**: «عدد الايام» in the
+   source sheet is the length of an unbroken stay, so a location revisited
+   later is correctly a second row, not a fatter first one. Columns mirror the
+   sheet (bilingual headers, Arabic first): location-per-script, place,
+   operation, start, end, map link, day count, crew, cast, description,
+   Day/Night, INT/EXT. `locationScheduleSummary` reproduces the sheet's
+   footer block (first/last shoot day, day count, the timeline boundaries).
+2. **General Calendar — «الجدول الزمني العام»** (`buildGeneralCalendarTable`).
+   One row per *calendar day* across `calendarWindow(d)` — earliest known
+   boundary to latest, so a half-filled timeline still exports something
+   usable. Per day: prep / shoot (with day number) / post / off.
+   **Shoot and post are independent tests, not an if/else chain** — a day can
+   be both, and prints as «تصوير + مونتاج», matching the real sheet (§7.1).
+
+- **Counts are measured, never estimated** — same rule as `metrics.ts`. Crew is
+  the real crew-list length, cast is the distinct cast actually in that block's
+  scenes; anything unmeasurable renders `—`.
+- **CSV** (`exportScheduleCSV`) is a true download and reuses `reports.ts`'s
+  `tableToCSV` — which prepends a UTF-8 BOM, the thing that makes Arabic open
+  correctly in Excel. The location schedule appends its summary block below the
+  table.
+- **PDF** (`printScheduleDocument`) is the **print-window path, deliberately —
+  not `lib/pdfExport.ts`'s jsPDF path.** jsPDF ships no Arabic glyphs and does
+  no Arabic shaping or bidi reordering, so an Arabic schedule comes out of
+  `buildTablePdf` as disconnected letters in reverse order. The browser's own
+  print engine shapes and orders Arabic correctly and keeps the text
+  selectable. The document is emitted `dir="rtl"`, A4 landscape.
+  **`buildTablePdf` remains correct for Latin tables (§24) — don't "fix" this
+  by routing these two through it.**
+
+---
+
+## 27. Symptom → where to look
 
 | Symptom | Start here |
 |---|---|
@@ -715,10 +785,14 @@ Invoice with AI" is two steps, not one:
 | Installment stuck showing "pending" past its due date | "overdue" is computed at render time, never persisted — check the component, not the store |
 | Scene shows as scheduled but "not shot" won't clear | `shotStatus` lives on `Scene`, independent of `ShootDay.scenes` — moving a scene between days doesn't change it |
 | AI continuity move looks wrong or got rejected | `validateContinuityMoves` in `lib/continuity.ts` — check location lock dates / principal-photography window first |
+| Arabic comes out as disconnected/reversed letters in a PDF | jsPDF can't shape Arabic — use the print-window path, §26 |
+| Shoot day dates wrong / off by one | `alignShootDayDates` + `addDaysIso` (UTC-based on purpose), §7.1 |
+| Exported schedule disagrees with the strip board | It can't — both read the same store slices; check the `data` memo's slice list in `ScheduleDocuments` |
+| Post-production dates look like they overlap the shoot | They're meant to — `postProductionStart` is independent of wrap, §7.1 |
 
 ---
 
-## 27. Node repro scripts & guard rails
+## 28. Node repro scripts & guard rails
 
 ```bash
 npx tsx scripts/budget-test.ts <file.pdf|csv>   # budget parse + reconciliation, row by row
@@ -726,6 +800,15 @@ npx tsx scripts/pdf-lines-test.ts               # RTL line-reconstruction fixtur
 npx tsx scripts/arabic-pdf-repro.ts             # Arabic PDF extraction repro
 npx tsx scripts/build-yadoo.ts                  # rebuild bundled production (regresses both parsers)
 node  scripts/build-sample.mjs                  # regenerate the sample production
+```
+
+`scripts/schedule-export-test.ts` prints both §26 documents for a production
+JSON. It **can't run under plain `tsx`**: it reaches `lib/locations.ts`, which
+imports the store, which imports `cloud.ts`, which reads `import.meta.env` at
+module scope — Vite-only. Bundle it first (esbuild comes with Vite):
+
+```bash
+npx esbuild scripts/schedule-export-test.ts --bundle --platform=node --format=esm --target=node20 "--define:import.meta.env={}" --outfile=tmp/sched-test.mjs && node tmp/sched-test.mjs public/mazraat-yadoo-3.json
 ```
 Fixtures in `scripts/data/`. `src/lib/pdf.ts` can't load outside Vite — the
 scripts load pdf.js directly and hand text to `reconstructLines`, the same code

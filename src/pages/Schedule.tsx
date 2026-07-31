@@ -34,6 +34,7 @@ import {
   ArrowRightCircle,
   CalendarRange,
   AlertTriangle,
+  FileDown,
 } from "lucide-react";
 import { useStore, activeProject, canWrite } from "@/state/store";
 import { Card, CardHeader } from "@/components/ui/Card";
@@ -56,6 +57,12 @@ import {
   type ProposedDoodEntry,
 } from "@/lib/claude";
 import { buildContinuityDigest, validateContinuityMoves, type ValidatedContinuityMove, type RejectedContinuityMove } from "@/lib/continuity";
+import {
+  SCHEDULE_EXPORTS,
+  exportScheduleCSV,
+  printScheduleDocument,
+  type ScheduleExportId,
+} from "@/lib/scheduleExports";
 import { printCallSheet } from "@/lib/export";
 import { ProposalPicker, type ProposalItem } from "@/components/ui/ProposalPicker";
 import { HelpButton } from "@/components/ui/HelpButton";
@@ -119,14 +126,139 @@ export function Schedule() {
         tabs={[
           { id: "board", label: "Strip Board" },
           { id: "dood", label: "Day Out Of Days" },
+          { id: "documents", label: "Documents" },
         ]}
         active={tab}
         onChange={setTab}
         className="mb-6"
       />
 
-      {tab === "board" ? <StripBoard /> : <DOODChart />}
+      {tab === "board" ? <StripBoard /> : tab === "dood" ? <DOODChart /> : <ScheduleDocuments />}
     </div>
+  );
+}
+
+/**
+ * The two documents a production circulates off the board — the location
+ * schedule and the general calendar. Both are built from the same store data
+ * the strip board is, so they can't drift from it.
+ */
+function ScheduleDocuments() {
+  const production = useStore((s) => s.production);
+  const crew = useStore((s) => s.crew);
+  const cast = useStore((s) => s.cast);
+  const scenes = useStore((s) => s.scenes);
+  const shootDays = useStore((s) => s.shootDays);
+  const locations = useStore((s) => s.locations);
+  const [preview, setPreview] = useState<ScheduleExportId | null>(null);
+
+  // Every slice these documents read must be listed here.
+  const data = useMemo(
+    () =>
+      ({ production, crew, cast, scenes, shootDays, locations } as unknown as ProductionData),
+    [production, crew, cast, scenes, shootDays, locations]
+  );
+
+  const previewDef = SCHEDULE_EXPORTS.find((x) => x.id === preview);
+  const previewTable = useMemo(
+    () => (previewDef ? previewDef.build(data) : null),
+    [previewDef, data]
+  );
+
+  return (
+    <>
+      <div className="grid gap-4 md:grid-cols-2">
+        {SCHEDULE_EXPORTS.map((def) => {
+          const rows = def.build(data).rows.length;
+          const empty = rows === 0;
+          return (
+            <Card key={def.id}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="font-semibold text-sm" dir="rtl">{def.arabicTitle}</div>
+                  <div className="text-xs text-[var(--text-muted)] mt-0.5">{def.title}</div>
+                </div>
+                <Badge tone={empty ? "muted" : "neutral"}>{rows} rows</Badge>
+              </div>
+              <p className="text-xs text-[var(--text-muted)] mt-2 leading-relaxed">
+                {def.description}
+              </p>
+              {empty && (
+                <p className="text-xs text-[var(--warning)] mt-2">
+                  Nothing to export yet — set the timeline dates and build the board first.
+                </p>
+              )}
+              <div className="flex items-center gap-2 mt-3">
+                <Button size="sm" variant="ghost" disabled={empty} onClick={() => setPreview(def.id)}>
+                  Preview
+                </Button>
+                <Button
+                  size="sm"
+                  variant="primary"
+                  disabled={empty}
+                  onClick={() => exportScheduleCSV(def, data)}
+                >
+                  <FileDown size={14} /> CSV
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={empty}
+                  onClick={() => printScheduleDocument(def, data)}
+                >
+                  <FileText size={14} /> PDF
+                </Button>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+
+      <Modal
+        open={!!previewDef}
+        onClose={() => setPreview(null)}
+        title={previewDef ? `${previewDef.arabicTitle} · ${previewDef.title}` : ""}
+        size="xl"
+      >
+        {previewTable && (
+          <div className="overflow-auto max-h-[65vh]">
+            <table className="w-full text-[11px] border-collapse" dir="rtl">
+              <thead className="sticky top-0 bg-[var(--surface-2)]">
+                <tr>
+                  {previewTable.columns.map((c) => (
+                    <th
+                      key={c}
+                      className="text-right font-semibold p-1.5 border border-[var(--border)] whitespace-nowrap"
+                    >
+                      {c}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {previewTable.rows.slice(0, 200).map((row, i) => (
+                  <tr key={i}>
+                    {row.map((cell, j) => (
+                      <td
+                        key={j}
+                        className="p-1.5 border border-[var(--border)] align-top max-w-[240px]"
+                      >
+                        {cell}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {previewTable.rows.length > 200 && (
+              <div className="text-xs text-[var(--text-muted)] p-2">
+                Showing first 200 of {previewTable.rows.length} rows — the export contains all of them.
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+    </>
   );
 }
 
