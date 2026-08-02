@@ -510,7 +510,7 @@ export async function importBackup(file: File): Promise<string | null> {
     if (!bundles.length) return "This backup has no projects to import.";
     return mergeProjects(bundles);
   }
-  return "This file doesn't look like a SceneTrackable backup or project export.";
+  return "This file doesn't look like an Over Magic backup or project export.";
 }
 
 /**
@@ -527,10 +527,10 @@ function applyBackupText(text: string, land: "reload" | "home" = "reload"): stri
   try {
     parsed = JSON.parse(text);
   } catch {
-    return "This file doesn't look like a SceneTrackable backup.";
+    return "This file doesn't look like an Over Magic backup.";
   }
   if (!parsed || typeof parsed !== "object" || !parsed.state || typeof parsed.version !== "number") {
-    return "This file doesn't look like a SceneTrackable backup.";
+    return "This file doesn't look like an Over Magic backup.";
   }
   if (!Array.isArray(parsed.state.users) || !Array.isArray(parsed.state.projects)) {
     return "Backup is missing core data (users/projects).";

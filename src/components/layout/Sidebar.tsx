@@ -168,7 +168,7 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
           {expanded && (
             <div className="ml-3 min-w-0">
               <div className="text-sm font-semibold text-[var(--text-primary)] truncate">
-                SceneTrackable
+                Over Magic
               </div>
               <div className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider truncate">
                 {project ? project.name : "No project"}

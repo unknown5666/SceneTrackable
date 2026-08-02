@@ -65,7 +65,7 @@ export function CloudSync({ embedded }: { embedded?: boolean } = {}) {
         <Card>
           <CardHeader
             title="Not configured yet"
-            subtitle="Cloud sync activates when Supabase credentials are provided at build time. Until then SceneTrackable runs entirely in this browser."
+            subtitle="Cloud sync activates when Supabase credentials are provided at build time. Until then Over Magic runs entirely in this browser."
           />
           <ol className="text-sm text-[var(--text-secondary)] space-y-2 list-decimal list-inside">
             <li>Create a free project at <span className="font-mono text-xs">supabase.com</span>.</li>
@@ -75,7 +75,7 @@ export function CloudSync({ embedded }: { embedded?: boolean } = {}) {
             </li>
             <li>
               Turn <span className="font-medium">off</span> Authentication → Providers → Email →{" "}
-              <span className="font-mono text-xs">Confirm email</span>. SceneTrackable creates device
+              <span className="font-mono text-xs">Confirm email</span>. Over Magic creates device
               accounts silently and cannot click a confirmation link.
             </li>
             <li>Copy the project URL and anon key from Project Settings → API.</li>

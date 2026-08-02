@@ -459,7 +459,7 @@ export function Projects() {
         open={modalOpen}
         onClose={closeUpload}
         title="Upload script → AI breakdown"
-        subtitle="Upload a PDF screenplay or paste the text. SceneTrackable extracts every scene and element."
+        subtitle="Upload a PDF screenplay or paste the text. Over Magic extracts every scene and element."
         size="lg"
         footer={
           runStatus === "running" ? (

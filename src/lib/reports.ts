@@ -377,7 +377,7 @@ export const getReport = (id: ReportId): ReportDef | undefined =>
 
 /** Required on the bottom of every document this application generates. */
 export const BRAND_FOOTER =
-  "Made with Scene Trackable powered by Over Exposure Productions";
+  "Made with Over Magic powered by Over Exposure Productions";
 
 /** Human-readable key for the cell tinting below — printed under every table. */
 export const COLOR_KEY =

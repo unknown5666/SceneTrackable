@@ -57,7 +57,7 @@ export const HANDBOOK: HandbookDoc[] = [
     route: "/projects",
     keywords: "upload pdf paste screenplay ai run breakdown parse scenes theater",
     body: [
-      "Upload a PDF (parsed privately in your browser) or paste the text. SceneTrackable splits the script on INT./EXT. headings, then analyzes every scene for cast, extras, props, wardrobe, SFX, VFX, vehicles, animals, locations and production requirements.",
+      "Upload a PDF (parsed privately in your browser) or paste the text. Over Magic splits the script on INT./EXT. headings, then analyzes every scene for cast, extras, props, wardrobe, SFX, VFX, vehicles, animals, locations and production requirements.",
       "During the run you'll see the live breakdown theater — each scene flips from queued to analyzing to done as elements are extracted, with running counts.",
     ],
     steps: [
@@ -335,7 +335,7 @@ export const HANDBOOK: HandbookDoc[] = [
       "Tables are fully ruled: every row and every cell has a visible border, the header band is the document's own colour, and rows alternate shading. Wide reports switch to A4 landscape automatically so ten columns don't get squeezed into slivers.",
       "Colour coding is consistent everywhere. The header band tells you what kind of document you're holding — scenes indigo, elements/wardrobe violet, cast pink, DOOD crimson, schedule teal, calendar blue, locations green, budget/invoices amber, tasks blue, drones/camera slate. Inside the table, status values are tinted: green means done or confirmed, amber means pending or in progress, red means a problem or not done, blue is informational (shoot, off day, INT/EXT, day/night). The same key is printed at the bottom of the document.",
       "Every file is named in English: Production-Name_Document-Name_YYYY-MM-DD. A production titled in Arabic (or any non-Latin script) still exports as a readable English file name instead of an empty one.",
-      "The bottom of every generated document carries: Made with Scene Trackable powered by Over Exposure Productions — plus page numbers on real PDFs.",
+      "The bottom of every generated document carries: Made with Over Magic powered by Over Exposure Productions — plus page numbers on real PDFs.",
       "The two schedule documents and the Arabic-heavy sheets go through the browser's print engine rather than the PDF generator, because that is the only path that shapes and orders Arabic correctly. Choose 'Save as PDF' in the print dialog, and leave 'Background graphics' on so the colour coding prints.",
     ],
     steps: [

@@ -82,7 +82,7 @@ export function Dashboard() {
       <div className="max-w-[1000px] mx-auto">
         <div className="mb-6">
           <div className="section-header">Dashboard</div>
-          <div className="page-title mt-1">Welcome to SceneTrackable</div>
+          <div className="page-title mt-1">Welcome to Over Magic</div>
         </div>
         <Card padding="lg">
           <EmptyState
@@ -107,7 +107,7 @@ export function Dashboard() {
           <EmptyState
             icon={<Upload size={48} />}
             title="Upload a script to begin"
-            subtitle="Once you upload a screenplay, SceneTrackable builds the breakdown and this dashboard fills with production data."
+            subtitle="Once you upload a screenplay, Over Magic builds the breakdown and this dashboard fills with production data."
             cta={<Button onClick={() => nav("/projects")}><Upload size={14} /> Upload script</Button>}
           />
         </Card>

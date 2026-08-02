@@ -152,7 +152,7 @@ export function Login() {
               Get the whole breakdown.
             </h1>
             <p className="mt-4 text-sm leading-relaxed text-[var(--text-secondary)] max-w-md">
-              SceneTrackable reads your screenplay and produces a production-ready breakdown —
+              Over Magic reads your screenplay and produces a production-ready breakdown —
               scenes, locations, cast, extras, props, wardrobe, SFX, VFX, vehicles, animals and
               production requirements — every element editable, categorized, and day/night tagged.
             </p>
@@ -350,7 +350,7 @@ export function Login() {
             <div className="mt-5 text-[11px] text-center text-[var(--text-muted)]">
               {cloudEnabled ? (
                 <>
-                  Sign in with your SceneTrackable account — your production's data follows you to
+                  Sign in with your Over Magic account — your production's data follows you to
                   any device. No account yet? Ask your admin for an invite code.
                 </>
               ) : (

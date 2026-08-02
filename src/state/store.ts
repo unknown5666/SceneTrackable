@@ -570,7 +570,7 @@ export const useStore = create<State>()(
   persist(
     (set, get) => ({
       // ---- Blank active dataset ----
-      ...blankData("SceneTrackable"),
+      ...blankData("Over Magic"),
 
       // ---- Auth ----
       users: [MASTER_ADMIN],
@@ -887,7 +887,7 @@ export const useStore = create<State>()(
             set({ ...target, projectData, projects, activeProjectId: next.id });
           } else {
             set({
-              ...blankData("SceneTrackable"),
+              ...blankData("Over Magic"),
               projectData,
               projects,
               activeProjectId: null,

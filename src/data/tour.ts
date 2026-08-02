@@ -25,7 +25,7 @@ export interface TourStep {
 export const TOUR_STEPS: TourStep[] = [
   {
     id: "welcome",
-    title: "Welcome to SceneTrackable",
+    title: "Welcome to Over Magic",
     body: "This tour walks the whole product on the real app using a sample production — the O. Henry short 'The Gift of the Magi'. Take it tab by tab; you can leave any time and pick up where you left off.",
     route: "/dashboard",
   },
