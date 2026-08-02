@@ -133,7 +133,7 @@ export function Login() {
             <Clapperboard size={20} className="text-white" />
           </div>
           <div className="text-lg font-semibold tracking-tight text-[var(--text-primary)]">
-            Scene<span className="text-[var(--accent-blue)]">Trackable</span>
+            Over<span className="text-[var(--accent-blue)]">Magic</span>
           </div>
         </div>
         <Button variant="ghost" size="sm" onClick={(e) => toggle({ x: e.clientX, y: e.clientY })}>

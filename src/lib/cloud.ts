@@ -1,13 +1,13 @@
 // ============================================================
 // CLOUD SYNC — Supabase-backed SHARED team workspace (env-gated).
 //
-// One deployment = one workspace that every SceneTrackable user reads and
+// One deployment = one workspace that every Over Magic user reads and
 // writes. Activates only when VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY
 // are set at build time; otherwise the app is purely local and every export
 // here degrades to a no-op.
 //
 // HOW SIGN-IN WORKS (no separate cloud login):
-// Supabase Auth accounts are *derived* from the SceneTrackable username +
+// Supabase Auth accounts are *derived* from the Over Magic username +
 // password hash, so signing into the app transparently signs into the cloud.
 // The Supabase account by itself grants nothing — access comes from the
 // workspace_members roster, and the only way onto it is the join_workspace()
@@ -160,7 +160,7 @@ async function isDirty(): Promise<boolean> {
 // Derived credentials
 //
 // The email is derived from the username alone (stable per account); the
-// password from username + the SceneTrackable password hash. Changing the
+// password from username + the Over Magic password hash. Changing the
 // app password therefore changes the device credential — which is exactly
 // why an admin reset routes through the invite path, where join_workspace()
 // revokes the old identity. See schema.sql.
@@ -194,7 +194,7 @@ export interface CloudConflict {
 
 export interface CloudStatus {
   phase: CloudPhase;
-  /** SceneTrackable username this device is connected as. */
+  /** Over Magic username this device is connected as. */
   username: string | null;
   /** Rev our local state is based on. */
   rev: number | null;

@@ -4,7 +4,7 @@
 // Composes a SINGLE full-workspace backup that holds TWO complete productions
 // so a restore lands a populated project switcher plus every collection the app
 // renders:
-//   • "Salt & Static"      (from scenetrackable-demo-showcase.json) — active
+//   • "Salt & Static"      (from over-magic-demo-showcase.json) — active
 //   • "The Gift of the Magi" (from public/sample-production.json)   — second project
 //
 // Both source files are single-project persisted-store envelopes ({ state,
@@ -14,7 +14,7 @@
 //
 //   node scripts/build-showcase.mjs
 //
-// Emits scenetrackable-showcase.json at the repo root — push it, then restore
+// Emits over-magic-showcase.json at the repo root — push it, then restore
 // it from Admin → Data.
 // ============================================================
 
@@ -64,7 +64,7 @@ const unionBy = (a, b, key) => {
 };
 
 // ------------------------------------------------------------
-const demo = read("scenetrackable-demo-showcase.json"); // Salt & Static — active
+const demo = read("over-magic-demo-showcase.json"); // Salt & Static — active
 const sample = read("public/sample-production.json"); // Gift of the Magi — second
 
 const base = demo.state; // keeps Salt & Static's data at the top level (active)
@@ -87,7 +87,7 @@ const showcase = {
   version: demo.version ?? sample.version ?? 5,
 };
 
-const out = join(root, "scenetrackable-showcase.json");
+const out = join(root, "over-magic-showcase.json");
 writeFileSync(out, JSON.stringify(showcase, null, 2));
 
 const s = showcase.state;

@@ -1,15 +1,15 @@
 -- ============================================================
--- SceneTrackable cloud sync schema  (v2 — shared team workspace)
+-- Over Magic cloud sync schema  (v2 — shared team workspace)
 --
 -- Run this once in your Supabase project:
 --   SQL Editor → New query → paste → Run.
 -- It is idempotent; re-running it is safe.
 --
 -- MODEL: one deployment = ONE shared production workspace that every
--- SceneTrackable user reads and writes. Supabase Auth accounts exist only
+-- Over Magic user reads and writes. Supabase Auth accounts exist only
 -- as per-device identities; the real gate is `workspace_members`, and the
 -- only way onto that roster is join_workspace(), which validates the
--- caller against the SceneTrackable user list inside the state blob.
+-- caller against the Over Magic user list inside the state blob.
 -- Signing up alone therefore grants nothing.
 --
 -- IMPORTANT — before deploying:
@@ -19,7 +19,7 @@
 --      workspace (see bootstrap_workspace). Sign in as your admin
 --      immediately after deploying, before sharing the URL.
 --   3. Change the seeded Admin/1234 password. Cloud access is derived
---      from the SceneTrackable password, so it is only as strong as that.
+--      from the Over Magic password, so it is only as strong as that.
 -- ============================================================
 
 create extension if not exists pgcrypto;
@@ -134,7 +134,7 @@ $$;
 -- p_secret is either the caller's SHA-256 password hash exactly as stored in
 -- state.users[].password ("sha256$…"), or their invite code when
 -- p_is_invite is true. Both are proof of knowledge of something only a real
--- SceneTrackable account holder has.
+-- Over Magic account holder has.
 -- ------------------------------------------------------------
 create or replace function public.join_workspace(
   p_username  text,

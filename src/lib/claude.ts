@@ -1,5 +1,5 @@
 // ============================================================
-// AI API WRAPPER — SceneTrackable
+// AI API WRAPPER — Over Magic
 // Browser-direct calls to one provider: Z.ai's GLM. The key and model
 // are fixed here, so there is nothing to configure and every feature
 // works out of the box. Live calls retry on transient errors and never

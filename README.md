@@ -1,6 +1,6 @@
-# SceneTrackable
+# Over Magic
 
-AI script-breakdown platform for film & TV production. Upload a screenplay (PDF or paste), and SceneTrackable extracts every scene and production element — cast, extras, props, wardrobe, SFX, VFX, vehicles, animals, locations, makeup, stunts, and production requirements — into an editable breakdown, plus scheduling (strip board + DOOD), tasks, budget, department portals, and exportable reports.
+AI script-breakdown platform for film & TV production. Upload a screenplay (PDF or paste), and Over Magic extracts every scene and production element — cast, extras, props, wardrobe, SFX, VFX, vehicles, animals, locations, makeup, stunts, and production requirements — into an editable breakdown, plus scheduling (strip board + DOOD), tasks, budget, department portals, and exportable reports.
 
 Built by OverExposure Productions.
 
@@ -35,12 +35,12 @@ Two providers are supported, and picking a model picks its provider:
 
 1. Create a free project at [supabase.com](https://supabase.com).
 2. Open **SQL Editor**, paste the contents of [`supabase/schema.sql`](supabase/schema.sql), run it.
-3. Go to **Authentication → Providers → Email** and turn **off** *Confirm email*. SceneTrackable creates each device's cloud account silently and can't click a confirmation link.
+3. Go to **Authentication → Providers → Email** and turn **off** *Confirm email*. Over Magic creates each device's cloud account silently and can't click a confirmation link.
 4. Copy **Project Settings → API → Project URL** and **anon public key**.
 5. Put them in `.env` (see `.env.example`) for local dev, and in your host's environment variables for production.
 6. Deploy, then **sign in as your admin immediately** — see the warning below.
 
-There is no separate cloud login. Signing into SceneTrackable signs you into the cloud: the Supabase account is derived from your username and password, so everyone who signs in lands in the same shared workspace. Your edits upload ~8s after you stop typing, and the app checks for other people's changes every 3 minutes.
+There is no separate cloud login. Signing into Over Magic signs you into the cloud: the Supabase account is derived from your username and password, so everyone who signs in lands in the same shared workspace. Your edits upload ~8s after you stop typing, and the app checks for other people's changes every 3 minutes.
 
 To add someone: **Admin → Users → Invite**, and give them the 8-character code. They open the URL from anywhere, pick their own password on the *Redeem invite* tab, and the workspace downloads to their device.
 
@@ -60,7 +60,7 @@ To add someone: **Admin → Users → Invite**, and give them the 8-character co
 - The AI API key lives in the admin's browser localStorage and calls the provider directly from the browser. Don't share an admin browser session. For a hardened production setup, move AI calls behind a Supabase Edge Function later.
 - Free-tier Gemini keys let Google train on submitted screenplays. Don't use one for confidential material.
 - In-app user passwords are SHA-256 hashed at rest. Cloud data is protected by Supabase row-level security: reads and writes require a row in `workspace_members`, and the only way onto that roster is the `join_workspace()` function, which re-checks your password hash or invite code against the workspace's own user list server-side. Signing up alone grants nothing.
-- **Cloud access is only as strong as the SceneTrackable password**, because the device's Supabase credential is derived from it. Change `Admin / 1234` before going live, and don't hand out weak passwords.
+- **Cloud access is only as strong as the Over Magic password**, because the device's Supabase credential is derived from it. Change `Admin / 1234` before going live, and don't hand out weak passwords.
 - The shared workspace is exactly that — **shared**. Every member can read and write all of it. The role system controls what the UI offers, not what the cloud will accept, so only invite people you'd trust with the whole production.
 - An admin password reset revokes the user's old cloud access when they redeem the new invite code — until they redeem, their old password still works. Deactivate the account instead if you need access cut immediately.
 

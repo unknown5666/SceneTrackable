@@ -1,7 +1,7 @@
 // ============================================================
 // Sample-production generator.
 //
-// Emits public/sample-production.json in SceneTrackable's persisted-store
+// Emits public/sample-production.json in Over Magic's persisted-store
 // shape ({ state, version }), loadable through the same restore path as an
 // Admin backup. Source material is O. Henry's "The Gift of the Magi" (1905),
 // public domain — adapted here into short screenplay scenes with a full,

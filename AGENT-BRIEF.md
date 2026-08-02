@@ -1,4 +1,4 @@
-# SceneTrackable — Agent Fast-Start Brief
+# Over Magic — Agent Fast-Start Brief
 
 **Paste this at the start of a new chat so I skip re-learning the codebase and go straight to work.**
 Read `POLISH-CHECKLIST.md` (same folder) for the live task status — it's the source of truth for what's done/left.
@@ -6,7 +6,7 @@ Read `POLISH-CHECKLIST.md` (same folder) for the live task status — it's the s
 ---
 
 ## What this is
-**SceneTrackable** — an AI script-breakdown SaaS for film production. Upload a screenplay → AI splits scenes on
+**Over Magic** — an AI script-breakdown SaaS for film production. Upload a screenplay → AI splits scenes on
 INT./EXT. headings → produces a full breakdown (cast, props, wardrobe, SFX/VFX, locations, etc.) → feeds schedule,
 DOOD, budget, tasks, departments, reports. Rebranded from an earlier "Production OS".
 

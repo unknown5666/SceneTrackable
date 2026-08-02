@@ -1,4 +1,4 @@
-# SceneTrackable — Investor-Demo Polish Pass · Progress Checklist
+# Over Magic — Investor-Demo Polish Pass · Progress Checklist
 
 Living status doc. **UI/UX only** — no backend/cloud/AI logic changes except where the task allows.
 Legend: ⬜ todo · 🟡 in progress · ✅ done · ⏭️ deferred/partial

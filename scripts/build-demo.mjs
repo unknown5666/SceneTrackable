@@ -1,8 +1,8 @@
 // ============================================================
 // Demo showcase generator.
 //
-// Emits scenetrackable-demo-showcase.json at the project root, in
-// SceneTrackable's persisted-store shape ({ state, version }) — loadable
+// Emits over-magic-demo-showcase.json at the project root, in
+// Over Magic's persisted-store shape ({ state, version }) — loadable
 // through the same restore path as an Admin backup (Admin → Data → Restore,
 // or the "Load sample" flow). It is a SECOND, fully independent production
 // ("Salt & Static", an original modern thriller short) so it reads as fresh
@@ -20,7 +20,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const OUT = join(__dirname, "..", "scenetrackable-demo-showcase.json");
+const OUT = join(__dirname, "..", "over-magic-demo-showcase.json");
 
 // Deterministic ISO helpers, anchored so the production reads as "in prep".
 const DAY = 86400000;

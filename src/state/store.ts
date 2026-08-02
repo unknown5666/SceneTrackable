@@ -139,7 +139,7 @@ function withDerivedAccess<T extends { access: string[]; permissions?: RolePermi
 // ============================================================
 // CLOUD SESSION
 //
-// Signing into SceneTrackable is the only sign-in there is: the cloud
+// Signing into Over Magic is the only sign-in there is: the cloud
 // session is derived from the same username + password and established
 // here, so no one has to know Supabase exists. All of this is a no-op when
 // the app was built without Supabase credentials.

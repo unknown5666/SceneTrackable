@@ -1,7 +1,7 @@
 // ============================================================
 // CLOUD PAGE
 //
-// There is no cloud login here any more — signing into SceneTrackable is
+// There is no cloud login here any more — signing into Over Magic is
 // what connects you. This page just explains what sync is doing and gives
 // an escape hatch when it needs a human decision.
 // ============================================================

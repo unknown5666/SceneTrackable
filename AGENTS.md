@@ -1,4 +1,4 @@
-# SceneTrackable — Agent Logic Map
+# Over Magic — Agent Logic Map
 
 > **What this file is.** A complete map of *every* feature's logic, plus the
 > wiring between them, so an agent can fix something without re-reading the
@@ -629,7 +629,7 @@ schema, not a bespoke form.
 ### 24.0 One document layer — branding, colour, file names (`lib/reports.ts`)
 `reports.ts` is the dependency-free module, so the shared document rules live
 there and **every** export path imports them (never the reverse):
-- `BRAND_FOOTER` — `"Made with Scene Trackable powered by Over Exposure
+- `BRAND_FOOTER` — `"Made with Over Magic powered by Over Exposure
   Productions"`. **Required on the bottom of every document the app generates**
   — jsPDF PDFs (`pdfExport.ts`), every print window (`printReport`,
   `printScheduleDocument`, `printBreakdownSheets`, `printCallSheet`).

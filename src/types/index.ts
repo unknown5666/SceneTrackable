@@ -1,5 +1,5 @@
 // ============================================================
-// SCENETRACKABLE — TYPE SYSTEM
+// OVER MAGIC — TYPE SYSTEM
 // ============================================================
 
 export type RoleId = string;
