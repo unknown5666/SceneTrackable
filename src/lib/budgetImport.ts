@@ -164,7 +164,7 @@ export function guessSection(description: string): string | null {
 // ------------------------------------------------------------
 
 /** Arabic-Indic and Persian digits → ASCII. */
-function toAsciiDigits(s: string): string {
+export function toAsciiDigits(s: string): string {
   return s.replace(/[٠-٩۰-۹]/g, (d) => {
     const c = d.charCodeAt(0);
     return String(c >= 0x06f0 ? c - 0x06f0 : c - 0x0660);

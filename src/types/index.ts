@@ -709,7 +709,9 @@ export type AIFeature =
   | "art_suggestions"
   | "location_scout"
   | "invoice_parse"
-  | "continuity_optimize";
+  | "continuity_optimize"
+  /** Reads a treatment/pitch into a production profile the estimate is built from. */
+  | "treatment_estimate";
 
 export interface AIUsageEntry {
   id: string;

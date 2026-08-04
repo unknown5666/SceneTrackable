@@ -291,7 +291,8 @@ export const HANDBOOK: HandbookDoc[] = [
     body: [
       "Budget holds your account lines (budgeted / committed / spent), the purchase-order approval flow, and petty-cash logging.",
       "POs route through accountant then admin approval, with a full audit log.",
-      "You don't have to type the top sheet in. Import budget file reads the sheet your accountant sent — PDF, CSV, TSV or plain text, in Arabic or English — and matches every row to a section, keeping its account code and head count.",
+      "You don't have to type the top sheet in. There are two ways in, and the page header carries both. Import budget file reads the sheet your accountant already sent — PDF, CSV, TSV or plain text, in Arabic or English — and matches every row to a section, keeping its account code and head count.",
+      "Estimate from treatment is for when no budget exists yet: paste the pitch or series bible and the app builds the whole top sheet from it. It has its own handbook page — see Budget estimate from a treatment.",
     ],
     steps: [
       "Click Import budget file and drop the sheet in.",
@@ -303,6 +304,34 @@ export const HANDBOOK: HandbookDoc[] = [
       "A mismatch between the parsed total and the file's own total usually means a row was added after the total was typed — worth checking before importing, but not an error.",
       "Rows that aren't budget lines at all (stray page furniture) can be dropped from the review table.",
       "An import replaces the production's headline budget figure with the sum of the sheet, and adopts the file's currency if it names one.",
+    ],
+  },
+  {
+    id: "budget-estimate",
+    title: "Budget estimate from a treatment",
+    summary: "Paste the pitch or series bible; get a full editable top sheet, cast and locations.",
+    iconKey: "sparkles",
+    route: "/budget",
+    keywords:
+      "estimate treatment pitch bible synopsis rate card assumptions episodes shoot days loads ai budget generate معالجة ميزانية تقديرية",
+    body: [
+      "Before there is a script there is a treatment — format, episode count, characters, locations, story. That is everything a first-pass budget needs, so Estimate from treatment (on the Budget page) turns it into a complete top sheet: around fifty lines across all thirteen sections, plus the cast list and the location list the treatment named.",
+      "The AI reads the treatment for facts, never for money. It reports what the document says — episodes, runtime, who speaks, where it shoots — and scores eight production loads 0–3: action, stunts, VFX, crowds, period, aerial, water and night. A rate card then does all the arithmetic, so every figure shows its own working (\"60 shoot days × 4,500\") and every figure moves when you change an assumption.",
+      "It reads Arabic and English treatments. If the model can't be reached the text-only parser still produces the whole estimate, and a banner tells you which read you're looking at.",
+    ],
+    steps: [
+      "Budget → Estimate from treatment. Paste the text, or drop a PDF/TXT, then Read & estimate.",
+      "Assumptions tab: correct anything the treatment got wrong or didn't say — episodes, shoot days per episode, prep and post weeks, crew size, cast counts, extras, stunt/aerial days, VFX shots, tier and contingency. Every line on the sheet recomputes as you type.",
+      "Lines tab: edit any line's quantity, rate, total, description or section; add lines; delete what this production doesn't need.",
+      "Cast & locations tab: tick which characters and places to create alongside the budget, and whether to set the production's title, currency and shoot-day count.",
+      "Choose Replace or Append, then Create budget.",
+    ],
+    tips: [
+      "The rate card is quoted in AED for a Gulf drama at Standard tier. Lean is roughly 0.7× and Premium 1.6×; the Rate scale field converts the whole card to another currency and is meant to be edited to your market.",
+      "An edit to a line sticks even when you change the assumptions afterwards — the estimate recomputes around it rather than overwriting it.",
+      "The load sliders on the right re-seed only the assumptions they own (crowd sets extras, VFX sets shot count) and leave everything you've already tuned alone.",
+      "Cast records are created with the day rate the estimate priced them at, so the cast page and the top sheet agree from the start.",
+      "It is an estimate, not a quote — the point is a defensible starting sheet you argue with, one assumption at a time.",
     ],
   },
   {

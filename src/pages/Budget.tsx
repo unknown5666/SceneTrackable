@@ -10,6 +10,7 @@ import {
   Upload,
   Receipt,
   Link2,
+  Wand2,
 } from "lucide-react";
 import {
   LineChart,
@@ -33,6 +34,10 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { useRecordEditor } from "@/components/ui/RecordEditor";
 import { BudgetImportModal, BudgetImportButton } from "@/components/budget/BudgetImportModal";
+import {
+  TreatmentEstimateModal,
+  TreatmentEstimateButton,
+} from "@/components/budget/TreatmentEstimateModal";
 import { formatCurrency, formatCompact, formatDate, formatDateTime, cn } from "@/lib/utils";
 import { computeFinanceSummary } from "@/lib/metrics";
 import type { Installment, InstallmentStatus, ProductionData } from "@/types";
@@ -40,6 +45,7 @@ import type { Installment, InstallmentStatus, ProductionData } from "@/types";
 export function Budget() {
   const [tab, setTab] = useState("topsheet");
   const [importing, setImporting] = useState(false);
+  const [estimating, setEstimating] = useState(false);
   const canEdit = useStore((s) => canWrite(s, "budget"));
 
   return (
@@ -49,7 +55,12 @@ export function Budget() {
           <div className="section-header">Budget & Accounting</div>
           <div className="page-title mt-1">Financial Overview</div>
         </div>
-        {canEdit && <BudgetImportButton onClick={() => setImporting(true)} />}
+        {canEdit && (
+          <div className="flex items-center gap-2">
+            <BudgetImportButton onClick={() => setImporting(true)} />
+            <TreatmentEstimateButton onClick={() => setEstimating(true)} />
+          </div>
+        )}
       </div>
 
       <Tabs
@@ -65,18 +76,21 @@ export function Budget() {
         className="mb-6"
       />
 
-      {tab === "topsheet" && <TopSheet onImport={() => setImporting(true)} />}
+      {tab === "topsheet" && (
+        <TopSheet onImport={() => setImporting(true)} onEstimate={() => setEstimating(true)} />
+      )}
       {tab === "charts" && <BudgetCharts />}
       {tab === "pos" && <POList />}
       {tab === "petty" && <PettyCashList />}
       {tab === "invoices" && <InvoicesTab />}
 
       <BudgetImportModal open={importing} onClose={() => setImporting(false)} />
+      <TreatmentEstimateModal open={estimating} onClose={() => setEstimating(false)} />
     </div>
   );
 }
 
-function TopSheet({ onImport }: { onImport: () => void }) {
+function TopSheet({ onImport, onEstimate }: { onImport: () => void; onEstimate: () => void }) {
   const budgetLines = useStore((s) => s.budgetLines);
   const production = useStore((s) => s.production);
   const [expanded, setExpanded] = useState<string[]>([]);
@@ -109,10 +123,13 @@ function TopSheet({ onImport }: { onImport: () => void }) {
           <EmptyState
             icon={<DollarSign size={48} />}
             title="No budget lines yet"
-            subtitle="Import the budget your accountant sent — PDF or CSV, Arabic or English — or start the top sheet by hand."
+            subtitle="No budget written yet? Estimate one from the treatment. Already have a sheet — PDF or CSV, Arabic or English — import it instead, or start the top sheet by hand."
             cta={
-              <div className="flex items-center gap-2">
-                <Button size="md" leftIcon={<Upload size={14} />} onClick={onImport}>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button size="md" leftIcon={<Wand2 size={14} />} onClick={onEstimate}>
+                  Estimate From Treatment
+                </Button>
+                <Button size="md" variant="secondary" leftIcon={<Upload size={14} />} onClick={onImport}>
                   Import Budget File
                 </Button>
                 <ed.AddButton size="md" variant="secondary" label="Add First Line" />
