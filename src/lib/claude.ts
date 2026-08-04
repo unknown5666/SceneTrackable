@@ -1709,6 +1709,220 @@ export async function aiContinuityOptimize(
   return { moves, result };
 }
 
+// ---- Treatment → production profile (one call over the whole pitch) ----
+//
+// The model reads a treatment for the things a rate card needs and CANNOT
+// invent: how many episodes, who speaks, where it shoots, how hard the unit is
+// being worked. It is deliberately not asked for a budget — the arithmetic
+// belongs to `lib/budgetEstimate.ts`, where every figure recomputes when an
+// assumption changes and shows its own working. The only money the model may
+// propose is a bespoke line the card has no entry for (a boxing ring, a period
+// train), and even that arrives as quantity × rate for review, never a total.
+
+export const TREATMENT_TEXT_CAP = 12_000;
+export const TREATMENT_EXTRA_LINES_CAP = 12;
+
+export interface ProposedTreatmentCharacter {
+  name: string;
+  billing: "lead" | "supporting" | "day_player";
+  note?: string;
+}
+
+export interface ProposedTreatmentLine {
+  section: string;
+  description: string;
+  unit: string;
+  qty: number;
+  rate: number;
+  why?: string;
+}
+
+export interface ProposedTreatment {
+  title?: string;
+  format?: "series" | "film";
+  episodes?: number;
+  episodeMinutes?: number;
+  genres: string[];
+  characters: ProposedTreatmentCharacter[];
+  locations: { name: string; note?: string }[];
+  /** 0–3 per key: action, stunts, vfx, crowd, period, aerial, water, night. */
+  loads: Record<string, number>;
+  extraLines: ProposedTreatmentLine[];
+  notes: string[];
+}
+
+const TREATMENT_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  additionalProperties: false,
+  required: ["characters", "locations", "loads"],
+  properties: {
+    title: { type: "string" },
+    format: { type: "string", enum: ["series", "film"] },
+    episodes: { type: "integer" },
+    episodeMinutes: { type: "integer" },
+    genres: { type: "array", items: { type: "string" } },
+    characters: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["name", "billing"],
+        properties: {
+          name: { type: "string" },
+          billing: { type: "string", enum: ["lead", "supporting", "day_player"] },
+          note: { type: "string" },
+        },
+      },
+    },
+    locations: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["name"],
+        properties: { name: { type: "string" }, note: { type: "string" } },
+      },
+    },
+    loads: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        action: { type: "integer" },
+        stunts: { type: "integer" },
+        vfx: { type: "integer" },
+        crowd: { type: "integer" },
+        period: { type: "integer" },
+        aerial: { type: "integer" },
+        water: { type: "integer" },
+        night: { type: "integer" },
+      },
+    },
+    extraLines: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["section", "description", "unit", "qty", "rate"],
+        properties: {
+          section: { type: "string" },
+          description: { type: "string" },
+          unit: { type: "string" },
+          qty: { type: "number" },
+          rate: { type: "number" },
+          why: { type: "string" },
+        },
+      },
+    },
+    notes: { type: "array", items: { type: "string" } },
+  },
+};
+
+const TREATMENT_SYSTEM = `You are a line producer reading a treatment, pitch or series bible to set up a first-pass budget.
+
+You are NOT writing the budget. A rate card does the arithmetic. Your job is the facts and the loads it multiplies.
+
+- title, format, episodes, episodeMinutes: what the document states. A stated range ("10-12 episodes", "35-45 minutes") becomes its midpoint, rounded up. A feature is format "film" with episodes 1.
+- characters: every named part the document introduces, most important first. billing "lead" for the protagonist, the love interests and the antagonist; "supporting" for recurring parts; "day_player" for one-scene parts. note = a few words on who they are.
+- locations: the places the document names as shooting locations. Real named places (a corniche, a mosque, a marina) exactly as written, not scene headings you invented.
+- loads: score 0-3 each, where 0 = the production never does this and 3 = it is the spine of the show. action (fights, chases, sport), stunts (falls, crashes, fire), vfx, crowd (extras, stadiums, markets), period (0 = present day, 3 = two eras that must both be dressed), aerial (drone/helicopter), water (sea, marina, pools, rain), night. Be honest: an inflated load spends money that isn't needed.
+- extraLines: ONLY costs specific to THIS story that a standard drama rate card would miss — a boxing ring and its rigging, a period train carriage, a stadium hire, an animal wrangler, an underwater housing. Do NOT list ordinary crew, camera, lighting, catering, transport or post: they are already on the card and would double-count. Each line is quantity x rate in the currency you are given, with section one of: above_the_line, production, camera, lighting_grip, sound, art, makeup, cast, locations, transport, catering, post, other. Up to ${TREATMENT_EXTRA_LINES_CAP} lines, and none at all is a perfectly good answer.
+- notes: up to 5 short lines a producer should know before trusting the estimate — what the document does not say, what looks expensive, what you assumed.`;
+
+/**
+ * A treatment read into the profile the estimate is built from.
+ *
+ * Throws on live-API failure, like every other feature here — the caller falls
+ * back to the deterministic `parseTreatment` read and TELLS the user the AI
+ * pass did not run, rather than silently presenting a weaker answer as the
+ * same thing.
+ */
+export async function aiTreatmentProfile(
+  treatmentText: string,
+  currency: string,
+  lang: ScriptLanguage = "en"
+): Promise<{ profile: ProposedTreatment | null; result: ClaudeResult }> {
+  const text = treatmentText.slice(0, TREATMENT_TEXT_CAP);
+  const result = await callClaude({
+    feature: "treatment_estimate",
+    system: TREATMENT_SYSTEM + languageDirective(lang),
+    user: `BUDGET CURRENCY: ${currency}
+
+TREATMENT:
+${text}${treatmentText.length > TREATMENT_TEXT_CAP ? "\n\n[truncated]" : ""}`,
+    maxTokens: 3000,
+    jsonSchema: TREATMENT_SCHEMA,
+  });
+
+  let profile: ProposedTreatment | null = null;
+  try {
+    const parsed = JSON.parse(extractJson(result.text));
+    const num = (v: unknown, lo: number, hi: number): number | undefined => {
+      const n = Number(v);
+      return Number.isFinite(n) && n >= lo && n <= hi ? Math.round(n) : undefined;
+    };
+    profile = {
+      title: parsed.title ? String(parsed.title).trim() : undefined,
+      format: parsed.format === "film" ? "film" : parsed.format === "series" ? "series" : undefined,
+      episodes: num(parsed.episodes, 1, 500),
+      episodeMinutes: num(parsed.episodeMinutes, 3, 400),
+      genres: Array.isArray(parsed.genres)
+        ? parsed.genres.map((g: unknown) => String(g).trim()).filter(Boolean).slice(0, 8)
+        : [],
+      characters: Array.isArray(parsed.characters)
+        ? parsed.characters
+            .filter((c: any) => c && c.name)
+            .map((c: any) => ({
+              name: String(c.name).trim(),
+              billing: ["lead", "supporting", "day_player"].includes(c.billing)
+                ? c.billing
+                : "supporting",
+              note: c.note ? String(c.note).trim() : undefined,
+            }))
+            .slice(0, 40)
+        : [],
+      locations: Array.isArray(parsed.locations)
+        ? parsed.locations
+            .filter((l: any) => l && l.name)
+            .map((l: any) => ({
+              name: String(l.name).trim(),
+              note: l.note ? String(l.note).trim() : undefined,
+            }))
+            .slice(0, 40)
+        : [],
+      loads: (() => {
+        const out: Record<string, number> = {};
+        const src = parsed.loads ?? {};
+        for (const k of ["action", "stunts", "vfx", "crowd", "period", "aerial", "water", "night"]) {
+          const n = Number(src[k]);
+          if (Number.isFinite(n)) out[k] = Math.min(3, Math.max(0, Math.round(n)));
+        }
+        return out;
+      })(),
+      // A bespoke line with no quantity or no rate can't be priced or argued
+      // with, so it is dropped rather than shown at zero.
+      extraLines: Array.isArray(parsed.extraLines)
+        ? parsed.extraLines
+            .filter((l: any) => l && l.description && Number(l.qty) > 0 && Number(l.rate) > 0)
+            .map((l: any) => ({
+              section: String(l.section ?? "other"),
+              description: String(l.description).trim(),
+              unit: l.unit ? String(l.unit).trim() : "unit",
+              qty: Math.round(Number(l.qty)),
+              rate: Math.round(Number(l.rate)),
+              why: l.why ? String(l.why).trim() : undefined,
+            }))
+            .slice(0, TREATMENT_EXTRA_LINES_CAP)
+        : [],
+      notes: Array.isArray(parsed.notes)
+        ? parsed.notes.map((n: unknown) => String(n).trim()).filter(Boolean).slice(0, 5)
+        : [],
+    };
+  } catch {
+    if (!result.fromMock) throw new ClaudeApiError("Could not parse the treatment reading as JSON.");
+  }
+  return { profile, result };
+}
+
 // ------------------------------------------------------------
 // Demo breakdown — keyword-driven, always plausible
 // ------------------------------------------------------------

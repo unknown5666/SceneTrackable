@@ -22,6 +22,9 @@ screenplay (pdf/txt) ─▶ extractPdfText ─▶ parseScreenplay ─▶ runBrea
 budget file (pdf/csv) ─▶ extractPdfText ─▶ parseBudgetText ─▶ review modal ─▶ importBudgetLines ─▶ store
                                             budgetImport.ts    BudgetImportModal                    (budgetLines)
 
+treatment (paste/pdf) ─▶ parseTreatment ─▶ profileToAssumptions ─▶ estimateBudget ─▶ review modal ─▶ importBudgetLines
+                         treatment.ts     (+ aiTreatmentProfile)   budgetEstimate.ts  TreatmentEstimateModal  (+cast+locations)
+
 store (state/store.ts, ONE Zustand store) ─▶ every page reads from it
    │
    ├─ persists to localStorage  "scenetrackable-v1" (version 6)
@@ -193,8 +196,14 @@ The core enrichment. Two passes:
 - Full AI feature list = `AIFeature` union (`types/index.ts:627`):
   `script_breakdown, character_bible, daily_digest, report_narration, nl_query,
   task_proposals, location_bible, schedule_draft, call_sheet, dood_draft,
-  art_suggestions, location_scout, invoice_parse, continuity_optimize`. The last
-  two are documented in §25.2 (invoice parsing) and §7.1 (continuity optimizer).
+  art_suggestions, location_scout, invoice_parse, continuity_optimize,
+  treatment_estimate`. The last three are documented in §25.2 (invoice
+  parsing), §7.1 (continuity optimizer) and §12.5 (treatment estimate).
+- **Adding an `AIFeature` id is a three-file change**: the union in
+  `types/index.ts`, then **both** `FEATURE_LABELS` and `FEATURE_EST` in
+  `pages/AISettings.tsx` — they are `Record<AIFeature, …>`, so a new id is a
+  compile error until its cost estimate is filled in. Deliberate: a feature
+  declares what it costs before it ships.
 
 ---
 
@@ -414,6 +423,112 @@ stated **757,000**.
 | **Coarse categories** | 13 sections, not the file's numbering (codes kept). |
 
 **The app never invents a missing figure** (commit `1d9b793`).
+
+---
+
+## 12.5 Budget ESTIMATE from a treatment
+### (`lib/treatment.ts`, `lib/budgetEstimate.ts`, `components/budget/TreatmentEstimateModal.tsx`)
+
+The other direction from §12: §12 reads a budget somebody wrote, this **builds
+the first one** from the treatment/pitch/series bible — before a script exists.
+Entry points: the Budget page header ("Estimate from treatment") and the empty
+top-sheet state.
+
+### 12.5.1 Pipeline
+```
+paste / pdf ─▶ parseTreatment            treatment.ts        → TreatmentProfile (deterministic)
+            ─▶ aiTreatmentProfile        claude.ts           → same shape, refined (may throw)
+            ─▶ profileToAssumptions      budgetEstimate.ts   → EstimateAssumptions (editable)
+            ─▶ estimateBudget            budgetEstimate.ts   → EstimateLine[]  (recomputes live)
+            ─▶ review modal (3 tabs)     TreatmentEstimateModal
+            ─▶ estimateToBudgetLines     budgetEstimate.ts   → BudgetLine[]
+            ─▶ importBudgetLines (+ addCastMember, addRecord("locations"), updateProductionMeta)
+```
+
+### 12.5.2 The one rule: the model never produces money
+The AI reads **facts and loads**; a rate card does **all** the arithmetic. Three
+reasons, and they are the whole design — do not "simplify" this by asking the
+model for amounts:
+1. Every line shows its working (`basis` = `"60 × 4,500 AED"`), so a producer
+   argues with a day rate, not with a number from nowhere.
+2. Every line **recomputes** when an assumption changes. A one-shot list of
+   amounts cannot, and a budget that ignores its own assumptions is a screenshot.
+3. The estimate still works with the model unreachable — `parseTreatment` alone
+   produces the same sheet, and the banner says which read you are looking at.
+The only money the model may propose is a **bespoke line the card has no entry
+for** (a boxing ring, a period train), and it arrives as qty × rate for review.
+
+### 12.5.3 `treatment.ts` — prose → counts
+- `TreatmentProfile`: title, format, episodes, episodeMinutes, genres,
+  `characters[]` (with billing), `locations[]`, `loads`, language, `evidence[]`.
+- **`evidence[]` is required, not decoration** — each number records the line it
+  came from, and the review panel shows it. A count nobody can trace is a count
+  the user has to re-derive before trusting the sheet.
+- `TreatmentLoads` — eight 0–3 scores (`action, stunts, vfx, crowd, period,
+  aerial, water, night`). 0–3 rather than boolean so the card **scales** rather
+  than switches.
+- `SECTION_HEADINGS` + `sectionLines()` — every extractor slices between its own
+  heading and the next heading of any kind. Without the end boundary the bullet
+  list under «الموسيقى» is read as locations.
+- **`SEPARATOR_RE` gotcha (cost a bug already):** the two-em dash «⸻» Arabic
+  treatments separate blocks with is **one character**, so a `{3,}` rule never
+  matches it. Dedicated rule glyphs (`⸻ ─ ━ ═ — –`) count on their own;
+  ambiguous ASCII (`- _ * =`) needs three, because a single `*` is a bullet.
+- `extractCharacters(lines, fullText)` — **blocks, not lines**. When rules are
+  present they are the only boundary: this style of treatment puts a blank line
+  between every sentence, so splitting on blank lines reads «يعمل في جهة
+  حكومية» as a cast member (21 "characters" instead of 6, doubling the cast
+  section). With no rules in the document it falls back to blank lines **plus**
+  ≤ 2 words **plus** ≥ 2 mentions elsewhere — a real part recurs, a sentence
+  doesn't. `ROLE_WORDS_AR` stops «البطل» (the role line under the name) becoming
+  a second character; `LEAD_MARKERS_*` promote leads, and the antagonist is a
+  **lead** (they carry a lead's day rate whatever the story thinks of them).
+- `extractLocations` — strips parentheticals **before** punctuation
+  («ليوا (معسكر التدريب).(كيزاد)» = one place, two notes), drops a
+  trailing-colon lead-in line and anything over 6 words.
+- `labelledNumber` — a stated range («10-12», «35–45») becomes its **midpoint,
+  rounded up**; a pair of 4-digit years is never a count (that's the period
+  detector). `periodFromYears` → two eras ≥10 years apart = load 3.
+
+### 12.5.4 `budgetEstimate.ts` — counts → money
+- `EstimateAssumptions` — every editable input. `derive(a)` computes
+  `shootDays` (= episodes × shootDaysPerEpisode), `shootWeeks` (**six-day week**,
+  the regional norm), studio/location split, night days, principals.
+- `RATE_CARD` — ~50 `RateItem`s across all 13 §12.2 sections. Both `qty` and
+  `rate` are **functions of the assumptions**, so a series and a feature share
+  one card (writer per episode vs per script). `pct` items (insurance,
+  contingency) are computed **last**, over everything else.
+- A card line whose `qty` computes to 0 is **dropped, not shown at nil** — no
+  aerial days means no drone line.
+- Rates are **AED, Standard tier, Gulf drama**. `TIER_MULTIPLIER` lean 0.7 /
+  standard 1 / premium 1.6. `CURRENCY_SCALE` seeds `rateScale` and is
+  **indicative only** — it is a starting number on an editable field, nothing
+  downstream re-reads it, so do not treat it as an FX source.
+- `EstimateOverrides` is keyed by **rate-card key, not line id** — that is what
+  makes a user's edited rate survive the next assumption change. Ids are
+  regenerated on every recompute; keys are stable.
+- `estimateToBudgetLines` synthesizes codes per section (1000, 1010…): an
+  estimate has no chart of accounts to preserve, unlike §12's import where the
+  file's own numbering is the thing that must survive.
+- `castDayRate(a, billing)` — so cast records created from the treatment open
+  carrying the rate the budget was built on.
+
+### 12.5.5 The modal
+Three tabs: **Assumptions** (the real control — changing "episodes" moves all
+~50 lines), **Lines** (qty/rate/total/description/section editable, add, delete),
+**Cast & locations** (tick what to create alongside; characters → `addCastMember`
+with `castDayRate`, places → `addRecord("locations")` at `permitStatus:"scouting"`,
+plus optional `updateProductionMeta` for title/currency/`totalShootDays`).
+The load sliders **re-seed only the assumptions they own** and leave anything
+already tuned alone. Replace/append works exactly as §12.3.
+
+### 12.5.6 Reference figure
+`npx tsx scripts/estimate-test.ts scripts/data/darrabat-qabl-treatment.txt AED`
+on the bundled Arabic series treatment reads: 12 episodes × 40 min, 6 characters
+(4 leads), 13 locations, loads `action=3 stunts=3 crowd=2 period=3 water=2`, and
+estimates **60 shoot days / ~11.85 M AED / ~988 k AED per episode** at Standard.
+If a parser change moves those, something regressed — check the character count
+first, it is the most fragile of them.
 
 ---
 
@@ -798,6 +913,13 @@ format. Both are built from the same store slices the strip board reads, so
 | Symptom | Start here |
 |---|---|
 | Imported budget total ≠ uploaded file | §12.4; run `budget-test.ts` on the file |
+| Estimate's numbers look wrong / too big | §12.5.4 — it's assumptions × rate card; check `shootDays` and `tier`/`rateScale` before touching the card |
+| Estimate lost my edited rate after I changed an assumption | `EstimateOverrides` is keyed by rate-card **key**; a line whose key changed (or an `ai_*` line that vanished) loses its override — §12.5.4 |
+| Treatment produced 20+ "characters" that are sentences | `SEPARATOR_RE` / `extractCharacters` blocks, §12.5.3 — almost always the one-character «⸻» rule not matching |
+| Treatment's location list has the lead-in sentence in it | trailing-colon + word-count guards in `extractLocations`, §12.5.3 |
+| Episode count read as 10 when the treatment says 10-12 | `labelledNumber` takes the range **midpoint**, §12.5.3 |
+| AI treatment pass failed but the estimate still appeared | Correct — deterministic read is a complete answer; the banner says which one ran, §12.5.2 |
+| New `AIFeature` id won't compile | `FEATURE_LABELS` + `FEATURE_EST` in `pages/AISettings.tsx` are `Record<AIFeature, …>`, §5.1 |
 | Budget row filed under wrong section | `SECTION_RULES` order, `budgetImport.ts:118` |
 | Amount read backwards | `parseAmount` `budgetImport.ts:187` + `ltrGroups` `pdf-lines.ts:196` |
 | Arabic text scrambled / words split | `pdf-lines.ts` `renderLine`/`spaced`/`clean` |
@@ -837,6 +959,7 @@ format. Both are built from the same store slices the strip board reads, so
 
 ```bash
 npx tsx scripts/budget-test.ts <file.pdf|csv>   # budget parse + reconciliation, row by row
+npx tsx scripts/estimate-test.ts <treatment.txt> [CUR]  # treatment read + full estimate (no AI)
 npx tsx scripts/pdf-lines-test.ts               # RTL line-reconstruction fixtures
 npx tsx scripts/arabic-pdf-repro.ts             # Arabic PDF extraction repro
 npx tsx scripts/build-yadoo.ts                  # rebuild bundled production (regresses both parsers)

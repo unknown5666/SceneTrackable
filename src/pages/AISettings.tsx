@@ -34,6 +34,7 @@ const FEATURE_LABELS: Record<AIFeature, string> = {
   location_scout: "Location Scout Brief",
   invoice_parse: "Invoice Parsing",
   continuity_optimize: "AI Continuity Optimizer",
+  treatment_estimate: "Treatment → Budget Estimate",
 };
 
 const FEATURE_EST: Record<AIFeature, { avgIn: number; avgOut: number; perUnit: string }> = {
@@ -53,6 +54,8 @@ const FEATURE_EST: Record<AIFeature, { avgIn: number; avgOut: number; perUnit: s
   location_scout: { avgIn: 2500, avgOut: 500, perUnit: "per location" },
   invoice_parse: { avgIn: 1200, avgOut: 500, perUnit: "per invoice" },
   continuity_optimize: { avgIn: 6000, avgOut: 2000, perUnit: "per run" },
+  // One pass over the whole treatment, once per estimate.
+  treatment_estimate: { avgIn: 6000, avgOut: 2500, perUnit: "per treatment" },
 };
 
 export function AISettings({ embedded }: { embedded?: boolean } = {}) {
